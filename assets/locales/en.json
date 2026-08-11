@@ -1,0 +1,149 @@
+{
+  "app": {
+    "name": "Deskly",
+    "tagline": "A macOS desktop experience in your browser"
+  },
+  "menu": {
+    "logo": "this is on this machine",
+    "about": "About This Mac",
+    "systemPreferences": "System Settings...",
+    "appStore": "App Store...",
+    "recentItems": "Recent Items",
+    "forceQuit": "Force Quit...",
+    "sleep": "Sleep",
+    "restart": "Restart...",
+    "shutdown": "Shut Down...",
+    "lockScreen": "Lock Screen",
+    "logOut": "Log Out",
+    "app": {
+      "about": "About Finder",
+      "settings": "Settings...",
+      "emptyTrash": "Empty Trash",
+      "services": "Services",
+      "hide": "Hide Finder",
+      "hideOthers": "Hide Others",
+      "showAll": "Show All"
+    }
+  },
+  "desktop": {
+    "finder": "Finder",
+    "trash": "Trash",
+    "appStore": "App Store"
+  },
+  "finderbar": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "go": "Go",
+    "window": "Window",
+    "help": "Help",
+    "history": "History",
+    "bookmarks": "Bookmarks"
+  },
+  "finder": {
+    "title": "Finder",
+    "emptyFolder": "This folder is empty",
+    "searchPlaceholder": "Search",
+    "sidebar": {
+      "favorites": "Favorites",
+      "icloud": "iCloud Drive",
+      "locations": "Locations",
+      "tags": "Tags"
+    },
+    "auth": {
+      "title": "Finder wants to access the folder",
+      "message": "Your authorization is required to access the contents of the folder.",
+      "deny": "Don't Allow",
+      "allow": "OK"
+    },
+    "group": {
+      "none": "None",
+      "kind": "Kind",
+      "date": "Date",
+      "size": "Size",
+      "tag": "Tags"
+    },
+    "share": "Share",
+    "tag": "Tag",
+    "more": "More",
+    "newFolder": "New Folder",
+    "newFolderPrompt": "New folder name:",
+    "sortBy": {
+      "name": "Name",
+      "date": "Date",
+      "size": "Size"
+    },
+    "showPathBar": "Show Path Bar",
+    "showStatusBar": "Show Status Bar",
+    "showTabBar": "Show Tab Bar",
+    "copied": "Path copied",
+    "shareFailed": "Share failed, path copied",
+    "tags": {
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "blue": "Blue",
+      "purple": "Purple",
+      "gray": "Gray"
+    },
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "previous7Days": "Last 7 Days",
+    "earlier": "Earlier",
+    "reauth": "Re-authorize folder access",
+    "airdrop": "AirDrop",
+    "recent": "Recents",
+    "applications": "Applications",
+    "downloads": "Downloads",
+    "icloudDrive": "iCloud Drive",
+    "documents": "Documents",
+    "desktop": "Desktop",
+    "shared": "Shared",
+    "pictures": "Pictures",
+    "bookmarks": "Bookmarks",
+    "colName": "Name",
+    "colDate": "Date Modified",
+    "colSize": "Size",
+    "colKind": "Kind"
+  },
+  "dock": {
+    "launchpad": "Launchpad",
+    "safari": "Safari",
+    "mail": "Mail",
+    "maps": "Maps",
+    "photos": "Photos",
+    "notes": "Notes",
+    "settings": "System Settings",
+    "trash": "Trash"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "close": "Close",
+    "open": "Open",
+    "save": "Save",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "back": "Back",
+    "refresh": "Refresh",
+    "arrange": "Arrange Icons"
+  },
+  "controlcenter": {
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "airdrop": "AirDrop",
+    "airplane": "Airplane Mode",
+    "focus": "Focus",
+    "focusWork": "Work",
+    "stageManager": "Stage Manager",
+    "screenMirroring": "Screen Mirroring",
+    "display": "Display",
+    "sound": "Sound",
+    "music": "Music",
+    "on": "On",
+    "off": "Off",
+    "everyone": "Everyone",
+    "connected": "Connected"
+  }
+}

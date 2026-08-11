@@ -1,0 +1,14 @@
+{
+  "id": "finder",
+  "name": "访达",
+  "version": "2.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "文件管理器",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "../../assets/icons/Finder.png",
+  "window": { "width": 800, "height": 500, "resizable": true, "centered": true }
+}

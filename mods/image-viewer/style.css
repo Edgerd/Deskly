@@ -1,0 +1,243 @@
+/* 图片浏览器应用样式 */
+.image-viewer {
+    /* 固定尺寸改为下界：详见 notepad/style.css 注释 */
+    min-width: 900px;
+    min-height: 700px;
+    width: 100%;
+    height: 100%;
+    background: rgba(30, 30, 30, 0.98);
+    backdrop-filter: blur(20px);
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    box-sizing: border-box;
+}
+
+.image-viewer .wintools {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+.image-viewer .toolbar {
+    height: 44px;
+    background: rgba(40, 40, 40, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 8px;
+    margin-top: 32px;
+}
+
+.image-viewer .toolbar button {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 6px;
+    color: #e0e0e0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.image-viewer .toolbar button:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.image-viewer .toolbar button:active {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.image-viewer .toolbar .btn-open {
+    width: auto;
+    padding: 0 14px;
+    font-size: 13px;
+}
+
+.image-viewer .toolbar .separator {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 4px;
+}
+
+.image-viewer .toolbar .zoom-level {
+    font-size: 12px;
+    color: #aaa;
+    min-width: 45px;
+    text-align: center;
+}
+
+.image-viewer .viewer-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #1a1a1a;
+    position: relative;
+}
+
+.image-viewer .image-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.image-viewer .display-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.2s ease;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.image-viewer .placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    gap: 16px;
+}
+
+.image-viewer .placeholder svg {
+    opacity: 0.5;
+}
+
+.image-viewer .placeholder p {
+    font-size: 14px;
+    margin: 0;
+}
+
+.image-viewer .thumbnail-bar {
+    height: 80px;
+    background: rgba(30, 30, 30, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.image-viewer .thumbnails {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    height: 100%;
+    align-items: center;
+}
+
+.image-viewer .thumbnails .thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.image-viewer .thumbnails .thumb:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.image-viewer .thumbnails .thumb.active {
+    border-color: #007aff;
+}
+
+.image-viewer .thumbnails .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.image-viewer .statusbar {
+    height: 26px;
+    background: rgba(40, 40, 40, 0.8);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.image-viewer .statusbar span {
+    user-select: none;
+}
+
+/* 浅色主题适配 */
+html[data-theme="light"] .image-viewer {
+    background: rgba(245, 245, 245, 0.98);
+}
+
+html[data-theme="light"] .image-viewer .toolbar {
+    background: rgba(235, 235, 235, 0.9);
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme="light"] .image-viewer .toolbar button {
+    background: rgba(0, 0, 0, 0.08);
+    color: #333;
+}
+
+html[data-theme="light"] .image-viewer .toolbar button:hover {
+    background: rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme="light"] .image-viewer .toolbar .separator {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+html[data-theme="light"] .image-viewer .toolbar .zoom-level {
+    color: #666;
+}
+
+html[data-theme="light"] .image-viewer .viewer-container {
+    background: #f0f0f0;
+}
+
+html[data-theme="light"] .image-viewer .placeholder {
+    color: #999;
+}
+
+html[data-theme="light"] .image-viewer .thumbnail-bar {
+    background: rgba(240, 240, 240, 0.95);
+    border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme="light"] .image-viewer .statusbar {
+    background: rgba(235, 235, 235, 0.8);
+    border-top-color: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.6);
+}
+
+/* 幻灯片模式 */
+.image-viewer.slideshow-mode .toolbar,
+.image-viewer.slideshow-mode .thumbnail-bar,
+.image-viewer.slideshow-mode .statusbar {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.image-viewer.slideshow-mode:hover .toolbar,
+.image-viewer.slideshow-mode:hover .thumbnail-bar,
+.image-viewer.slideshow-mode:hover .statusbar {
+    opacity: 1;
+}

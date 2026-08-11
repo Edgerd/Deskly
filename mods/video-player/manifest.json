@@ -1,0 +1,14 @@
+{
+  "id": "video-player",
+  "name": "视频播放器",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "支持常见格式的视频播放器，含播放控制、进度条、音量调节",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "../../assets/icons/QuickTime Player.png",
+  "window": { "width": 800, "height": 500, "resizable": true, "centered": true }
+}

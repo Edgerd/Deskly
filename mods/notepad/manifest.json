@@ -1,0 +1,15 @@
+{
+  "id": "notepad",
+  "name": "记事本",
+  "version": "1.2.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "多格式笔记工具：内置 TXT 与 Markdown 所见即所得编辑，通过扩展支持更多格式。",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "./assets/icons/TextEdit.png",
+  "formats": ["txt", "md"],
+  "window": { "width": 900, "height": 620, "resizable": true, "centered": true }
+}

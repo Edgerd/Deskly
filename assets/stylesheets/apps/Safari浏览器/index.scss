@@ -1,0 +1,73 @@
+.safari {
+    box-shadow: 0 36px 100px 0 rgba(0, 0, 0, 0.40), 0 0 3px 0 rgba(0, 0, 0, 0.55), inset 0 0 3px 0 rgba(255, 255, 255, 0.10);
+    border-radius: 16px;
+    width: 800px;
+    height: 570px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: calc(50% - 285px);
+    left: calc(50% - 400px);
+    overflow: hidden;
+
+    p {
+        margin: 0;
+    }
+
+    .topbar {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        height: 38px;
+        background: white;
+
+        .wintools {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 19px;
+
+            .red {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: #ff5f57;
+                border: solid 0.5px rgba(0, 0, 0, 0.2);
+            }
+
+            .yellow {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: #febc2e;
+                border: solid 0.5px rgba(0, 0, 0, 0.2);
+            }
+
+            .green {
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                background: #28c840;
+                border: solid 0.5px rgba(0, 0, 0, 0.2);
+            }
+
+            div:active {
+                filter: brightness(0.85);
+            }
+        }
+    }
+
+    .frame {
+        width: 100%;
+        height: calc(100% - 38px);
+        background: #eee;
+
+        iframe {
+            border: 0;
+            width: 100%;
+            height: 100%;
+        }
+    }
+}

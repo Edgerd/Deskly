@@ -1,0 +1,829 @@
+.settings {
+  box-shadow: 0 36px 100px 0 rgba(0, 0, 0, 0.4), 0 0 3px 0 rgba(0, 0, 0, 0.55), inset 0 0 3px 0 rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  /* 固定尺寸改为下界：内联 style 决定实际尺寸（manifest 默认 715×570、拉伸 100vw） */
+  width: 100%;
+  height: 100%;
+  min-width: 715px;
+  min-height: 570px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  /* 不设 justify-content:stretch，避免和列布局子项冲突 */
+  position: absolute;
+  top: calc(50% - 285px);
+  left: calc(50% - 358px);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.settings p {
+  margin: 0;
+}
+.settings .left {
+  /* 固定 214px 侧栏，避免被拉伸/挤压导致左右白边 */
+  flex: 0 0 214px;
+  width: 214px;
+  min-width: 214px;
+  max-width: 214px;
+  height: 100%;
+  background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1)), rgba(246, 246,246, 0.84);
+  backdrop-filter: blur(30px) saturate(1.4);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  /* 禁忌：切勿给 backdrop-filter 元素自身加 transform / translateZ / will-change:transform，
+     Chrome 会将其提为 3D 合成层并禁用 backdrop-filter（背景退化、失去毛玻璃、大窗整片失效）。
+     抑制闪烁靠根因已修（brightness(2) 去除）+ 降饱和度，不在本元素做 GPU 提升。 */
+}
+/* 窗口标题栏：红绿灯（窗口控制按钮）移到窗口顶部，独立于侧栏内容。
+   高度与全项目统一为 38px（VSCode 标准），红绿灯 gap 8px 垂直居中。 */
+.settings .titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 214px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  box-sizing: border-box;
+  z-index: 5;
+  pointer-events: none;
+}
+.settings .titlebar .wintools {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+}
+/* 搜索框 */
+.settings .left .list swift-input.search {
+  width: 184px;
+  margin: 8px auto 6px;
+  display: block;
+}
+.settings .left .list {
+  width: 100%;
+  height: calc(100% - 38px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 38px;
+  overflow-y: scroll;
+}
+.settings .left .list::-webkit-scrollbar {
+  background: transparent;
+  width: 8px;
+  height: 100%;
+  margin-right: 4px;
+  padding-right: 4px;
+}
+.settings .left .list::-webkit-scrollbar-thumb {
+  border-radius: 100px;
+  width: 8px !important;
+  background: #a8a9a9;
+}
+.settings .left .list .margin {
+  width: 100%;
+  min-height: 16px;
+}
+.settings .left .list .selection {
+  width: 180px;
+  height: auto;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+}
+.settings .left .list .selection .icon {
+  width: 21.6px;
+  height: 21.6px;
+  margin-left: 6.4px;
+  margin-top: 4.4px;
+  margin-bottom: 4.4px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
+}
+.settings .left .list .selection p {
+  color: black;
+  margin-left: 6.5px;
+  font-size: 13px;
+  margin-right: 4px;
+}
+.settings .left .list .selection.id .icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-left: 3px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+.settings .left .list .selection.id p.title {
+  font-size: 13px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium";
+}
+.settings .left .list .selection.id p.detail {
+  font-size: 11px;
+  opacity: 0.55;
+}
+.settings .left .list .selection.id.focus p.title {
+  color: white;
+}
+.settings .left .list .selection.id.focus p.detail {
+  color: white;
+}
+.settings .left .list .selection.focus {
+  background: var(--accent, #0a82ff);
+}
+.settings .left .list .selection.focus p {
+  color: white;
+}
+.settings .left .list .selection.focus .icon {
+  filter: none;
+}
+.settings .edge {
+  width: 1px;
+  height: 100%;
+  box-shadow: -1px 0 0.5px rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.1);
+  position: absolute;
+  left: 214px;
+  top: 38px;
+}
+.settings .right {
+  /* 自适应撑满剩余宽度，min-width:0 让 flex 子项可被压缩（避免内容溢出撑出滚动条） */
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.settings .right .toolbar {
+  width: 100%;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.settings .right .toolbar .controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 100%;
+  padding: 0 10px;
+  filter: invert(1);
+  margin-left: 14px;
+}
+.settings .right .toolbar .controls img {
+  width: 10px;
+  margin-right: 14px;
+}
+.settings .right .toolbar p {
+  margin: 0;
+  font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+  color: black;
+  font-size: 15px;
+}
+.settings .right .main {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.settings .right .main .page {
+  display: none;
+}
+.settings .right .main .page.focus {
+  display: initial;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+.settings .right .main .page .row {
+  width: calc(100% - 60px);
+  height: auto;
+  margin: 0 20px;
+  padding: 10px;
+  border-radius: 6px;
+  border: solid 1px rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.02);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings .right .main .page .row p {
+  font-size: 13px;
+  align-self: flex-start;
+}
+.settings .right .main .page .row .contents {
+  display: inline-flex;
+}
+.settings .right .main .page .row .contents .pic {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px;
+}
+.settings .right .main .page .row .contents .pic:last-child {
+  margin-right: 0;
+}
+.settings .right .main .page .row .contents .pic img {
+  width: 86px;
+  border-radius: 6px;
+}
+.settings .right .main .page .row .contents .pic p {
+  margin-top: 5px;
+  font-size: 11px;
+  margin-bottom: -2.5px;
+  opacity: 0.5;
+  align-self: center;
+}
+.settings .right .main .page .row .contents .pic.focus img {
+  outline: solid var(--accent, #0a82ff) 2.5px;
+}
+.settings .right .main .page .row .contents .pic.focus p {
+  font-family: "SFPro-Semibold", "PingFang-Semibold";
+  opacity: 1;
+}
+.settings .right .main .page .row .contents .oval {
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  outline: solid 1px rgba(0, 0, 0, 0.04);
+  margin-left: 5px;
+}
+.settings .right .main .page .row .contents .oval.all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
+}
+.settings .right .main .page .row .contents .oval.all .overlay {
+  width: 6px;
+  height: 6px;
+  border-radius: 4px;
+  background: white;
+  outline: solid 1px rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .row .contents .oval.blue {
+  background: #006fff;
+}
+.settings .right .main .page .row .contents .oval.purple {
+  background: #8a358b;
+}
+.settings .right .main .page .row .contents .oval.pink {
+  background: #F64694;
+}
+.settings .right .main .page .row .contents .oval.red {
+  background: #DB3136;
+}
+.settings .right .main .page .row .contents .oval.orange {
+  background: #f67719;
+}
+.settings .right .main .page .row .contents .oval.yellow {
+  background: #FFC022;
+}
+.settings .right .main .page .row .contents .oval.green {
+  background: #57B13D;
+}
+.settings .right .main .page .row .contents .oval.gray {
+  background: #8D8D8D;
+}
+/* 强调色 / 高亮色 选中描边 + 多彩标签 + 强调色联动标记 */
+.settings .right .main .page .row .contents .oval {
+  position: relative;
+  cursor: pointer;
+}
+.settings .right .main .page .row .contents .oval.focus {
+  outline: solid var(--accent, #0a82ff) 2.5px;
+  outline-offset: 1px;
+}
+.settings .right .main .page .row .contents .oval.all {
+  flex-direction: column;
+}
+.settings .right .main .page .row .contents .oval.all .multicolor-label {
+  position: absolute;
+  bottom: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: 0.6;
+  color: #000;
+}
+.settings .right .main .page .row .contents .oval .overlay-text {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+}
+/* 边栏图标大小：通过 data-sidebar-size 控制 */
+html[data-sidebar-size="small"] .settings .left .list .selection .icon {
+  width: 18px;
+  height: 18px;
+}
+html[data-sidebar-size="small"] .settings .left .list .selection p {
+  font-size: 12px;
+}
+html[data-sidebar-size="large"] .settings .left .list .selection .icon {
+  width: 26px;
+  height: 26px;
+}
+html[data-sidebar-size="large"] .settings .left .list .selection p {
+  font-size: 14px;
+}
+/* 文本高亮色 */
+.settings ::selection {
+  background: var(--highlight, var(--accent, #0a82ff));
+  color: #fff;
+}
+/* ===== 暗色主题 ===== */
+html[data-theme="dark"] .settings .left {
+  background: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), rgba(40, 40, 40, 0.82);
+}
+html[data-theme="dark"] .settings .left .list .selection p,
+html[data-theme="dark"] .settings .left .list .selection.id p.title,
+html[data-theme="dark"] .settings .left .list .selection.id p.detail {
+  color: #fff;
+}
+html[data-theme="dark"] .settings .right {
+  background: #1e1e1e;
+}
+html[data-theme="dark"] .settings .right .toolbar p {
+  color: #fff;
+}
+html[data-theme="dark"] .settings .right .main .page .row {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+html[data-theme="dark"] .settings .right .main .page .row p {
+  color: #fff;
+}
+html[data-theme="dark"] .settings .right .main .page .a,
+html[data-theme="dark"] .settings .right .main .page .b {
+  color: #fff;
+}
+html[data-theme="dark"] .settings .right .main .page .fs-desc,
+html[data-theme="dark"] .settings .right .main .page .fs-note {
+  color: rgba(255, 255, 255, 0.8);
+}
+html[data-theme="dark"] .settings .right .main .page .wall-section-title {
+  color: #fff;
+}
+html[data-theme="dark"] .settings .right .main .page .row .contents.wall-src input[type="text"] {
+  background: #2a2a2a;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+html[data-theme="dark"] .settings .right .main .page .row .contents .oval.all .multicolor-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+.settings .right .main .page .row.first {
+  border-radius: 6px 6px 0 0;
+  border-bottom: solid 0.5px rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .row.middle {
+  border-radius: 0;
+  border-top: solid 0.5px rgba(0, 0, 0, 0.04);
+  border-bottom: solid 0.5px rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .row.last {
+  border-radius: 0 0 6px 6px;
+  border-top: solid 0.5px rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .margin {
+  width: calc(100% - 40px);
+  min-height: 16px;
+}
+.settings .right .main .page .a {
+  font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+  font-size: 24px;
+  align-self: center;
+  justify-self: center;
+}
+.settings .right .main .page .b {
+  font-size: 16px;
+  align-self: center;
+  justify-self: center;
+}
+.settings .right .main .page .row .contents.trash-pick {
+  max-width: 320px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.settings .right .main .page .row .contents.trash-pick .pic {
+  margin: 0;
+}
+.settings .right .main .page .row .contents.trash-pick .pic img {
+  width: 44px;
+  border-radius: 6px;
+}
+.settings .right .main .page .row .contents.trash-pick .pic p {
+  font-size: 10px;
+  margin-bottom: -2px;
+}
+.settings .right .main .page div.wallpapercontainer {
+  width: calc(100% - 40px);
+  margin: 0 20px;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+}
+.settings .right .main .page div.wallpapercontainer div.right {
+  width: 300px;
+  display: flex;
+}
+.settings .right .main .page div.wallpapercontainer div.right .row {
+  width: calc(100% - 20px);
+  margin: 0;
+}
+.settings .right .main .page div.wallpaper {
+  width: 150px;
+  height: 80px;
+  background: url(../../assets/images/wallpaper.png);
+  background-size: cover;
+  background-position: center;
+  border-radius: 8px;
+  border: solid 1px rgba(255, 255, 255, 0.6);
+}
+.settings .right .main .page .contents.wall-src {
+  align-items: center;
+  gap: 6px;
+}
+.settings .right .main .page .contents.wall-src input[type="text"] {
+  width: 220px;
+  height: 24px;
+  font-size: 12px;
+  color: black;
+  background: #fff;
+  border: solid 1px rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 0 8px;
+  outline: none;
+}
+.settings .right .main .page .contents.wall-src input[type="text"]:focus {
+  border-color: var(--accent, #0a82ff);
+}
+.settings .right .main .page .wallpaper-btn {
+  height: 24px;
+  font-size: 12px;
+  color: #fff;
+  background: var(--accent, #0a82ff);
+  border: none;
+  border-radius: 6px;
+  padding: 0 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.settings .right .main .page .wallpaper-btn:active {
+  background: #0a6fd6;
+}
+.settings .right .main .page .wallpaper-btn#wallpaper-reset {
+  background: rgba(0, 0, 0, 0.08);
+  color: black;
+}
+.settings .right .main .page .wallpaper-btn#wallpaper-reset:active {
+  background: rgba(0, 0, 0, 0.14);
+}
+.settings .right .main .page .wallpapercontainer div.right .row .wallpaper-current-name {
+  font-size: 11px;
+  opacity: 0.6;
+  align-self: flex-end;
+  margin-top: 4px;
+}
+.settings .right .main .page .wall-section {
+  width: calc(100% - 40px);
+  margin: 0 20px;
+}
+.settings .right .main .page .wall-section-title {
+  font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+  font-size: 13px;
+  opacity: 0.85;
+  margin: 0 0 8px 4px;
+}
+.settings .right .main .page .wall-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  border: solid 1px rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.02);
+}
+.settings .right .main .page .wall-grid .wall-item {
+  width: 110px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.settings .right .main .page .wall-grid .wall-item:hover {
+  background: rgba(10, 130, 255, 0.08);
+}
+.settings .right .main .page .wall-grid .wall-item.focus {
+  background: rgba(10, 130, 255, 0.12);
+}
+.settings .right .main .page .wall-grid .wall-item .wall-thumb {
+  width: 100px;
+  height: 58px;
+  border-radius: 6px;
+  background-size: cover;
+  background-position: center;
+  border: solid 1.5px transparent;
+  transition: border-color 0.15s ease;
+}
+.settings .right .main .page .wall-grid .wall-item.focus .wall-thumb {
+  border-color: var(--accent, #0a82ff);
+}
+.settings .right .main .page .wall-grid .wall-item .wall-name {
+  font-size: 10.5px;
+  opacity: 0.65;
+  margin-top: 5px;
+  text-align: center;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings .right .main .page .wall-grid .wall-item.focus .wall-name {
+  opacity: 1;
+  color: var(--accent, #0a82ff);
+  font-family: "SFPro-Medium", "PingFangSC-Medium";
+}
+.settings .right .main .page .row.wall-bing {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.settings .right .main .page .row.wall-bing .wall-bing-info {
+  width: 100%;
+}
+.settings .right .main .page .row.wall-bing .wall-bing-desc {
+  font-size: 11.5px;
+  opacity: 0.6;
+  align-self: flex-start;
+  margin-bottom: 2px;
+}
+.settings .right .main .page .row.wall-bing .contents {
+    align-self: flex-end;
+}
+
+/* ===== 桌面与程序坞：滑块与分段控件 ===== */
+.settings .right .main .page .row .contents .dock-slider {
+    width: 160px;
+    accent-color: var(--accent, #0a82ff);
+    cursor: pointer;
+}
+.settings .right .main .page .row .contents .seg {
+    display: inline-flex;
+    border-radius: 7px;
+    overflow: hidden;
+    border: solid 1px rgba(0, 0, 0, 0.12);
+    background: rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .row .contents .seg .seg-btn {
+    font-size: 12px;
+    padding: 4px 12px;
+    color: #333;
+    cursor: pointer;
+    user-select: none;
+    border-right: solid 1px rgba(0, 0, 0, 0.1);
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.settings .right .main .page .row .contents .seg .seg-btn:last-child {
+    border-right: none;
+}
+.settings .right .main .page .row .contents .seg .seg-btn.active {
+    background: var(--accent, #0a82ff);
+    color: #fff;
+}
+.settings .right .main .page .row .contents .seg .seg-btn:not(.active):hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* ===== 文件系统页 ===== */
+.settings .right .main .page .fs-desc {
+  font-size: 12.5px;
+  opacity: 0.75;
+  line-height: 1.5;
+  align-self: flex-start;
+}
+.settings .right .main .page .fs-note {
+  font-size: 11px;
+  opacity: 0.55;
+  line-height: 1.5;
+  align-self: flex-start;
+}
+.settings .right .main .page .fs-folders {
+  width: calc(100% - 40px);
+  margin: 0 20px;
+}
+.settings .right .main .page .fs-folder-row {
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  border: solid 1px rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.02);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings .right .main .page .fs-folder-row.first {
+  border-radius: 6px 6px 0 0;
+  border-bottom: solid 0.5px rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .fs-folder-row.middle {
+  border-radius: 0;
+  border-top: solid 0.5px rgba(0, 0, 0, 0.04);
+  border-bottom: solid 0.5px rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .fs-folder-row.last {
+  border-radius: 0 0 6px 6px;
+  border-top: solid 0.5px rgba(0, 0, 0, 0.04);
+}
+.settings .right .main .page .fs-folder-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings .right .main .page .fs-folder-info img {
+  width: 22px;
+  height: 22px;
+}
+.settings .right .main .page .fs-folder-name {
+  font-size: 13px;
+  margin: 0;
+}
+.settings .right .main .page .fs-folder-status {
+  font-size: 11px;
+  opacity: 0.6;
+}
+.settings .right .main .page .fs-folder-status.ok {
+  color: #28a745;
+  opacity: 1;
+}
+.settings .right .main .page .fs-folder-status.warn {
+  color: #f5a623;
+  opacity: 1;
+}
+.settings .right .main .page .fs-folder-btn {
+  height: 24px;
+  font-size: 12px;
+  color: #fff;
+  background: var(--accent, #0a82ff);
+  border: none;
+  border-radius: 6px;
+  padding: 0 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.settings .right .main .page .fs-folder-btn:active {
+  background: #0a6fd6;
+}
+.settings .right .main .page .fs-folder-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ===== 下拉菜单样式 (Highlight color / Sidebar icon size) ===== */
+.settings .right .main .page .row .contents .dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: solid 1px rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  user-select: none;
+  min-width: 140px;
+  justify-content: space-between;
+}
+.settings .right .main .page .row .contents .dropdown:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+.settings .right .main .page .row .contents .dropdown .dropdown-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.settings .right .main .page .row .contents .dropdown .color-preview {
+  width: 18px;
+  height: 14px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, #006fff 0%, #8a358b 50%, #F64694 100%);
+  border: solid 1px rgba(0, 0, 0, 0.1);
+}
+.settings .right .main .page .row .contents .dropdown .dropdown-label {
+  font-size: 13px;
+  color: #333;
+}
+.settings .right .main .page .row .contents .dropdown .dropdown-arrow {
+  width: 10px;
+  height: 10px;
+  opacity: 0.5;
+}
+
+/* ===== 单选按钮样式 (Show scroll bars / Click in scroll bar) ===== */
+.settings .right .main .page .row .contents.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.settings .right .main .page .row .contents.radio-group .radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  user-select: none;
+}
+.settings .right .main .page .row .contents.radio-group .radio-label input[type="radio"] {
+  display: none;
+}
+.settings .right .main .page .row .contents.radio-group .radio-custom {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: solid 1.5px rgba(0, 0, 0, 0.15);
+  background: #fff;
+  position: relative;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+.settings .right .main .page .row .contents.radio-group .radio-label:hover .radio-custom {
+  border-color: rgba(0, 0, 0, 0.3);
+}
+.settings .right .main .page .row .contents.radio-group .radio-label input[type="radio"]:checked + .radio-custom {
+  border-color: var(--accent, #0a82ff);
+  border-width: 5px;
+}
+.settings .right .main .page .row .contents.radio-group .radio-label input[type="radio"]:checked + .radio-custom::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent, #0a82ff);
+}
+
+/* ===== 帮助按钮 (?) ===== */
+.settings .right .main .page .help-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 20px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: solid 1px rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.04);
+  color: #666;
+  font-size: 13px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  z-index: 10;
+}
+.settings .right .main .page .help-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* 暗色主题适配 */
+html[data-theme="dark"] .settings .right .main .page .row .contents .dropdown {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+html[data-theme="dark"] .settings .right .main .page .row .contents .dropdown:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+html[data-theme="dark"] .settings .right .main .page .row .contents .dropdown .dropdown-label {
+  color: #fff;
+}
+html[data-theme="dark"] .settings .right .main .page .row .contents.radio-group .radio-label {
+  color: #fff;
+}
+html[data-theme="dark"] .settings .right .main .page .row .contents.radio-group .radio-custom {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: transparent;
+}
+html[data-theme="dark"] .settings .right .main .page .row .contents.radio-group .radio-label:hover .radio-custom {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+html[data-theme="dark"] .settings .right .main .page .help-btn {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+}

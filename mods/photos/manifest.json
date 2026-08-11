@@ -1,0 +1,14 @@
+{
+  "id": "photos",
+  "name": "照片",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "统一管理图片与视频，支持网格/列表浏览、全屏预览、视频播放",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "./Photos.png",
+  "window": { "width": 1000, "height": 700, "resizable": true, "centered": true }
+}

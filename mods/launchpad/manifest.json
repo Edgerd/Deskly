@@ -1,0 +1,13 @@
+{
+  "id": "launchpad",
+  "name": "启动台",
+  "version": "1.0.1",
+  "type": "app",
+  "entry": "fullscreen",
+  "author": "Edgerd",
+  "description": "全屏应用网格",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "../../assets/icons/Launchpad.png"
+}

@@ -1,0 +1,310 @@
+@keyframes parabola {
+  0% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  50% {
+    transform: translateY(-20px);
+    animation-timing-function: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+  }
+  90% {
+    transform: translateY(-4px);
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes scale {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes fade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes come {
+  0% {
+    transform: translateY(80px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+.tip {
+  /* display: inline-block; */
+  width: auto;
+  height: auto;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px) brightness(90%);
+  -webkit-backdrop-filter: blur(10px) brightness(90%);
+  padding: 2px 12px;
+  border-radius: 5px;
+  border: solid 1px rgba(0, 0, 0, 0.2);
+  border-bottom: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3333333333);
+  font-size: 12px;
+  -moz-user-select: none;
+       user-select: none;
+  -webkit-user-select: none;
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  /* Origin block */
+}
+.tip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%) rotate(180deg);
+  border-style: solid;
+  border-width: 0 5px 5px 5px;
+  border-color: transparent transparent rgba(255, 255, 255, 0.6) transparent;
+}
+
+.dockcontainer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 75%;
+  height: auto;
+  padding-bottom: 5px;
+}
+
+.dock {
+  width: auto;
+  /* 固定高度 = 基准图标 + 间距(约10px含运行灯与内边距)；放大时图标向上溢出悬浮 */
+  height: calc(var(--dock-size, 50px) + 10px);
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 5px;
+  padding-bottom: 2.5px;
+  border-radius: 16px;
+  margin-bottom: 5px;
+  -moz-user-select: none;
+       user-select: none;
+  -webkit-user-select: none;
+  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.3333333333), inset 0 0 2px rgba(26, 26, 26, 0.7333333333);
+  /* 固定高位：Dock 永远置顶，窗口 z-index 封顶 9000（window.js），
+     alert/notification/launchpad 等系统层为 9600+，右键菜单动态取最高 +1 */
+  z-index: 9500;
+  backdrop-filter: blur(50px) saturate(1.8);
+  background: rgba(246, 246, 246, 0.46);
+  transform: translateY(80px);
+  animation: come 0.7s ease forwards;
+  animation-delay: 0.2s;
+}
+.dock .container {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.dock .container img {
+  width: var(--dock-size, 50px);
+  height: var(--dock-size, 50px);
+  transition: filter 0.05s;
+  will-change: width;
+  transform-origin: bottom;
+}
+/* 程序坞分段容器：收藏 / 运行 / 最近使用 / 废纸篓 */
+.dock .dock-section {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+/* 分段之间的分隔线 */
+.dock .dock-sep {
+  width: 1px;
+  height: 42.5px;
+  background: rgba(232, 232, 232, 0.4);
+  margin: 0 8px;
+  align-self: center;
+  border-radius: 1px;
+}
+/* 红色标记（Badge） */
+.dock .container .badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(246, 246, 246, 0.9);
+  pointer-events: none;
+  z-index: 2;
+}
+.dock .container {
+  position: relative;
+}
+/* 隐藏运行指示灯 */
+.dock .container.no-indicator .light {
+  display: none;
+}
+/* 键盘导航高亮 */
+.dock .container.dock-focused {
+  outline: 2px solid #007aff;
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+/* 拖放打开文件时的目标高亮 */
+.dock .container.drop-target {
+  background: rgba(0, 122, 255, 0.18);
+  border-radius: 12px;
+}
+/* 程序坞位置：左侧 / 右侧（垂直布局，固定定位贴边） */
+.dockcontainer.pos-left,
+.dockcontainer.pos-right {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 64px;
+  height: auto;
+  max-height: 100%;
+  /* 侧边 Dock 与底部 Dock 同级：永远置顶 */
+  z-index: 9500;
+}
+.dock.pos-left,
+.dock.pos-right {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: auto;
+  width: auto;
+  min-width: 64px;
+  margin-bottom: 0;
+  margin-left: 5px;
+}
+.dockcontainer.pos-left {
+  left: 0;
+  right: auto;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+.dockcontainer.pos-right {
+  right: 0;
+  left: auto;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+.dock.pos-left .dock-section,
+.dock.pos-right .dock-section {
+  flex-direction: column;
+  align-items: center;
+}
+.dock.pos-left .dock-sep,
+.dock.pos-right .dock-sep {
+  width: 42.5px;
+  height: 1px;
+  margin: 8px 0;
+}
+/* 文件夹栈（Stacks）弹层 */
+.dock-stack {
+  position: fixed;
+  width: 280px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(246, 246, 246, 0.82);
+  backdrop-filter: blur(40px) saturate(1.8);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  z-index: 3000;
+}
+.dock-stack-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+.dock-stack-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.dock-stack-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+}
+.dock-stack-item:hover {
+  background: rgba(0, 122, 255, 0.15);
+}
+.dock-stack-item span {
+  font-size: 11px;
+  color: #333;
+  word-break: break-all;
+}
+.dock-stack-item.disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.dock-stack-item.disabled:hover {
+  background: none;
+}
+.dock .container img.opening {
+  animation: parabola 1s infinite;
+}
+.dock .container img.openingwithscale {
+  animation: parabola 1s infinite, scale 1s ease forwards;
+}
+.dock .container img:active {
+  filter: brightness(0.5);
+}
+.dock .container hr {
+  border: none;
+  height: 42.5px;
+  width: 1px;
+  border-radius: 1px;
+  background: rgba(232, 232, 232, 0.4);
+  margin: 0 10px;
+  margin-bottom: 5px;
+  animation: fade 0.5s ease;
+}
+.dock .container .light {
+  width: 4px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0);
+  margin-top: 2.5px;
+}
+.dock .container .light.on {
+  background: rgba(0, 0, 0, 0.5333333333);
+}
+/* 拖拽排序：被拖拽图标半透明，其余图标轻微让位预览 */
+.dock .container.sortable-dragging {
+  opacity: 0.45;
+}
+.dock .container.sortable-dragging img {
+  filter: brightness(0.85);
+}
+.dock .container img {
+  cursor: grab;
+}
+.dock .container.sortable-dragging img {
+  cursor: grabbing;
+}/*# sourceMappingURL=dock.css.map */

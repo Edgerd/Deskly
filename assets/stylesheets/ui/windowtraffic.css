@@ -1,0 +1,94 @@
+/* ============================================================
+ * windowtraffic.css — 窗口标题栏红绿灯按钮悬浮图标
+ *
+ * 复刻 macOS 原生红绿灯按钮的悬浮效果：
+ * - 鼠标悬停在交通灯按钮组上时，三个按钮同时显示对应符号
+ * - 关闭按钮（红）：居中 X 符号
+ * - 最小化按钮（黄）：居中横杠
+ * - 最大化按钮（绿）：两个实心小三角（一个朝右上、一个朝左下）
+ *
+ * 图标使用 ::before / ::after 伪元素绘制，悬浮时淡入淡出，
+ * 不修改任何按钮原有背景与交互逻辑。
+ * ============================================================ */
+
+/* 交通灯按钮作为伪元素定位基准 */
+.wintools > .red,
+.wintools > .yellow,
+.wintools > .green {
+  position: relative;
+}
+
+/* 鼠标悬停在按钮组上时，三个图标同时显示 */
+.wintools:hover > .red::before,
+.wintools:hover > .red::after,
+.wintools:hover > .yellow::before,
+.wintools:hover > .green::before,
+.wintools:hover > .green::after {
+  opacity: 1;
+}
+
+/* ---------- 关闭按钮（红）：居中 X 符号 ---------- */
+.wintools > .red::before,
+.wintools > .red::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 1.2px;
+  margin: -0.6px 0 0 -3px;
+  background: #4d0000;
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.wintools > .red::before {
+  transform: rotate(45deg);
+}
+.wintools > .red::after {
+  transform: rotate(-45deg);
+}
+
+/* ---------- 最小化按钮（黄）：居中横杠 ---------- */
+.wintools > .yellow::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 1.2px;
+  margin: -0.6px 0 0 -3px;
+  background: #995700;
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* ---------- 最大化按钮（绿）：两个实心小三角 ---------- */
+.wintools > .green::before,
+.wintools > .green::after {
+  content: "";
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+/* 右上三角：顶点朝右上 */
+.wintools > .green::before {
+  top: 2.5px;
+  right: 2.5px;
+  border-top: 3px solid #006500;
+  border-right: 3px solid #006500;
+  border-bottom: 3px solid transparent;
+  border-left: 3px solid transparent;
+}
+/* 左下三角：顶点朝左下 */
+.wintools > .green::after {
+  bottom: 2.5px;
+  left: 2.5px;
+  border-bottom: 3px solid #006500;
+  border-left: 3px solid #006500;
+  border-top: 3px solid transparent;
+  border-right: 3px solid transparent;
+}

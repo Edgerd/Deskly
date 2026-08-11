@@ -1,0 +1,18 @@
+**/.DS_Store
+Logo.sketch
+.trae/
+
+# 本地智能体数据（不入库）
+.workbuddy/
+
+# 解包/临时残留目录
+新建文件夹/
+
+# 二进制 / 压缩包
+vs_code.zip
+*.bin
+
+# 语法检查工具产物（源码副本，非源文件）
+.syntaxcheck/
+src/javascripts/.sc/
+

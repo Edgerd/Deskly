@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deskly</title>
+
+    <link rel="stylesheet" href="./assets/stylesheets/main/main.css?v=0.2.64" />
+    <link rel="stylesheet" href="./assets/stylesheets/finderbar/finderbar.css?v=0.2.64" />
+    <link rel="stylesheet" href="./assets/stylesheets/dock/dock.css?v=0.2.64" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/desktop.css?v=0.2.64" />
+    <link rel="stylesheet" href="./assets/stylesheets/cursor/cursor.css?v=0.2.64" />
+    <link rel="stylesheet" href="./assets/stylesheets/ui/ui.css?v=0.2.64">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/contextMenu.css?v=0.2.64">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/window.css?v=0.2.64">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/windowtraffic.css?v=0.2.64">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/datetime-popover.css?v=0.2.64">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/controlcenter.css?v=0.2.64">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/alert.css?v=0.2.64">
+</head>
+
+<body class="cursor-default">
+    <div class="wallpaper"></div>
+    <header class="finderbar" id="finderbar"></header>
+
+    <div class="desktop" id="desktop">
+        <div class="container"></div>
+    </div>
+    <!-- <div>
+        <div class="container">
+            <div class="item">
+                <img />
+                <p>
+            </div>
+            ... (6 items max)
+        </div>
+        ... (8 containers max)
+    </div> -->
+    <div class="tip" id="tip">访达</div>
+    <div class="dockcontainer">
+        <footer class="dock" id="dock"></footer>
+    </div>
+    <!-- <footer>
+        <div class="container" id="container">
+            <img />
+            <div class="light" id="light"></div>
+        </div>
+    </footer> -->
+
+    <!-- Menus -->
+    <div class="menu" menu="logo" nomatchapp="yes">
+        <p onclick="moduleItems.clickMenuItem(this)" cmd="moduleItems.create('./assets/apps/关于本机.html')" target="关于本机" data-i18n="menu.about" data-i18n-fallback="关于本机">
+            关于本机</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" cmd="moduleItems.create('./assets/apps/系统设置.html')" target="系统设置" data-i18n="menu.systemPreferences" data-i18n-fallback="系统设置...">
+            系统设置...</p>
+        <p onclick="moduleItems.clickMenuItem(this)" cmd="moduleItems.create('App Store', 'App Store')" target="App Store" data-i18n="menu.appStore" data-i18n-fallback="App Store...">
+            App Store...</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.recentItems" data-i18n-fallback="最近使用的项目">最近使用的项目</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.forceQuit" data-i18n-fallback="强制退出...">强制退出...</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.sleep" data-i18n-fallback="睡眠">睡眠</p>
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.restart" data-i18n-fallback="重新启动...">重新启动...</p>
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.shutdown" data-i18n-fallback="关机...">关机...</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.lockScreen" data-i18n-fallback="锁定屏幕">锁定屏幕</p>
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.logOut" data-i18n-fallback="退出登录 “Edgerd”...">退出登录 “Edgerd”...</p>
+    </div>
+    <div class="menu" menu="appname" nomatchapp="yes">
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.app.about" data-i18n-fallback="关于访达">关于访达</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.app.settings" data-i18n-fallback="设置...">设置...</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.app.emptyTrash" data-i18n-fallback="清倒废纸篓">清倒废纸篓</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.app.services" data-i18n-fallback="服务">服务</p>
+        <hr />
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.app.hide" data-i18n-fallback="隐藏访达">隐藏访达</p>
+        <p onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.app.hideOthers" data-i18n-fallback="隐藏其他">隐藏其他</p>
+        <p disabled onclick="moduleItems.clickMenuItem(this)" data-i18n="menu.app.showAll" data-i18n-fallback="全部显示">全部显示</p>
+    </div>
+
+    <script type="module" src="./src/javascripts/main.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/plugin-manager.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/finderbar.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/dock.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/desktop.js?v=0.2.64"></script>
+    <!-- <script type="module" src="./src/javascripts/cursor.js"></script> -->
+    <script type="module" src="./src/javascripts/window.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/ui/alert.js?v=0.2.64"></script>
+    <script type="module" src="./assets/vendor/webswift.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/ui/menu.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/client.js?v=0.2.64"></script>
+    <script src="./assets/vendor/jszip.min.js?v=0.2.64"></script>
+    <script type="module" src="./src/javascripts/bootstrap.js?v=0.2.64"></script>
+</body>
+
+</html>

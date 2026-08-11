@@ -1,0 +1,14 @@
+{
+  "id": "image-viewer",
+  "name": "图片浏览器",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "支持多种格式的图片查看器，含缩放、旋转、幻灯片播放",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "../../assets/icons/Aperçu.png",
+  "window": { "width": 900, "height": 700, "resizable": true, "centered": true }
+}

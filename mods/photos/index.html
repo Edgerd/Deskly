@@ -1,0 +1,181 @@
+<div class="photos window">
+    <div class="wintools">
+        <div class="red"></div>
+        <div class="yellow"></div>
+        <div class="green"></div>
+    </div>
+    <div class="photos-body">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-search">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="7" cy="7" r="5"/>
+                    <path d="M11 11l4 4"/>
+                </svg>
+                <input type="text" class="search-input" placeholder="搜索" />
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">图库</div>
+                    <ul class="nav-list">
+                        <li class="nav-item active" data-view="all">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1"/><rect x="9" y="9" width="5.5" height="5.5" rx="1"/></svg>
+                            <span>所有照片</span>
+                        </li>
+                        <li class="nav-item" data-view="recent">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M8 4v4l2.5 2.5"/></svg>
+                            <span>最近项目</span>
+                        </li>
+                        <li class="nav-item" data-view="favorites">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.7 4.2 13.3l.7-4.3-3.1-3 4.3-.6z"/></svg>
+                            <span>个人收藏</span>
+                        </li>
+                        <li class="nav-item" data-view="trash">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M6 4V2.5h4V4M5 4l.5 9.5h5L11 4"/></svg>
+                            <span>已删除</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">相簿</div>
+                    <ul class="nav-list">
+                        <li class="nav-item nav-add-album">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>
+                            <span>新建相簿</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">智能相簿</div>
+                    <ul class="nav-list">
+                        <li class="nav-item" data-view="smart-video">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="3" width="10" height="10" rx="1.5"/><path d="M11.5 6.5l3-2v7l-3-2"/></svg>
+                            <span>仅视频</span>
+                        </li>
+                        <li class="nav-item" data-view="smart-image">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><circle cx="5.5" cy="5.5" r="1.5"/><path d="M14.5 10.5L10 6l-5 5"/></svg>
+                            <span>仅图片</span>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- 主区域 -->
+        <main class="main-area">
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <div class="segmented-control">
+                        <button class="seg-btn active" data-mode="grid" title="网格视图">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+                        </button>
+                        <button class="seg-btn" data-mode="list" title="列表视图">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="3" rx="0.5"/><rect x="1" y="6.5" width="14" height="3" rx="0.5"/><rect x="1" y="11" width="14" height="3" rx="0.5"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="toolbar-center">
+                    <span class="toolbar-title">所有照片</span>
+                    <span class="toolbar-count"></span>
+                </div>
+                <div class="toolbar-right">
+                    <button class="tool-btn btn-import" title="导入媒体">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 11V2M4 6l4-4 4 4M2 13h12"/></svg>
+                        <span>导入</span>
+                    </button>
+                    <button class="tool-btn btn-select" title="多选">选择</button>
+                </div>
+            </div>
+            <div class="content-area">
+                <!-- 网格视图 -->
+                <div class="grid-view active">
+                    <div class="grid-content"></div>
+                </div>
+                <!-- 列表视图 -->
+                <div class="list-view">
+                    <div class="list-header">
+                        <div class="list-col list-col-thumb"></div>
+                        <div class="list-col list-col-name">名称</div>
+                        <div class="list-col list-col-type">类型</div>
+                        <div class="list-col list-col-date">日期</div>
+                        <div class="list-col list-col-size">大小</div>
+                    </div>
+                    <div class="list-body"></div>
+                </div>
+                <!-- 空状态 -->
+                <div class="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                        <rect x="3" y="3" width="18" height="18" rx="3"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="M21 15l-5-5L5 21"/>
+                    </svg>
+                    <p class="empty-title">没有照片</p>
+                    <p class="empty-hint">点击「导入」按钮添加图片或视频</p>
+                </div>
+                <!-- 选择模式操作栏 -->
+                <div class="selection-bar">
+                    <span class="selection-count">已选择 0 项</span>
+                    <div class="selection-actions">
+                        <button class="sel-btn btn-sel-favorite" title="收藏">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.7 4.2 13.3l.7-4.3-3.1-3 4.3-.6z"/></svg>
+                        </button>
+                        <button class="sel-btn btn-sel-delete" title="删除">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M6 4V2.5h4V4M5 4l.5 9.5h5L11 4"/></svg>
+                        </button>
+                        <button class="sel-btn btn-sel-cancel">取消</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 预览模式覆盖层 -->
+    <div class="preview-overlay">
+        <div class="preview-toolbar">
+            <button class="preview-btn btn-back" title="返回">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3L5 8l5 5"/></svg>
+            </button>
+            <div class="preview-info">
+                <span class="preview-position"></span>
+            </div>
+            <div class="preview-actions">
+                <button class="preview-btn btn-zoom-out" title="缩小">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l4 4M4.5 7h5"/></svg>
+                </button>
+                <input type="range" class="zoom-slider" min="1" max="4" step="0.1" value="1">
+                <button class="preview-btn btn-zoom-in" title="放大">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><path d="M11 11l4 4M7 4.5v5M4.5 7h5"/></svg>
+                </button>
+                <div class="preview-divider"></div>
+                <button class="preview-btn btn-favorite" title="收藏">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.7 4.2 13.3l.7-4.3-3.1-3 4.3-.6z"/></svg>
+                </button>
+                <button class="preview-btn btn-info" title="信息">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4M8 5v.5"/></svg>
+                </button>
+                <button class="preview-btn btn-delete" title="删除">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M6 4V2.5h4V4M5 4l.5 9.5h5L11 4"/></svg>
+                </button>
+            </div>
+        </div>
+        <button class="preview-nav btn-prev" title="上一张">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <div class="preview-content">
+            <img class="preview-image" src="" alt="" style="display:none;">
+            <video class="preview-video" controls style="display:none;"></video>
+        </div>
+        <button class="preview-nav btn-next" title="下一张">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <!-- 详情面板 -->
+        <div class="preview-detail">
+            <div class="detail-close" title="关闭详情">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+            </div>
+            <div class="detail-thumb"></div>
+            <div class="detail-title"></div>
+            <div class="detail-rows"></div>
+        </div>
+    </div>
+</div>

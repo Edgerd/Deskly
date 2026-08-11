@@ -1,0 +1,162 @@
+.appstore.window {
+  width: 900px;
+  height: 600px;
+  background: rgba(246, 246, 246, 0.92);
+  backdrop-filter: blur(30px) saturate(1.2);
+  border-radius: 12px;
+  box-shadow: 0 36px 100px 0 rgba(0, 0, 0, 0.4), 0 0 3px 0 rgba(0, 0, 0, 0.55), inset 0 0 3px 0 rgba(255, 255, 255, 0.1);
+  position: absolute;
+  top: calc(50% - 300px);
+  left: calc(50% - 450px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: "SFPro-Regular", "PingFangSC-Regular";
+}
+.appstore.window .topbar {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.6);
+}
+.appstore.window .topbar .wintools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.appstore.window .topbar .searchbar {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+.appstore.window .topbar .searchbar .search-input {
+  width: 240px;
+  height: 28px;
+  padding: 0 14px;
+  font-size: 13px;
+  color: #333;
+  background: rgba(0, 0, 0, 0.06);
+  border: none;
+  border-radius: 14px;
+  outline: none;
+  text-align: center;
+  transition: background 0.2s;
+}
+.appstore.window .topbar .searchbar .search-input::placeholder { color: #999; }
+.appstore.window .topbar .searchbar .search-input:focus {
+  background: rgba(0, 0, 0, 0.1);
+  text-align: left;
+}
+.appstore.window .body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.appstore.window .sidebar {
+  width: 180px;
+  padding: 12px 10px;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.appstore.window .sidebar .category {
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #333;
+  cursor: default;
+  margin-bottom: 2px;
+}
+.appstore.window .sidebar .category:hover { background: rgba(0, 0, 0, 0.05); }
+.appstore.window .sidebar .category.active { background: #0a82ff; color: #fff; }
+.appstore.window .main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
+}
+.appstore.window .grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+.appstore.window .grid .empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+  padding: 40px 0;
+}
+.appstore.window .grid .card {
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.appstore.window .grid .card .icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+.appstore.window .grid .card .name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #222;
+  margin: 0 0 4px;
+}
+.appstore.window .grid .card .desc {
+  font-size: 12px;
+  color: #888;
+  margin: 0 0 4px;
+  flex: 1;
+  line-height: 1.4;
+}
+.appstore.window .grid .card .version {
+  font-size: 11px;
+  color: #aaa;
+  margin: 0 0 8px;
+}
+.appstore.window .grid .card .action {
+  width: 100%;
+  height: 26px;
+  border: none;
+  border-radius: 13px;
+  background: #0a82ff;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.appstore.window .grid .card .action:hover { filter: brightness(1.1); }
+.appstore.window .grid .card .action:active { filter: brightness(0.9); }
+.appstore.window .drop-zone {
+  margin-top: 12px;
+  border: 2px dashed rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  transition: border-color 0.2s, background 0.2s;
+}
+.appstore.window .drop-zone.over {
+  border-color: #0a82ff;
+  background: rgba(10, 130, 255, 0.08);
+}
+.appstore.window .drop-zone .drop-title { font-size: 13px; color: #555; margin: 0 0 2px; }
+.appstore.window .drop-zone .drop-sub { font-size: 11px; color: #aaa; margin: 0 0 4px; }
+.appstore.window .drop-zone .drop-status { font-size: 12px; margin: 0; min-height: 16px; }
+.appstore.window .drop-zone .drop-status[data-type="error"] { color: #e33e32; }
+.appstore.window .drop-zone .drop-status[data-type="success"] { color: #1c9e2d; }
+.appstore.window .drop-zone .drop-status[data-type="info"] { color: #888; }

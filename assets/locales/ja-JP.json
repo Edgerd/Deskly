@@ -1,0 +1,149 @@
+{
+  "app": {
+    "name": "Deskly",
+    "tagline": "ブラウザで macOS デスクトップ体験"
+  },
+  "menu": {
+    "logo": "これはこのマシン上にあります",
+    "about": "この Mac について",
+    "systemPreferences": "システム設定...",
+    "appStore": "App Store...",
+    "recentItems": "最近使った項目",
+    "forceQuit": "強制終了...",
+    "sleep": "スリープ",
+    "restart": "再起動...",
+    "shutdown": "システムを終了...",
+    "lockScreen": "画面をロック",
+    "logOut": "ログアウト",
+    "app": {
+      "about": "Finder について",
+      "settings": "設定...",
+      "emptyTrash": "ゴミ箱を空にする",
+      "services": "サービス",
+      "hide": "Finder を隠す",
+      "hideOthers": "ほかを隠す",
+      "showAll": "すべてを表示"
+    }
+  },
+  "desktop": {
+    "finder": "Finder",
+    "trash": "ゴミ箱",
+    "appStore": "App Store"
+  },
+  "finderbar": {
+    "file": "ファイル",
+    "edit": "編集",
+    "view": "表示",
+    "go": "移動",
+    "window": "ウインドウ",
+    "help": "ヘルプ",
+    "history": "履歴",
+    "bookmarks": "ブックマーク"
+  },
+  "finder": {
+    "title": "Finder",
+    "emptyFolder": "このフォルダは空です",
+    "searchPlaceholder": "検索",
+    "sidebar": {
+      "favorites": "お気に入り",
+      "icloud": "iCloud ドライブ",
+      "locations": "場所",
+      "tags": "タグ"
+    },
+    "auth": {
+      "title": "Finder がフォルダへのアクセスを求めています",
+      "message": "フォルダの内容にアクセスするには認証が必要です。",
+      "deny": "許可しない",
+      "allow": "OK"
+    },
+    "group": {
+      "none": "なし",
+      "kind": "種類",
+      "date": "日付",
+      "size": "サイズ",
+      "tag": "タグ"
+    },
+    "share": "共有",
+    "tag": "タグ",
+    "more": "その他",
+    "newFolder": "新規フォルダ",
+    "newFolderPrompt": "新規フォルダ名：",
+    "sortBy": {
+      "name": "名前",
+      "date": "日付",
+      "size": "サイズ"
+    },
+    "showPathBar": "パスバーを表示",
+    "showStatusBar": "ステータスバーを表示",
+    "showTabBar": "タブバーを表示",
+    "copied": "パスをコピーしました",
+    "shareFailed": "共有に失敗しました。パスをコピーしました",
+    "tags": {
+      "red": "赤",
+      "orange": "橙",
+      "yellow": "黄",
+      "green": "緑",
+      "blue": "青",
+      "purple": "紫",
+      "gray": "灰"
+    },
+    "today": "今日",
+    "yesterday": "昨日",
+    "previous7Days": "過去 7 日間",
+    "earlier": "それ以前",
+    "reauth": "フォルダへのアクセスを再認証",
+    "airdrop": "AirDrop",
+    "recent": "最近使用",
+    "applications": "アプリケーション",
+    "downloads": "ダウンロード",
+    "icloudDrive": "iCloud ドライブ",
+    "documents": "書類",
+    "desktop": "デスクトップ",
+    "shared": "共有",
+    "pictures": "写真",
+    "bookmarks": "ブックマーク",
+    "colName": "名前",
+    "colDate": "変更日時",
+    "colSize": "サイズ",
+    "colKind": "種類"
+  },
+  "dock": {
+    "launchpad": "Launchpad",
+    "safari": "Safari",
+    "mail": "メール",
+    "maps": "マップ",
+    "photos": "写真",
+    "notes": "メモ",
+    "settings": "システム設定",
+    "trash": "ゴミ箱"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "open": "開く",
+    "save": "保存",
+    "delete": "削除",
+    "confirm": "確認",
+    "back": "戻る",
+    "refresh": "更新",
+    "arrange": "アイコンを並べる"
+  },
+  "controlcenter": {
+    "wifi": "Wi-Fi",
+    "bluetooth": "Bluetooth",
+    "airdrop": "AirDrop",
+    "airplane": "機内モード",
+    "focus": "集中モード",
+    "focusWork": "仕事",
+    "stageManager": "ステージマネージャ",
+    "screenMirroring": "画面共有",
+    "display": "ディスプレイ",
+    "sound": "サウンド",
+    "music": "ミュージック",
+    "on": "オン",
+    "off": "オフ",
+    "everyone": "全員",
+    "connected": "接続しました"
+  }
+}

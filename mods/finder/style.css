@@ -1,0 +1,721 @@
+/* =============================
+   style.css — 访达（Finder）macOS 15 Sequoia 还原
+   合并单条标题栏 + 毛玻璃边栏 + 四视图 + 下拉弹层
+   ============================= */
+
+/* ---------- CSS 变量 - 浅色主题 ---------- */
+:root {
+  --finder-titlebar-height: 38px;
+  --finder-tabs-height: 30px;
+
+  --finder-bg: #ffffff;
+  --finder-sidebar-bg: rgba(246, 246, 246, 0.62);
+  --finder-titlebar-bg: rgba(246, 246, 246, 0.85);
+
+  --finder-border: rgba(0, 0, 0, 0.1);
+  --finder-separator: rgba(0, 0, 0, 0.08);
+  --finder-pop-bg: rgba(250, 250, 250, 0.92);
+  --finder-seg-bg: rgba(0, 0, 0, 0.06);
+
+  --finder-text: #1d1d1f;
+  --finder-text-secondary: #6e6e73;
+  --finder-text-tertiary: #86868b;
+
+  --finder-accent: #007aff;
+  --finder-selection: rgba(0, 122, 255, 0.15);
+  --finder-hover: rgba(0, 0, 0, 0.045);
+  --finder-active: rgba(0, 0, 0, 0.08);
+  --finder-selected: #0a6cff;
+  --finder-selected-text: #ffffff;
+
+  --finder-shadow: 0 22px 70px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+  --finder-blur: 30px;
+
+  --finder-scrollbar: rgba(0, 0, 0, 0.2);
+  --finder-scrollbar-hover: rgba(0, 0, 0, 0.35);
+
+  /* 标签七色 */
+  --finder-tag-red: #ff3b30;
+  --finder-tag-orange: #ff9500;
+  --finder-tag-yellow: #ffcc00;
+  --finder-tag-green: #34c759;
+  --finder-tag-blue: #007aff;
+  --finder-tag-purple: #af52de;
+  --finder-tag-gray: #8e8e93;
+}
+
+/* ---------- CSS 变量 - 深色主题 ---------- */
+html[data-theme="dark"] {
+  --finder-bg: #1e1e1e;
+  --finder-sidebar-bg: rgba(40, 40, 40, 0.57);
+  --finder-titlebar-bg: rgba(40, 40, 40, 0.85);
+
+  --finder-border: rgba(255, 255, 255, 0.1);
+  --finder-separator: rgba(255, 255, 255, 0.08);
+  --finder-pop-bg: rgba(45, 45, 45, 0.94);
+  --finder-seg-bg: rgba(255, 255, 255, 0.08);
+
+  --finder-text: #f5f5f7;
+  --finder-text-secondary: #98989d;
+  --finder-text-tertiary: #6e6e73;
+
+  --finder-accent: #0a84ff;
+  --finder-selection: rgba(10, 132, 255, 0.2);
+  --finder-hover: rgba(255, 255, 255, 0.06);
+  --finder-active: rgba(255, 255, 255, 0.1);
+  --finder-selected: #0a84ff;
+  --finder-selected-text: #ffffff;
+
+  --finder-shadow: 0 22px 70px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  --finder-scrollbar: rgba(255, 255, 255, 0.2);
+  --finder-scrollbar-hover: rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- 窗口根容器 ---------- */
+.finder.window {
+  box-shadow: var(--finder-shadow);
+  border-radius: 12px;
+  /* 尺寸改为下界：铺满可视区但不设死宽高，避免白边 */
+  width: 100%;
+  height: 100%;
+  min-width: 800px;
+  min-height: 500px;
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  /* 居中完全交给插件管理器（plugin-manager.js）写入 inline 的 left/top。
+     严禁 transform: translate(-50%,-50%) —— 会与 inline left/top 叠加把窗口推出屏幕。 */
+  top: 50%;
+  left: 50%;
+  /* 注意：此处不要 overflow:hidden —— 弹层（.tb-pop / .finder-quicklook / .finder-modal）
+     需要能超出窗口边界显示；视觉裁剪交给内部 .finder-clip 容器承担。 */
+  font-family: -apple-system, "SF Pro Text", "Helvetica Neue", "PingFang SC", sans-serif;
+  font-size: 13px;
+  color: var(--finder-text);
+  /* 窗口根背景透明：让桌面壁纸透出，侧边栏/标题栏的 backdrop-filter 才能模糊到壁纸形成真实毛玻璃 */
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  box-sizing: border-box;
+}
+
+/* ---------- 内部裁剪容器 ----------
+ * 承载标题栏 / 标签栏 / 主体内容，负责把内容裁剪到窗口的圆角范围内；
+ * 弹层（.tb-pop / .finder-quicklook / .finder-modal）作为 .finder.window 的直接子元素
+ * 放在本容器之外，从而可以"超出窗口边界"显示而不被裁剪。 */
+.finder-clip {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  /* 背景透明：让桌面壁纸透出，侧边栏/标题栏的 backdrop-filter 才能模糊到壁纸形成真实毛玻璃；
+     主内容区 .finder-main 自有实底，保证文件列表可读。移除 isolation 以免其成为 backdrop-root
+     截断了侧边栏对壁纸的采样。 */
+  background: transparent;
+  position: relative;
+}
+
+/* ---------- 合并标题栏（交通灯 + 导航 + 标题 + 视图 + 操作 + 搜索） ---------- */
+.finder-titlebar {
+  height: var(--finder-titlebar-height);
+  background: var(--finder-titlebar-bg);
+  backdrop-filter: blur(var(--finder-blur));
+  -webkit-backdrop-filter: blur(var(--finder-blur));
+  border-bottom: 1px solid var(--finder-border);
+  display: flex;
+  align-items: center;
+  /* 标题栏左侧多留一些空间，使红绿灯看起来更居中靠右，符合 macOS 原版 */
+  padding: 0 12px 0 12px;
+  gap: 6px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.finder-titlebar .wintools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  /* 红绿灯整体略向右移，给左侧留出更接近 macOS 原版的边距 */
+  padding-right: 4px;
+  padding-left: 4px;
+  margin-left: 2px;
+}
+
+/* 居中标题 */
+.finder-window-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--finder-text);
+  white-space: nowrap;
+  pointer-events: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 弹性间距把右侧簇推到最右 */
+.tb-spacer { flex: 1; min-width: 8px; }
+
+/* 导航按钮组 */
+.tb-nav { display: flex; align-items: center; gap: 2px; }
+
+/* 通用工具栏按钮 */
+.tb-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--finder-text-secondary);
+  transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+.tb-btn:hover { background: var(--finder-hover); color: var(--finder-text); }
+.tb-btn:active { background: var(--finder-active); transform: scale(0.94); }
+.tb-btn.disabled { opacity: 0.3; pointer-events: none; }
+
+/* 视图分段控件 */
+.tb-views {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--finder-seg-bg);
+  border-radius: 7px;
+  padding: 2px;
+}
+.view-btn {
+  width: 30px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--finder-text-secondary);
+  transition: background 0.12s ease, color 0.12s ease;
+  padding: 0;
+}
+.view-btn:hover { color: var(--finder-text); }
+.view-btn.active {
+  background: var(--finder-bg);
+  color: var(--finder-text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+}
+html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16); }
+
+/* 操作按钮组 */
+.tb-actions { display: flex; align-items: center; gap: 2px; }
+
+/* 搜索区（可展开） */
+.tb-search {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  background: var(--finder-seg-bg);
+  border-radius: 7px;
+  padding: 0 4px 0 4px;
+  gap: 2px;
+  width: 32px;
+  overflow: hidden;
+  transition: width 0.2s ease;
+  flex-shrink: 0;
+}
+.tb-search.expanded { width: 210px; }
+.tb-search input {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--finder-text);
+  transition: width 0.2s ease;
+}
+.tb-search.expanded input { width: 100%; }
+.tb-search input::placeholder { color: var(--finder-text-tertiary); }
+
+/* 下拉弹层
+ * 注意：top/left 由 finder-actions.js 的 positionPop() 按触发按钮位置动态计算并写入，
+ * 这里不再写 top 的硬编码值（之前 top: calc(100% + 5px) 依赖父级为 .finder-titlebar，
+ * 重构后父级变成 .finder.window，该写法会指向错误位置）。
+ * position:absolute 与 z-index 60 保证弹层浮于内容之上，可超出窗口边界显示。 */
+.tb-pop {
+  position: absolute;
+  min-width: 180px;
+  background: var(--finder-pop-bg);
+  border: 1px solid var(--finder-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 5px;
+  z-index: 60;
+}
+.tb-pop[hidden] { display: none; }
+.pop-item {
+  display: flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--finder-text);
+  cursor: default;
+  transition: background 0.1s ease;
+}
+.pop-item:hover { background: var(--finder-hover); }
+.pop-item .pop-check { margin-left: auto; color: var(--finder-accent); display: none; }
+.pop-item.active .pop-check { display: inline-flex; }
+.pop-sep { height: 1px; background: var(--finder-separator); margin: 4px 6px; }
+.pop-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--finder-text-tertiary);
+  padding: 5px 10px 2px;
+}
+/* 标记弹层内的色点项 */
+.tag-pop-row { display: flex; align-items: center; gap: 8px; }
+.tag-pop-row .tag-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+
+/* ---------- 标签栏（默认隐藏，多标签时显示） ---------- */
+.finder-tabs-bar {
+  display: none;
+  height: var(--finder-tabs-height);
+  background: var(--finder-titlebar-bg);
+  border-bottom: 1px solid var(--finder-border);
+  align-items: center;
+  padding: 0 8px;
+  gap: 2px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.finder-tabs-bar.visible { display: flex; }
+.finder-tabs-bar::-webkit-scrollbar { display: none; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px 0 12px;
+  border-radius: 6px;
+  cursor: default;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 200px;
+  color: var(--finder-text-secondary);
+  font-size: 12px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tab:hover { background: var(--finder-hover); color: var(--finder-text); }
+.tab.active { background: var(--finder-selected); color: var(--finder-selected-text); font-weight: 500; }
+.tab-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-close {
+  width: 16px; height: 16px; border: none; background: transparent;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  cursor: default; opacity: 0; color: inherit; flex-shrink: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.tab:hover .tab-close { opacity: 0.7; }
+.tab .tab-close:hover { opacity: 1; background: rgba(0, 0, 0, 0.15); }
+.tab.active .tab-close:hover { background: rgba(255, 255, 255, 0.22); }
+.tab-new {
+  width: 24px; height: 24px; border: none; background: transparent;
+  border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  cursor: default; color: var(--finder-text-secondary); flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.tab-new:hover { background: var(--finder-hover); color: var(--finder-text); }
+
+/* ---------- 主体 ---------- */
+.finder-body {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+
+/* ---------- 侧边栏 ---------- */
+/* 毛玻璃：半透明背景 + 大模糊半径，让主内容区的色彩淡淡透出，符合 macOS 原版。 */
+.finder-sidebar {
+  width: 208px;
+  min-width: 168px;
+  max-width: 320px;
+  background: var(--finder-sidebar-bg);
+  backdrop-filter: blur(var(--finder-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--finder-blur)) saturate(180%);
+  border-right: 0.5px solid var(--finder-border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+  padding: 6px 0 10px 0;
+}
+.finder-sidebar::-webkit-scrollbar { width: 7px; }
+.finder-sidebar::-webkit-scrollbar-thumb { background: var(--finder-scrollbar); border-radius: 4px; }
+.finder-sidebar::-webkit-scrollbar-thumb:hover { background: var(--finder-scrollbar-hover); }
+
+.sidebar-section { padding: 5px 0; }
+.sidebar-section + .sidebar-section { border-top: 1px solid var(--finder-separator); margin-top: 4px; }
+
+/* 分区小标题（如 ICLOUD / LOCATIONS / TAGS）：灰色全大写小字，字距略宽 */
+.section-header { display: flex; align-items: center; padding: 4px 16px 2px; }
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--finder-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex: 1;
+  opacity: 0.85;
+}
+
+.section-body { display: flex; flex-direction: column; padding: 2px 8px; }
+
+/* 侧边栏项：紧凑行高，悬浮轻底色，激活态为实色蓝底+白字（与 macOS 原版一致） */
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  margin: 1px 0;
+  border-radius: 6px;
+  cursor: default;
+  gap: 8px;
+  transition: background 0.08s ease, color 0.08s ease;
+  color: var(--finder-text);
+  min-height: 23px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sidebar-item:hover { background: var(--finder-hover); }
+.sidebar-item.active {
+  background: var(--finder-selected);
+  color: var(--finder-selected-text);
+}
+.sidebar-item.active .item-icon { color: var(--finder-selected-text); }
+.sidebar-item .item-icon {
+  flex-shrink: 0;
+  color: var(--finder-text-secondary);
+  width: 18px;
+  height: 18px;
+  transition: color 0.08s ease;
+}
+.sidebar-item .item-label {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+  letter-spacing: -0.08px;
+}
+.sidebar-item.active .item-label { font-weight: 500; }
+
+/* 标签颜色项：与普通项一致的行高与圆角，色点略小 */
+.sidebar-tag {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  margin: 1px 0;
+  border-radius: 6px;
+  cursor: default;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--finder-text);
+  transition: background 0.08s ease, color 0.08s ease;
+  min-height: 23px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sidebar-tag:hover { background: var(--finder-hover); }
+.sidebar-tag.active {
+  background: var(--finder-selected);
+  color: var(--finder-selected-text);
+}
+.sidebar-tag .tag-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+}
+
+/* ---------- 分割线 ---------- */
+.finder-splitter {
+  width: 4px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 3;
+  background: transparent;
+  margin: 0 -2px;
+}
+.finder-splitter:hover,
+.finder-splitter.active { background: var(--finder-accent); opacity: 0.3; }
+
+/* ---------- 内容区 ---------- */
+.finder-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--finder-bg);
+  overflow: hidden;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--finder-text-tertiary);
+  border-bottom: 1px solid var(--finder-separator);
+  background: var(--finder-titlebar-bg);
+  flex-shrink: 0;
+}
+.col-name { flex: 1; min-width: 0; }
+.col-date { width: 150px; flex-shrink: 0; }
+.col-size { width: 80px; flex-shrink: 0; text-align: right; }
+.col-kind { width: 120px; flex-shrink: 0; }
+.col-sortable { cursor: default; user-select: none; transition: color 0.1s ease; }
+.col-sortable:hover { color: var(--finder-text); }
+.col-sortable.asc::after { content: " ▲"; font-size: 9px; }
+.col-sortable.desc::after { content: " ▼"; font-size: 9px; }
+
+.finder-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+.list-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.list-body::-webkit-scrollbar { width: 8px; }
+.list-body::-webkit-scrollbar-thumb { background: var(--finder-scrollbar); border-radius: 4px; }
+.list-body::-webkit-scrollbar-thumb:hover { background: var(--finder-scrollbar-hover); }
+
+/* 条目（列表视图） */
+.entry {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 16px;
+  cursor: default;
+  user-select: none;
+  transition: background 0.05s ease;
+  border-bottom: 1px solid var(--finder-separator);
+}
+.entry:last-child { border-bottom: none; }
+.entry:hover { background: var(--finder-hover); }
+.entry.selected { background: var(--finder-selected); color: var(--finder-selected-text); }
+.entry.selected .entry-date,
+.entry.selected .entry-size,
+.entry.selected .entry-kind { color: inherit; opacity: 0.92; }
+.entry .entry-tag-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; margin-left: -2px; flex-shrink: 0;
+}
+.entry-icon { width: 20px; height: 20px; margin-right: 10px; object-fit: contain; flex-shrink: 0; }
+.entry-name {
+  flex: 1; font-size: 13px; color: var(--finder-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.entry-date { width: 150px; font-size: 12px; color: var(--finder-text-secondary); flex-shrink: 0; }
+.entry-size { width: 80px; font-size: 12px; color: var(--finder-text-secondary); text-align: right; flex-shrink: 0; }
+.entry-kind { width: 120px; font-size: 12px; color: var(--finder-text-secondary); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 分组头部 */
+.group-header {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--finder-text-tertiary);
+  background: var(--finder-bg);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* 空状态 */
+.finder-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--finder-text-tertiary);
+  font-size: 13px;
+  pointer-events: none;
+}
+.finder-empty svg { width: 48px; height: 48px; color: var(--finder-text-tertiary); opacity: 0.3; }
+
+/* ---------- Quick Look ---------- */
+.finder-quicklook { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
+.finder-quicklook[hidden] { display: none; }
+.ql-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.ql-card {
+  position: relative; width: 80%; max-width: 700px; max-height: 85%;
+  background: var(--finder-pop-bg); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+  border-radius: 12px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: ql-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes ql-enter { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.ql-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--finder-separator); flex-shrink: 0; }
+.ql-name { font-size: 14px; font-weight: 600; color: var(--finder-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ql-close {
+  width: 28px; height: 28px; border: none; background: transparent; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; cursor: default;
+  color: var(--finder-text-secondary); transition: background 0.1s ease, color 0.1s ease;
+}
+.ql-close:hover { background: var(--finder-hover); color: var(--finder-text); }
+.ql-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; min-height: 200px; padding: 16px; }
+.ql-content { max-width: 100%; max-height: 100%; display: flex; align-items: center; justify-content: center; }
+.ql-content img { max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 6px; }
+.ql-content pre { width: 100%; margin: 0; white-space: pre-wrap; word-break: break-all; font-size: 12px; color: var(--finder-text); font-family: "SF Mono", "Menlo", monospace; text-align: left; }
+.ql-content .ql-unsupported { color: var(--finder-text-tertiary); font-size: 13px; text-align: center; }
+.ql-footer { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px 16px; border-top: 1px solid var(--finder-separator); flex-shrink: 0; }
+.ql-nav { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: default; color: var(--finder-text-secondary); transition: background 0.1s ease, color 0.1s ease; }
+.ql-nav:hover { background: var(--finder-hover); color: var(--finder-text); }
+.ql-nav.disabled { opacity: 0.3; pointer-events: none; }
+.ql-counter { font-size: 12px; color: var(--finder-text-secondary); min-width: 40px; text-align: center; }
+
+/* ---------- 弹窗 ---------- */
+.finder-modal { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
+.finder-modal[hidden] { display: none; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.4); }
+.modal-card {
+  position: relative; width: 320px; background: var(--finder-pop-bg);
+  backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+  border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  padding: 24px; text-align: center; animation: modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modal-enter { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.modal-icon { margin-bottom: 10px; color: var(--finder-accent); }
+.modal-title { font-size: 16px; font-weight: 600; color: var(--finder-text); margin: 0 0 8px; }
+.modal-text { font-size: 13px; color: var(--finder-text-secondary); line-height: 1.5; margin: 0 0 6px; }
+.modal-note { font-size: 12px; color: var(--finder-text-tertiary); margin: 0 0 12px; min-height: 16px; }
+.modal-buttons { display: flex; gap: 10px; justify-content: center; }
+.modal-btn {
+  min-width: 80px; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--finder-border);
+  background: var(--finder-bg); color: var(--finder-text); font-size: 13px; cursor: default;
+  transition: background 0.1s ease, border-color 0.1s ease; font-family: inherit;
+}
+.modal-btn:hover { background: var(--finder-hover); }
+.modal-btn:active { transform: scale(0.96); }
+.modal-btn.primary { background: var(--finder-accent); border-color: var(--finder-accent); color: #ffffff; }
+.modal-btn.primary:hover { filter: brightness(1.08); }
+
+/* ---------- 图标视图 ---------- */
+.finder-content.grid-view .list-header { display: none; }
+.finder-content.grid-view .list-body {
+  display: flex; flex-wrap: wrap; align-content: flex-start;
+  padding: 18px; gap: 10px 6px;
+}
+.finder-content.grid-view .entry {
+  flex-direction: column; width: 96px; height: auto;
+  padding: 8px 6px 10px; background: transparent; border-radius: 8px;
+  border-bottom: none; text-align: center; gap: 5px;
+}
+.finder-content.grid-view .entry:hover { background: var(--finder-hover); }
+.finder-content.grid-view .entry.selected { background: var(--finder-selected); }
+.finder-content.grid-view .entry .entry-icon { width: 56px; height: 56px; margin: 0 0 4px 0; }
+.finder-content.grid-view .entry .entry-date,
+.finder-content.grid-view .entry .entry-size,
+.finder-content.grid-view .entry .entry-kind { display: none; }
+.finder-content.grid-view .entry .entry-name {
+  width: 100%; text-align: center; font-size: 11px; line-height: 1.3;
+  white-space: normal; word-break: break-all;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* 图标视图选中：名称胶囊白字 */
+.finder-content.grid-view .entry.selected .entry-name {
+  background: var(--finder-selected); color: var(--finder-selected-text);
+  border-radius: 5px; padding: 1px 6px; -webkit-line-clamp: 1;
+}
+.finder-content.grid-view .entry .entry-tag-dot { position: absolute; margin: 0; }
+.finder-content.grid-view .entry { position: relative; }
+.finder-content.grid-view .entry .tag-dot-wrap {
+  position: absolute; top: 6px; left: calc(50% - 23px); display: flex; gap: 3px;
+}
+.tag-dot-wrap .entry-tag-dot { width: 8px; height: 8px; margin: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.7); }
+
+/* ---------- 分栏视图 ---------- */
+.finder-content.column-view { flex-direction: row; overflow-x: auto; }
+.finder-content.column-view .list-header { display: none; }
+.finder-content.column-view .list-body { display: flex; flex-direction: row; overflow: visible; min-width: 100%; height: 100%; }
+.finder-content.column-view .column-pane {
+  min-width: 220px; max-width: 300px; height: 100%; overflow-y: auto;
+  border-right: 1px solid var(--finder-separator); flex-shrink: 0;
+}
+.finder-content.column-view .column-pane:last-child { border-right: none; }
+.finder-content.column-view .column-pane-header {
+  padding: 6px 12px; font-size: 11px; font-weight: 600; color: var(--finder-text-tertiary);
+  border-bottom: 1px solid var(--finder-separator); background: var(--finder-titlebar-bg);
+  position: sticky; top: 0; z-index: 1;
+}
+.finder-content.column-view .entry { border-bottom: none; height: 26px; padding: 0 12px; }
+.finder-content.column-view .entry.selected { background: var(--finder-selected); }
+.finder-content.column-view .entry .entry-tag-dot { margin-left: -2px; }
+
+/* ---------- 画廊视图 ---------- */
+.finder-content.gallery-view { display: flex; flex-direction: column; }
+.finder-content.gallery-view .list-header { display: none; }
+.finder-content.gallery-view .gallery-preview {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  min-height: 200px; background: var(--finder-bg); overflow: hidden; position: relative;
+}
+.finder-content.gallery-view .gallery-preview img,
+.finder-content.gallery-view .gallery-preview video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.finder-content.gallery-view .gallery-filmstrip {
+  height: 84px; display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  overflow-x: auto; flex-shrink: 0; background: var(--finder-titlebar-bg);
+}
+.finder-content.gallery-view .gallery-filmstrip::-webkit-scrollbar { height: 4px; }
+.finder-content.gallery-view .gallery-filmstrip::-webkit-scrollbar-thumb { background: var(--finder-scrollbar); border-radius: 2px; }
+.finder-content.gallery-view .filmstrip-thumb {
+  width: 60px; height: 60px; border-radius: 4px; overflow: hidden; flex-shrink: 0;
+  cursor: default; border: 2px solid transparent; opacity: 0.6; transition: border-color 0.1s ease, opacity 0.1s ease;
+}
+.finder-content.gallery-view .filmstrip-thumb:hover { opacity: 0.85; }
+.finder-content.gallery-view .filmstrip-thumb.active { border-color: var(--finder-accent); opacity: 1; }
+.finder-content.gallery-view .filmstrip-thumb img,
+.finder-content.gallery-view .filmstrip-thumb video { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- 深色主题补充 ---------- */
+html[data-theme="dark"] .finder-sidebar-item-active,
+html[data-theme="dark"] .sidebar-item.active { color: var(--finder-accent); }
+html[data-theme="dark"] .tb-btn { color: var(--finder-text-secondary); }
+html[data-theme="dark"] .list-header { background: var(--finder-titlebar-bg); }
+html[data-theme="dark"] .modal-btn { background: rgba(0, 0, 0, 0.3); border-color: rgba(255, 255, 255, 0.15); color: var(--finder-text); }
+html[data-theme="dark"] .modal-btn:hover { background: rgba(255, 255, 255, 0.12); }
+html[data-theme="dark"] .modal-btn.primary { background: var(--finder-accent); border-color: var(--finder-accent); color: #ffffff; }

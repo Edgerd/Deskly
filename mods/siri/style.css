@@ -1,0 +1,83 @@
+/* ============================================================
+ * Siri Orb — 桌面悬浮发光小球
+ * 设计要点：
+ * 1. 仅用 opacity 动画（避免 transform 触发 GPU 合成层破坏亚克力）
+ * 2. position: fixed 悬浮在桌面右下区域
+ * 3. CSS 渐变 + box-shadow 实现发光效果
+ * ============================================================ */
+
+.siri-orb {
+  position: fixed;
+  bottom: 15%;
+  right: 12%;
+  width: 90px;
+  height: 90px;
+  z-index: 9550; /* 高于 Dock(9500) 确保可点击，低于模态弹窗(9610) */
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease-out;
+}
+
+/* 显示态 */
+.siri-orb.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 关闭中 */
+.siri-orb.closing {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-in;
+}
+
+/* 内部渐变球体 */
+.siri-orb .siri-orb-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  /* iOS 18 Siri 彩色渐变：青 → 蓝 → 紫 → 粉 */
+  background: radial-gradient(
+    circle at 35% 35%,
+    #7ef9ff 0%,
+    #4facfe 25%,
+    #a855f7 55%,
+    #ec4899 80%,
+    #f43f5e 100%
+  );
+  /* 外发光 */
+  box-shadow:
+    0 0 20px rgba(124, 249, 255, 0.5),
+    0 0 50px rgba(168, 85, 247, 0.35),
+    0 0 80px rgba(236, 72, 153, 0.2);
+  animation: siri-orb-pulse 2.5s ease-in-out infinite, siri-orb-glow-shift 5s ease-in-out infinite alternate;
+}
+
+/* 脉冲呼吸动画 — 仅 scale 在独立合成层上，不影响外层 */
+@keyframes siri-orb-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+/* 发光颜色缓慢偏移 */
+@keyframes siri-orb-glow-shift {
+  0% {
+    box-shadow:
+      0 0 20px rgba(124, 249, 255, 0.5),
+      0 0 50px rgba(168, 85, 247, 0.35),
+      0 0 80px rgba(236, 72, 153, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 0 25px rgba(79, 172, 254, 0.55),
+      0 0 55px rgba(168, 85, 247, 0.4),
+      0 0 85px rgba(244, 63, 94, 0.25);
+  }
+  100% {
+    box-shadow:
+      0 0 22px rgba(236, 72, 153, 0.5),
+      0 0 52px rgba(168, 85, 247, 0.38),
+      0 0 82px rgba(124, 249, 255, 0.22);
+  }
+}

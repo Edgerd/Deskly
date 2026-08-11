@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Deskly",
+  "short_name": "Deskly",
+  "description": "基于 macOS Sequoia 风格的全功能浏览器主页插件，将新标签页变为 macOS 桌面体验。",
+  "version": "0.2.64",
+  "version_name": "0.2.64",
+  "author": "Edgerd",
+  "icons": {
+    "128": "Logo.png"
+  },
+  "permissions": ["bookmarks", "storage"],
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "action": {
+    "default_title": "Deskly",
+    "default_icon": {
+      "128": "Logo.png"
+    }
+  }
+}

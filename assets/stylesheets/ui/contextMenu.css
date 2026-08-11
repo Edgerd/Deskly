@@ -1,0 +1,73 @@
+.menu.contextmenu {
+    width: auto;
+    height: auto;
+    padding: 5px;
+    border: 0.5px solid rgba(0, 0, 0, 0.06);
+    box-shadow: inset 0 0 1px 0 rgba(255, 255, 255, 0.5), 0 2px 4px 0 rgba(0, 0, 0, 0.15), 0 8px 15px 6px rgba(0, 0, 0, 0.18);
+    border-radius: 8px;
+    background: rgba(246, 246, 246, 0.6);
+    backdrop-filter: blur(30px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    user-select: none;
+    position: fixed;
+    z-index: 10000;
+}
+
+.menu.contextmenu p {
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.85);
+    line-height: 16px;
+    font-family: "SFPro-Medium", "PingFang-Medium";
+    margin: 1.5px 0;
+    border-radius: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+}
+
+.menu.contextmenu p:hover:not([disabled]) {
+    background: #0A82FF;
+    color: white;
+}
+
+.menu.contextmenu p:first-child {
+    margin-top: 0;
+}
+
+.menu.contextmenu p:last-child {
+    margin-bottom: 0;
+}
+
+.menu.contextmenu p[disabled] {
+    color: rgba(0, 0, 0, 0.25);
+    cursor: default;
+}
+
+/* 菜单标题（如「排列窗口」）：不可点击，仅作分区说明 */
+.menu.contextmenu p.menu-header {
+    color: rgba(0, 0, 0, 0.45);
+    font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+    cursor: default;
+    padding-bottom: 1px;
+}
+.menu.contextmenu p.menu-header:hover {
+    background: transparent;
+    color: rgba(0, 0, 0, 0.45);
+}
+
+.menu.contextmenu hr {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 0.5px;
+    border: none;
+    width: calc(100% - 14px);
+    height: 1px;
+    margin: 4px 0;
+    align-self: center;
+}
+
+.desktop .item p[contenteditable="true"] {
+    outline: 2px solid #0A82FF;
+    outline-offset: 2px;
+    border-radius: 3px;
+}

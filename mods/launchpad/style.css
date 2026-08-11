@@ -1,0 +1,127 @@
+@keyframes animation {
+  0% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes fade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.launchpad {
+  width: 100%;
+  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  /* 9600：全屏界面盖住 Dock（9500），但被模态弹窗（9610）盖住 */
+  z-index: 9600;
+}
+.launchpad .containers {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-auto-rows: minmax(120px, auto);
+  align-content: start;
+  justify-content: center;
+  justify-items: center;
+  align-items: start;
+  color: white;
+  padding: 18vh 8vw 10vh;
+  animation: animation 0.3s ease-in-out forwards;
+}
+.launchpad .containers .container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px;
+}
+.launchpad .containers .container img {
+  width: clamp(64px, 7vw, 104px);
+  height: clamp(64px, 7vw, 104px);
+  object-fit: contain;
+}
+.launchpad .containers .container p {
+  font-size: 15px;
+  margin-top: 8px;
+  white-space: nowrap;
+  text-shadow: 1px 1px 5px rgba(0, 0, 0, 0.2);
+}
+.launchpad .containers .container {
+  cursor: grab;
+}
+.launchpad .containers .container.sortable-dragging {
+  opacity: 0.45;
+}
+.launchpad .containers .container.sortable-dragging img {
+  cursor: grabbing;
+}
+.launchpad .searchbar {
+  position: absolute;
+  top: 8vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40%;
+  display: flex;
+  justify-content: center;
+  /* 与背景淡入淡出保持一致，避免搜索栏突兀显示 */
+  animation: fade 0.25s ease-in forwards;
+}
+.launchpad .searchbar .search-icon {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+.launchpad .searchbar .search-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 18px 0 44px;
+  font-size: 16px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 20px;
+  outline: none;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  text-align: center;
+}
+.launchpad .searchbar .search-input::placeholder {
+  color: rgba(255, 255, 255, 0.8);
+}
+.launchpad .searchbar .search-input:focus {
+  background: rgba(255, 255, 255, 0.3);
+}
+.launchpad p {
+  margin: 0;
+}
+.launchpad .bg {
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-position: center;
+  background-size: cover;
+  filter: blur(20px);
+  transform: scale(1.2);
+  opacity: 1;
+  animation: fade 0.25s ease-in forwards;
+}

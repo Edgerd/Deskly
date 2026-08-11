@@ -1,0 +1,149 @@
+{
+  "app": {
+    "name": "Deskly",
+    "tagline": "网页版 macOS 桌面体验"
+  },
+  "menu": {
+    "logo": "此是在本机",
+    "about": "关于本机",
+    "systemPreferences": "系统设置...",
+    "appStore": "App Store...",
+    "recentItems": "最近使用的项目",
+    "forceQuit": "强制退出...",
+    "sleep": "睡眠",
+    "restart": "重新启动...",
+    "shutdown": "关机...",
+    "lockScreen": "锁定屏幕",
+    "logOut": "退出登录",
+    "app": {
+      "about": "关于访达",
+      "settings": "设置...",
+      "emptyTrash": "清倒废纸篓",
+      "services": "服务",
+      "hide": "隐藏访达",
+      "hideOthers": "隐藏其他",
+      "showAll": "全部显示"
+    }
+  },
+  "desktop": {
+    "finder": "访达",
+    "trash": "废纸篓",
+    "appStore": "应用商店"
+  },
+  "finderbar": {
+    "file": "文件",
+    "edit": "编辑",
+    "view": "显示",
+    "go": "前往",
+    "window": "窗口",
+    "help": "帮助",
+    "history": "历史记录",
+    "bookmarks": "书签"
+  },
+  "finder": {
+    "title": "访达",
+    "emptyFolder": "此文件夹为空",
+    "searchPlaceholder": "搜索",
+    "sidebar": {
+      "favorites": "个人收藏",
+      "icloud": "iCloud 云盘",
+      "locations": "位置",
+      "tags": "标签"
+    },
+    "auth": {
+      "title": "访达想访问文件夹",
+      "message": "需要您的授权才能访问文件夹中的内容。",
+      "deny": "不允许",
+      "allow": "好"
+    },
+    "group": {
+      "none": "无",
+      "kind": "种类",
+      "date": "日期",
+      "size": "大小",
+      "tag": "标签"
+    },
+    "share": "共享",
+    "tag": "标记",
+    "more": "更多",
+    "newFolder": "新建文件夹",
+    "newFolderPrompt": "新建文件夹名称：",
+    "sortBy": {
+      "name": "名称",
+      "date": "日期",
+      "size": "大小"
+    },
+    "showPathBar": "显示路径栏",
+    "showStatusBar": "显示状态栏",
+    "showTabBar": "显示标签栏",
+    "copied": "已复制路径",
+    "shareFailed": "共享失败，已复制路径",
+    "tags": {
+      "red": "红色",
+      "orange": "橙色",
+      "yellow": "黄色",
+      "green": "绿色",
+      "blue": "蓝色",
+      "purple": "紫色",
+      "gray": "灰色"
+    },
+    "today": "今天",
+    "yesterday": "昨天",
+    "previous7Days": "前 7 天",
+    "earlier": "更早",
+    "reauth": "重新授权访问文件夹",
+    "airdrop": "隔空投送",
+    "recent": "最近使用",
+    "applications": "应用程序",
+    "downloads": "下载",
+    "icloudDrive": "iCloud 云盘",
+    "documents": "文稿",
+    "desktop": "桌面",
+    "shared": "共享的",
+    "pictures": "图片",
+    "bookmarks": "收藏夹",
+    "colName": "名称",
+    "colDate": "修改日期",
+    "colSize": "大小",
+    "colKind": "种类"
+  },
+  "dock": {
+    "launchpad": "启动台",
+    "safari": "Safari 浏览器",
+    "mail": "邮件",
+    "maps": "地图",
+    "photos": "照片",
+    "notes": "记事本",
+    "settings": "系统设置",
+    "trash": "废纸篓"
+  },
+  "common": {
+    "ok": "好",
+    "cancel": "取消",
+    "close": "关闭",
+    "open": "打开",
+    "save": "保存",
+    "delete": "删除",
+    "confirm": "确认",
+    "back": "返回",
+    "refresh": "刷新",
+    "arrange": "排列图标"
+  },
+  "controlcenter": {
+    "wifi": "Wi-Fi",
+    "bluetooth": "蓝牙",
+    "airdrop": "隔空投送",
+    "airplane": "飞行模式",
+    "focus": "专注模式",
+    "focusWork": "工作",
+    "stageManager": "台前调度",
+    "screenMirroring": "屏幕镜像",
+    "display": "显示器",
+    "sound": "声音",
+    "music": "音乐",
+    "on": "开启",
+    "off": "关闭",
+    "everyone": "所有人",
+    "connected": "已连接"
+  }
+}

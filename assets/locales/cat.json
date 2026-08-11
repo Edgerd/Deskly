@@ -1,0 +1,149 @@
+{
+  "app": {
+    "name": "Deskly 喵~",
+    "tagline": "主人，这里是喵版 macOS 桌面喵~"
+  },
+  "menu": {
+    "logo": "本机在此喵~",
+    "about": "关于本机喵~",
+    "systemPreferences": "系统设置...喵~",
+    "appStore": "App Store...喵~",
+    "recentItems": "最近使用的项目喵~",
+    "forceQuit": "强制退出...喵~",
+    "sleep": "睡眠喵~",
+    "restart": "重新启动...喵~",
+    "shutdown": "关机...喵~",
+    "lockScreen": "锁定屏幕喵~",
+    "logOut": "退出登录喵~",
+    "app": {
+      "about": "关于访达喵~",
+      "settings": "设置...喵~",
+      "emptyTrash": "清倒废纸篓喵~",
+      "services": "服务喵~",
+      "hide": "隐藏访达喵~",
+      "hideOthers": "隐藏其他喵~",
+      "showAll": "全部显示喵~"
+    }
+  },
+  "desktop": {
+    "finder": "访达喵~",
+    "trash": "废纸篓喵~",
+    "appStore": "应用商店喵~"
+  },
+  "finderbar": {
+    "file": "文件喵~",
+    "edit": "编辑喵~",
+    "view": "显示喵~",
+    "go": "前往喵~",
+    "window": "窗口喵~",
+    "help": "帮助喵~",
+    "history": "历史记录喵~",
+    "bookmarks": "书签喵~"
+  },
+  "finder": {
+    "title": "访达喵~",
+    "emptyFolder": "这个文件夹是空的喵~",
+    "searchPlaceholder": "搜索喵~",
+    "sidebar": {
+      "favorites": "个人收藏喵~",
+      "icloud": "iCloud 云盘喵~",
+      "locations": "位置喵~",
+      "tags": "标签喵~"
+    },
+    "auth": {
+      "title": "访达想访问文件夹喵~",
+      "message": "需要主人的授权才能访问文件夹中的内容喵~",
+      "deny": "不允许喵~",
+      "allow": "好喵~"
+    },
+    "group": {
+      "none": "无喵~",
+      "kind": "种类喵~",
+      "date": "日期喵~",
+      "size": "大小喵~",
+      "tag": "标签喵~"
+    },
+    "share": "共享喵~",
+    "tag": "标记喵~",
+    "more": "更多喵~",
+    "newFolder": "新建文件夹喵~",
+    "newFolderPrompt": "新建文件夹名称喵~:",
+    "sortBy": {
+      "name": "名称喵~",
+      "date": "日期喵~",
+      "size": "大小喵~"
+    },
+    "showPathBar": "显示路径栏喵~",
+    "showStatusBar": "显示状态栏喵~",
+    "showTabBar": "显示标签栏喵~",
+    "copied": "已复制路径喵~",
+    "shareFailed": "共享失败，已复制路径喵~",
+    "tags": {
+      "red": "红色喵~",
+      "orange": "橙色喵~",
+      "yellow": "黄色喵~",
+      "green": "绿色喵~",
+      "blue": "蓝色喵~",
+      "purple": "紫色喵~",
+      "gray": "灰色喵~"
+    },
+    "today": "今天喵~",
+    "yesterday": "昨天喵~",
+    "previous7Days": "前 7 天喵~",
+    "earlier": "更早喵~",
+    "reauth": "重新授权访问文件夹喵~",
+    "airdrop": "隔空投送喵~",
+    "recent": "最近使用喵~",
+    "applications": "应用程序喵~",
+    "downloads": "下载喵~",
+    "icloudDrive": "iCloud 云盘喵~",
+    "documents": "文稿喵~",
+    "desktop": "桌面喵~",
+    "shared": "共享的喵~",
+    "pictures": "图片喵~",
+    "bookmarks": "收藏夹喵~",
+    "colName": "名称喵~",
+    "colDate": "修改日期喵~",
+    "colSize": "大小喵~",
+    "colKind": "种类喵~"
+  },
+  "dock": {
+    "launchpad": "启动台喵~",
+    "safari": "Safari 浏览器喵~",
+    "mail": "邮件喵~",
+    "maps": "地图喵~",
+    "photos": "照片喵~",
+    "notes": "记事本喵~",
+    "settings": "系统设置喵~",
+    "trash": "废纸篓喵~"
+  },
+  "common": {
+    "ok": "好喵~",
+    "cancel": "取消喵~",
+    "close": "关闭喵~",
+    "open": "打开喵~",
+    "save": "保存喵~",
+    "delete": "删除喵~",
+    "confirm": "确认喵~",
+    "back": "返回喵~",
+    "refresh": "刷新喵~",
+    "arrange": "排列图标喵~"
+  },
+  "controlcenter": {
+    "wifi": "Wi-Fi 喵~",
+    "bluetooth": "蓝牙喵~",
+    "airdrop": "隔空投送喵~",
+    "airplane": "飞行模式喵~",
+    "focus": "专注模式喵~",
+    "focusWork": "工作喵~",
+    "stageManager": "台前调度喵~",
+    "screenMirroring": "屏幕镜像喵~",
+    "display": "显示器喵~",
+    "sound": "声音喵~",
+    "music": "音乐喵~",
+    "on": "开启喵~",
+    "off": "关闭喵~",
+    "everyone": "所有人喵~",
+    "connected": "已连接喵~"
+  }
+}

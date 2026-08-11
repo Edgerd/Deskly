@@ -1,0 +1,424 @@
+<div class="settings window" id="系统设置" settings>
+    <div class="titlebar">
+        <div class="wintools">
+            <div class="red"></div>
+            <div class="yellow"></div>
+            <div class="green"></div>
+        </div>
+    </div>
+    <div class="left">
+        <div class="list">
+            <swift-input class="search" placeholder="搜索"></swift-input>
+            <div class="selection id" data-page="author">
+                <img class="icon" src="../../assets/images/author.jpeg" />
+                <div class="icon" icon="../../assets/images/author.jpeg" style="display: none"></div>
+                <div>
+                    <p class="title">Edgerd</p>
+                    <p class="detail">Apple 账户</p>
+                </div>
+            </div>
+            <div class="margin long"></div>
+            <div class="selection" data-page="gear">
+                <div class="icon gray.light" icon="../../assets/images/gear.svg"></div>
+                <p>通用</p>
+            </div>
+            <div class="selection" data-page="local-storage">
+                <div class="icon gray.light" icon="../../assets/icons/folder/Folder.png" scale="60%"></div>
+                <p>本地存储</p>
+            </div>
+            <div class="selection" data-page="search">
+                <div class="icon blue" icon="../../assets/images/magnifyingglass.svg" scale="60%"></div>
+                <p>搜索</p>
+            </div>
+            <div class="selection" data-page="magnifyingglass">
+                <div class="icon gray.light" icon="../../assets/images/magnifyingglass.svg" scale="60%"></div>
+                <p>聚焦</p>
+            </div>
+            <div class="selection" data-page="switch.2">
+                <div class="icon gray.light" icon="../../assets/images/switch.2.svg" scale="60%"></div>
+                <p>控制中心</p>
+            </div>
+            <div class="margin"></div>
+            <div class="selection" data-page="photo.circle">
+                <div class="icon cyan" icon="../../assets/images/photo.circle.svg"></div>
+                <p>墙纸</p>
+            </div>
+            <div class="selection focus" data-page="appearance">
+                <div class="icon black" icon="../../assets/images/moonphase.last.quarter.inverse.svg"></div>
+                <p>外观</p>
+            </div>
+            <div class="selection" data-page="sun.max.fill">
+                <div class="icon blue" icon="../../assets/images/sun.max.fill.svg"></div>
+                <p>显示器</p>
+            </div>
+            <div class="selection" data-page="menubar.dock.rectangle">
+                <div class="icon black" icon="../../assets/images/menubar.dock.rectangle.svg"></div>
+                <p>桌面与程序坞</p>
+            </div>
+            <div class="selection" data-page="Siri">
+                <div class="icon black" icon="../../assets/icons/Siri.png?v=0.2.57" scale="120%"></div>
+                <p>Siri</p>
+            </div>
+            <div class="margin"></div>
+            <div class="selection" data-page="bell.badge.fill">
+                <div class="icon red" icon="../../assets/images/bell.badge.fill.svg" scale="60%"></div>
+                <p>通知</p>
+            </div>
+            <div class="selection" data-page="speaker.wave.3.fill">
+                <div class="icon pink" icon="../../assets/images/speaker.wave.3.fill.svg"></div>
+                <p>声音</p>
+            </div>
+            <div class="selection" data-page="moon.fill">
+                <div class="icon purple" icon="../../assets/images/moon.fill.svg" scale="60%"></div>
+                <p>专注模式</p>
+            </div>
+            <div class="selection" data-page="hourglass">
+                <div class="icon purple" icon="../../assets/images/hourglass.svg" scale="40%"></div>
+                <p>屏幕使用时间</p>
+            </div>
+            <div class="margin"></div>
+            <div class="selection" data-page="lock.fill">
+                <div class="icon black" icon="../../assets/images/lock.fill.svg" scale="40%"></div>
+                <p>锁定屏幕</p>
+            </div>
+            <div class="selection" data-page="hand.raised.fill">
+                <div class="icon blue" icon="../../assets/images/hand.raised.fill.svg" scale="60%"></div>
+                <p>隐私与安全性</p>
+            </div>
+            <div class="selection" data-page="login-password">
+                <div class="icon gray.light" icon="../../assets/images/lock.fill.svg" scale="40%"></div>
+                <p>登录密码</p>
+            </div>
+            <div class="selection" data-page="person.2.fill">
+                <div class="icon blue" icon="../../assets/images/person.2.fill.svg" scale="80%"></div>
+                <p>用户与群组</p>
+            </div>
+            <div class="margin"></div>
+            <div class="selection" data-page="icloud">
+                <div class="icon white" icon="../../assets/images/icloud.png" scale="107%"></div>
+                <p>iCloud</p>
+            </div>
+            <div class="margin"></div>
+            <div class="selection" data-page="keyboard.fill">
+                <div class="icon gray.light" icon="../../assets/images/keyboard.fill.svg" scale="60%"></div>
+                <p>键盘</p>
+            </div>
+            <div class="selection" data-page="magicmouse.fill">
+                <div class="icon gray.light" icon="../../assets/images/magicmouse.fill.svg" scale="40%"></div>
+                <p>鼠标</p>
+            </div>
+            <div class="margin"></div>
+            <div class="selection" data-page="lab">
+                <div class="icon black" icon="../../assets/icons/Éditeur de scripts.png" scale="120%"></div>
+                <p>实验室</p>
+            </div>
+        </div>
+    </div>
+    <div class="edge"></div>
+    <div class="right">
+        <div class="toolbar">
+            <div class="controls">
+                <img src="../../assets/images/chevron.backward.svg" />
+                <img src="../../assets/images/chevron.forward.svg" />
+            </div>
+            <p>外观</p>
+        </div>
+        <div class="main">
+            <div class="page focus" id="appearance"> <!-- 外观 -->
+                <div class="row first">
+                    <p class="title">外观</p>
+                    <div class="contents">
+                        <div class="pic" data-appearance="light">
+                            <img src="../../assets/images/sequoia.shape.day.jpg" />
+                            <p>Light</p>
+                        </div>
+                        <div class="pic" data-appearance="dark">
+                            <img src="../../assets/images/sequoia.shape.night.jpg" />
+                            <p>Dark</p>
+                        </div>
+                        <div class="pic" data-appearance="auto">
+                            <img src="../../assets/images/sequoia.shape.day.jpg" />
+                            <p>Auto</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p class="title">强调色</p>
+                    <div class="contents">
+                        <div class="oval all" data-accent="multicolor">
+                            <div class="overlay"></div>
+                            <span class="multicolor-label">多彩</span>
+                        </div>
+                        <div class="oval blue" data-accent="blue"></div>
+                        <div class="oval purple" data-accent="purple"></div>
+                        <div class="oval pink" data-accent="pink"></div>
+                        <div class="oval red" data-accent="red"></div>
+                        <div class="oval orange" data-accent="orange"></div>
+                        <div class="oval yellow" data-accent="yellow"></div>
+                        <div class="oval green" data-accent="green"></div>
+                        <div class="oval gray" data-accent="gray"></div>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p class="title">Highlight color</p>
+                    <div class="contents">
+                        <div class="dropdown" id="highlight-dropdown">
+                            <div class="dropdown-preview">
+                                <span class="color-preview"></span>
+                                <span class="dropdown-label">Accent Color</span>
+                            </div>
+                            <img class="dropdown-arrow" src="../../assets/images/chevron.down.svg" />
+                        </div>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p class="title">Sidebar icon size</p>
+                    <div class="contents">
+                        <div class="dropdown" id="sidebar-size-dropdown">
+                            <div class="dropdown-preview">
+                                <span class="dropdown-label">Medium</span>
+                            </div>
+                            <img class="dropdown-arrow" src="../../assets/images/chevron.down.svg" />
+                        </div>
+                    </div>
+                </div>
+                <div class="row last">
+                    <p class="title">允许基于墙纸调整窗口色调</p>
+                    <div class="contents">
+                        <swift-switch id="wallpaper-tint" state="off"></swift-switch>
+                    </div>
+                </div>
+                <div class="margin"></div>
+                <div class="row first">
+                    <p>Show scroll bars</p>
+                    <div class="contents radio-group" id="scrollbars">
+                        <label class="radio-label"><input type="radio" name="scrollbars" value="auto" checked /><span class="radio-custom"></span><span>Automatically based on mouse or trackpad</span></label>
+                        <label class="radio-label"><input type="radio" name="scrollbars" value="when-scrolling" /><span class="radio-custom"></span><span>When scrolling</span></label>
+                        <label class="radio-label"><input type="radio" name="scrollbars" value="always" /><span class="radio-custom"></span><span>Always</span></label>
+                    </div>
+                </div>
+                <div class="row last">
+                    <p>Click in the scroll bar to</p>
+                    <div class="contents radio-group" id="scroll-click">
+                        <label class="radio-label"><input type="radio" name="scroll-click" value="next-page" checked /><span class="radio-custom"></span><span>Jump to the next page</span></label>
+                        <label class="radio-label"><input type="radio" name="scroll-click" value="spot" /><span class="radio-custom"></span><span>Jump to the spot that's clicked</span></label>
+                    </div>
+                </div>
+                <div class="help-btn" id="appearance-help">?</div>
+            </div>
+            <div class="page" id="gear"> <!-- 通用 -->
+                <p class="a">通用</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="local-storage"> <!-- 本地存储 -->
+                <p class="a">本地存储</p>
+                <div class="margin"></div>
+                <div class="row first">
+                    <p class="fs-desc">授权后，此电脑可访问您的下载、文档、图片文件夹以获得完整体验。可在下方随时修改映射路径。</p>
+                </div>
+                <div class="fs-folders" id="fs-folders"><!-- 由 JS 渲染三个文件夹授权项 --></div>
+                <div class="margin"></div>
+                <div class="row last">
+                    <p class="fs-note">真实文件夹访问依赖 File System Access API，仅支持 Chrome/Edge 浏览器，且需在 HTTPS 或 localhost 环境下运行；其他浏览器自动降级为虚拟文件夹。</p>
+                </div>
+            </div>
+            <div class="page" id="search"> <!-- 搜索 -->
+                <p class="a">搜索</p>
+            </div>
+            <div class="page" id="lab"> <!-- 实验室 -->
+                <p class="a">实验室</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="author"> <!-- Apple 账户 -->
+                <p class="a">Apple 账户</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="magnifyingglass"> <!-- 聚焦 -->
+                <p class="a">聚焦</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="switch.2"> <!-- 控制中心 -->
+                <p class="a">控制中心</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="photo.circle"> <!-- 墙纸 -->
+                <div class="wallpapercontainer">
+                    <div class="wallpaper" id="wallpaper-preview"></div>
+                    <div class="right">
+                        <div class="row">
+                            <p class="title">当前壁纸</p>
+                            <p class="wallpaper-current-name" id="wallpaper-current-name">—</p>
+                        </div>
+                        <div class="margin"></div>
+                        <div class="row">
+                            <p class="title">在所有空间中显示</p>
+                            <div class="contents">
+                                <swift-switch state="on"></swift-switch>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="margin"></div>
+                <div class="wall-section">
+                    <p class="wall-section-title">系统默认壁纸</p>
+                    <div class="wall-grid" id="system-wallpaper-grid"></div>
+                </div>
+                <div class="margin"></div>
+                <div class="wall-section">
+                    <p class="wall-section-title">Bing 每日壁纸</p>
+                    <div class="row wall-bing">
+                        <div class="wall-bing-info">
+                            <p class="wall-bing-desc">使用 Bing 官方接口获取当日精美壁纸，自动切换。</p>
+                        </div>
+                        <div class="contents">
+                            <button id="wallpaper-bing-apply" class="wallpaper-btn">使用今日 Bing 壁纸</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="margin"></div>
+                <div class="wall-section">
+                    <p class="wall-section-title">自定义壁纸</p>
+                    <div class="row first">
+                        <p>网络壁纸源</p>
+                        <div class="contents wall-src">
+                            <input type="text" id="wallpaper-url" placeholder="输入图片 URL，如 https://…/image.jpg" />
+                            <button id="wallpaper-apply" class="wallpaper-btn">应用</button>
+                        </div>
+                    </div>
+                    <div class="row middle">
+                        <p>本地上传</p>
+                        <div class="contents">
+                            <input type="file" id="wallpaper-file" accept="image/*" hidden />
+                            <button id="wallpaper-upload" class="wallpaper-btn">选择图片</button>
+                        </div>
+                    </div>
+                    <div class="row last">
+                        <p>恢复默认壁纸</p>
+                        <div class="contents">
+                            <button id="wallpaper-reset" class="wallpaper-btn">恢复默认</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="page" id="sun.max.fill"> <!-- 显示器 -->
+                <p class="a">显示器</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="menubar.dock.rectangle">
+                <div class="row first">
+                    <p>程序坞放大</p>
+                    <div class="contents">
+                        <swift-switch id="dock-zoom" state="on"></swift-switch>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p>程序坞大小</p>
+                    <div class="contents">
+                        <input type="range" class="dock-slider" id="dock-size" min="32" max="128" step="2" />
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p>程序坞位置</p>
+                    <div class="contents">
+                        <div class="seg" id="dock-position">
+                            <div class="seg-btn" data-value="left">左边</div>
+                            <div class="seg-btn" data-value="bottom">底部</div>
+                            <div class="seg-btn" data-value="right">右边</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p>放大程度</p>
+                    <div class="contents">
+                        <input type="range" class="dock-slider" id="dock-zoom-amount" min="1.1" max="3" step="0.1" />
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p>自动隐藏和显示程序坞</p>
+                    <div class="contents">
+                        <swift-switch id="dock-autohide" state="off"></swift-switch>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p>显示运行指示灯</p>
+                    <div class="contents">
+                        <swift-switch id="dock-show-indicators" state="on"></swift-switch>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p>显示“最近使用的应用程序”</p>
+                    <div class="contents">
+                        <swift-switch id="dock-show-recent" state="on"></swift-switch>
+                    </div>
+                </div>
+                <div class="row middle">
+                    <p>废纸篓图标</p>
+                    <div class="contents trash-pick">
+                        <div class="pic" data-trash="light"><img src="../../assets/icons/trash/trash_light.png" /><p>浅色</p></div>
+                        <div class="pic" data-trash="dark"><img src="../../assets/icons/trash/trash_dark.png" /><p>深色</p></div>
+                        <div class="pic" data-trash="light_full"><img src="../../assets/icons/trash/trash_light_full.png" /><p>浅·装满</p></div>
+                        <div class="pic" data-trash="dark_full"><img src="../../assets/icons/trash/trash_dark_full.png" /><p>深·装满</p></div>
+                        <div class="pic" data-trash="light_nocolour"><img src="../../assets/icons/trash/trash_light_full_nocolour.png" /><p>浅·黑白</p></div>
+                        <div class="pic" data-trash="dark_nocolour"><img src="../../assets/icons/trash/trash_dark_full_nocolour.png" /><p>深·黑白</p></div>
+                        <div class="pic" data-trash="light_nocolour2"><img src="../../assets/icons/trash/trash_light_full_nocolour2.png" /><p>浅·透明</p></div>
+                        <div class="pic" data-trash="dark_nocolour2"><img src="../../assets/icons/trash/trash_dark_full_nocolour2.png" /><p>深·透明</p></div>
+                    </div>
+                </div>
+                <div class="row last">
+                    <p>系统右键菜单</p>
+                    <div class="contents">
+                        <swift-switch id="native-context-menu" state="off"></swift-switch>
+                    </div>
+                </div>
+            </div>
+            <div class="page" id="Siri"> <!-- Siri -->
+                <p class="a">Siri</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="bell.badge.fill"> <!-- 通知 -->
+                <p class="a">通知</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="speaker.wave.3.fill"> <!-- 声音 -->
+                <p class="a">声音</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="moon.fill"> <!-- 专注模式 -->
+                <p class="a">专注模式</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="hourglass"> <!-- 屏幕使用时间 -->
+                <p class="a">屏幕使用时间</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="lock.fill"> <!-- 锁定屏幕 -->
+                <p class="a">锁定屏幕</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="hand.raised.fill"> <!-- 隐私与安全性 -->
+                <p class="a">隐私与安全性</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="login-password"> <!-- 登录密码 -->
+                <p class="a">登录密码</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="person.2.fill"> <!-- 用户与群组 -->
+                <p class="a">用户与群组</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="icloud"> <!-- iCloud -->
+                <p class="a">iCloud</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="keyboard.fill"> <!-- 键盘 -->
+                <p class="a">键盘</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+            <div class="page" id="magicmouse.fill"> <!-- 鼠标 -->
+                <p class="a">鼠标</p>
+                <p class="b">还没做😡😭</p>
+            </div>
+        </div>
+    </div>
+</div>

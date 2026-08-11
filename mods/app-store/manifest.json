@@ -1,0 +1,14 @@
+{
+  "id": "app-store",
+  "name": "App Store",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "浏览与安装插件",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "../../assets/icons/App Store.png",
+  "window": { "width": 900, "height": 600, "resizable": true, "centered": true }
+}

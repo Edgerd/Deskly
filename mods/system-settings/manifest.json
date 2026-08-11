@@ -1,0 +1,14 @@
+{
+  "id": "system-settings",
+  "name": "系统设置",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "系统设置",
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "../../assets/icons/Réglages système.png",
+  "window": { "width": 715, "height": 570, "resizable": true, "centered": true }
+}

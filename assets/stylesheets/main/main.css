@@ -1,0 +1,101 @@
+@font-face {
+    src: url(../../fonts/sf-pro-display_regular.woff2);
+    font-family: "SFPro-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Regular.woff2);
+    font-family: "PingFangSC-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/SFMono-Regular.otf);
+    font-family: "SFMono-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/sf-pro-display_semibold.woff2);
+    font-family: "SFPro-Semibold";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Semibold.woff2);
+    font-family: "PingFangSC-Semibold";
+}
+
+@font-face {
+    src: url(../../fonts/sf-pro-display_medium.woff2);
+    font-family: "SFPro-Medium";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Medium.woff2);
+    font-family: "PingFangSC-Medium";
+}
+
+body, html {
+    overflow: hidden;
+    font-family: "SFPro-Regular", "PingFangSC-Regular";
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: 0.009em;
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    inset: 0;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body > div.wallpaper {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: url(../../images/Wallpaper.png);
+    /* background: white; */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+body > div.overlay {
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    inset: 0;
+  z-index: 4000;
+  background: #0009;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* ===== 全局外观（系统设置）基础变量与主题 ===== */
+:root {
+    --accent: #0a82ff;
+    --accent-rgb: 10, 130, 255;
+    --highlight: #0a82ff;
+}
+
+/* 暗色主题：压暗桌面壁纸 + 基础背景，使明暗切换可见生效 */
+html[data-theme="dark"] body {
+    background: #1e1e1e;
+}
+html[data-theme="dark"] body > div.wallpaper::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 0;
+}
+
+/* 滚动条显示策略：仅「始终」强制常驻显示 */
+html[data-scrollbars="always"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+html[data-scrollbars="always"] * {
+    scrollbar-width: thin;
+}

@@ -1,0 +1,985 @@
+/* ============================
+ * 照片应用样式 — 参照 macOS Photos
+ * 支持深色 / 浅色主题
+ * ============================ */
+
+/* ---- CSS 变量（深色模式默认） ---- */
+.photos {
+    --ph-bg: #1C1C1E;
+    --ph-sidebar-bg: #252527;
+    --ph-content-bg: #161618;
+    --ph-toolbar-bg: rgba(37, 37, 39, 0.78);
+    --ph-accent: #0A84FF;
+    --ph-accent-bg: rgba(10, 132, 255, 0.18);
+    --ph-accent-bg-hover: rgba(10, 132, 255, 0.26);
+    --ph-text: #FFFFFF;
+    --ph-text-2: #98989F;
+    --ph-text-3: #636366;
+    --ph-separator: rgba(255, 255, 255, 0.08);
+    --ph-hover: rgba(255, 255, 255, 0.06);
+    --ph-active: rgba(255, 255, 255, 0.1);
+    --ph-thumb-bg: #2C2C2E;
+    --ph-radius: 10px;
+    --ph-sidebar-w: 210px;
+    --ph-toolbar-h: 48px;
+    --ph-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ---- 浅色模式覆盖 ---- */
+html[data-theme="light"] .photos {
+    --ph-bg: #FFFFFF;
+    --ph-sidebar-bg: #F5F5F7;
+    --ph-content-bg: #FFFFFF;
+    --ph-toolbar-bg: rgba(245, 245, 247, 0.78);
+    --ph-accent: #007AFF;
+    --ph-accent-bg: rgba(0, 122, 255, 0.12);
+    --ph-accent-bg-hover: rgba(0, 122, 255, 0.18);
+    --ph-text: #1D1D1F;
+    --ph-text-2: #86868B;
+    --ph-text-3: #AEAEB2;
+    --ph-separator: rgba(0, 0, 0, 0.07);
+    --ph-hover: rgba(0, 0, 0, 0.04);
+    --ph-active: rgba(0, 0, 0, 0.07);
+    --ph-thumb-bg: #E5E5EA;
+}
+
+/* ============================
+ * 窗口根容器
+ * ============================ */
+.photos.window {
+    min-width: 700px;
+    min-height: 500px;
+    width: 100%;
+    height: 100%;
+    background: var(--ph-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: var(--ph-font);
+    box-sizing: border-box;
+    color: var(--ph-text);
+    /* 必须 absolute：继承 .window 基类定位，由 centerWindow() 统一计算 left/top。
+       若为 relative 则参与文档流，导致窗口位置异常、覆盖 Dock 栏。 */
+    position: absolute;
+}
+
+/* ---- 窗口控制按钮 ---- */
+/* 无独立标题栏：红绿灯悬浮定位统一为 top/left 12px（与记事本、图片、视频一致）；
+   尺寸与颜色复用全局 window.css 默认（12px / 红黄绿），不重复定义。 */
+.photos .wintools {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    gap: 8px;
+    z-index: 100;
+}
+
+/* ============================
+ * 主体布局：侧边栏 + 主区域
+ * ============================ */
+.photos .photos-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+/* ============================
+ * 侧边栏
+ * ============================ */
+.photos .sidebar {
+    width: var(--ph-sidebar-w);
+    flex-shrink: 0;
+    background: var(--ph-sidebar-bg);
+    border-right: 1px solid var(--ph-separator);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 36px;
+}
+
+/* ---- 搜索框 ---- */
+.photos .sidebar-search {
+    padding: 0 12px 8px;
+    position: relative;
+}
+.photos .search-icon {
+    position: absolute;
+    left: 22px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ph-text-3);
+    pointer-events: none;
+}
+.photos .search-input {
+    width: 100%;
+    height: 28px;
+    background: var(--ph-active);
+    border: none;
+    border-radius: 7px;
+    padding: 0 12px 0 32px;
+    font-size: 13px;
+    color: var(--ph-text);
+    font-family: var(--ph-font);
+    outline: none;
+    box-sizing: border-box;
+    transition: background 0.15s, box-shadow 0.15s;
+}
+.photos .search-input::placeholder {
+    color: var(--ph-text-3);
+}
+.photos .search-input:focus {
+    background: var(--ph-bg);
+    box-shadow: 0 0 0 3px var(--ph-accent-bg);
+}
+
+/* ---- 导航区 ---- */
+.photos .sidebar-nav {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 8px 16px;
+}
+.photos .sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+}
+.photos .sidebar-nav::-webkit-scrollbar-thumb {
+    background: var(--ph-text-3);
+    border-radius: 3px;
+}
+
+/* ---- 分组 ---- */
+.photos .nav-section {
+    margin-top: 14px;
+}
+.photos .nav-section:first-child {
+    margin-top: 4px;
+}
+.photos .nav-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ph-text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 0 10px 4px;
+    margin-top: 8px;
+}
+.photos .nav-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* ---- 导航项 ---- */
+.photos .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--ph-text);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.12s;
+    margin-bottom: 1px;
+}
+.photos .nav-item svg {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+.photos .nav-item:hover {
+    background: var(--ph-hover);
+}
+.photos .nav-item.active {
+    background: var(--ph-accent-bg);
+    color: var(--ph-accent);
+}
+.photos .nav-item.active svg {
+    opacity: 1;
+    color: var(--ph-accent);
+}
+
+/* ============================
+ * 主区域
+ * ============================ */
+.photos .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--ph-content-bg);
+}
+
+/* ============================
+ * 工具栏
+ * ============================ */
+.photos .toolbar {
+    height: var(--ph-toolbar-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    background: var(--ph-toolbar-bg);
+    border-bottom: 1px solid var(--ph-separator);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    z-index: 10;
+}
+
+.photos .toolbar-left,
+.photos .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+.photos .toolbar-right {
+    justify-content: flex-end;
+}
+
+.photos .toolbar-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.photos .toolbar-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ph-text);
+    line-height: 1.2;
+}
+.photos .toolbar-count {
+    font-size: 11px;
+    color: var(--ph-text-2);
+    line-height: 1.2;
+}
+
+/* ---- 分段控件 ---- */
+.photos .segmented-control {
+    display: inline-flex;
+    background: var(--ph-active);
+    border-radius: 7px;
+    padding: 2px;
+    gap: 2px;
+}
+.photos .seg-btn {
+    height: 24px;
+    width: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--ph-text-2);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.photos .seg-btn:hover {
+    color: var(--ph-text);
+}
+.photos .seg-btn.active {
+    background: var(--ph-thumb-bg);
+    color: var(--ph-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ---- 工具栏按钮 ---- */
+.photos .tool-btn {
+    height: 26px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ph-text);
+    font-size: 12px;
+    font-family: var(--ph-font);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.12s;
+}
+.photos .tool-btn:hover {
+    background: var(--ph-hover);
+}
+.photos .tool-btn svg {
+    opacity: 0.8;
+}
+
+/* ============================
+ * 内容区
+ * ============================ */
+.photos .content-area {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ============================
+ * 网格视图
+ * ============================ */
+.photos .grid-view {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+.photos .grid-view.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+.photos .grid-view::-webkit-scrollbar {
+    width: 8px;
+}
+.photos .grid-view::-webkit-scrollbar-thumb {
+    background: var(--ph-text-3);
+    border-radius: 4px;
+}
+
+.photos .grid-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+    gap: 3px;
+}
+
+/* ---- 缩略图项 ---- */
+.photos .grid-item {
+    position: relative;
+    aspect-ratio: 1;
+    background: var(--ph-thumb-bg);
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.08s, box-shadow 0.12s;
+}
+.photos .grid-item:hover {
+    filter: brightness(1.08);
+}
+.photos .grid-item img,
+.photos .grid-item video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* 选中态 */
+.photos .grid-item.selected {
+    outline: 3px solid var(--ph-accent);
+    outline-offset: -3px;
+}
+.photos .grid-item.selected::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ph-accent);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.photos .grid-item.selected::before {
+    content: "✓";
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    z-index: 2;
+}
+
+/* 收藏心形 */
+.photos .grid-item.favorite::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 18px;
+    height: 18px;
+    background: var(--ph-accent);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='currentColor' d='M8 1.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.7 4.2 13.3l.7-4.3-3.1-3 4.3-.6z'/%3E%3C/svg%3E") center/contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='currentColor' d='M8 1.5l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.7 4.2 13.3l.7-4.3-3.1-3 4.3-.6z'/%3E%3C/svg%3E") center/contain no-repeat;
+    z-index: 2;
+}
+
+/* 视频标识 */
+.photos .video-badge {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.photos .video-badge svg {
+    width: 32px;
+    height: 32px;
+    color: rgba(255, 255, 255, 0.92);
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.5));
+}
+.photos .video-duration {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+}
+
+/* ============================
+ * 列表视图
+ * ============================ */
+.photos .list-view {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    display: flex;
+    flex-direction: column;
+}
+.photos .list-view.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+.photos .list-view::-webkit-scrollbar {
+    width: 8px;
+}
+.photos .list-view::-webkit-scrollbar-thumb {
+    background: var(--ph-text-3);
+    border-radius: 4px;
+}
+
+.photos .list-header {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--ph-separator);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ph-text-2);
+    flex-shrink: 0;
+}
+.photos .list-col {
+    padding: 0 8px;
+}
+.photos .list-col-thumb { width: 44px; flex-shrink: 0; }
+.photos .list-col-name { flex: 1; min-width: 0; }
+.photos .list-col-type { width: 80px; flex-shrink: 0; }
+.photos .list-col-date { width: 140px; flex-shrink: 0; }
+.photos .list-col-size { width: 80px; flex-shrink: 0; }
+
+.photos .list-body {
+    flex: 1;
+    overflow-y: auto;
+}
+.photos .list-row {
+    display: flex;
+    align-items: center;
+    height: 48px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--ph-separator);
+    font-size: 13px;
+    color: var(--ph-text);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.photos .list-row:hover {
+    background: var(--ph-hover);
+}
+.photos .list-row.selected {
+    background: var(--ph-accent-bg);
+}
+.photos .list-row .list-col {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.photos .list-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: var(--ph-thumb-bg);
+    display: block;
+}
+.photos .list-type {
+    color: var(--ph-text-2);
+    font-size: 12px;
+}
+.photos .list-date {
+    color: var(--ph-text-2);
+    font-size: 12px;
+}
+.photos .list-size {
+    color: var(--ph-text-2);
+    font-size: 12px;
+}
+
+/* ============================
+ * 空状态
+ * ============================ */
+.photos .empty-state {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--ph-text-2);
+    text-align: center;
+    padding: 40px;
+}
+.photos .empty-state.show {
+    display: flex;
+}
+.photos .empty-state svg {
+    margin-bottom: 16px;
+    opacity: 0.6;
+}
+.photos .empty-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ph-text);
+    margin: 0 0 6px;
+}
+.photos .empty-hint {
+    font-size: 13px;
+    margin: 0;
+}
+
+/* ============================
+ * 选择模式操作栏
+ * ============================ */
+.photos .selection-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    background: var(--ph-toolbar-bg);
+    border: 1px solid var(--ph-separator);
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    z-index: 20;
+}
+.photos .selection-bar.show {
+    display: flex;
+}
+.photos .selection-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ph-text);
+    white-space: nowrap;
+}
+.photos .selection-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.photos .sel-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ph-text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s;
+}
+.photos .sel-btn:hover {
+    background: var(--ph-hover);
+}
+.photos .sel-btn.cancel {
+    width: auto;
+    padding: 0 10px;
+    font-size: 12px;
+}
+
+/* ============================
+ * 预览模式
+ * ============================ */
+.photos .preview-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.96);
+    display: none;
+    flex-direction: column;
+    z-index: 200;
+}
+.photos .preview-overlay.show {
+    display: flex;
+}
+
+/* ---- 预览工具栏 ---- */
+.photos .preview-toolbar {
+    height: var(--ph-toolbar-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    background: rgba(30, 30, 32, 0.6);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.photos .preview-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.photos .preview-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s;
+}
+.photos .preview-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+.photos .preview-info {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+    font-variant-numeric: tabular-nums;
+}
+.photos .preview-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 4px;
+}
+.photos .zoom-slider {
+    width: 90px;
+    accent-color: #fff;
+}
+
+/* ---- 预览内容区 ---- */
+.photos .preview-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+}
+.photos .preview-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.15s;
+    user-select: none;
+}
+.photos .preview-video {
+    max-width: 100%;
+    max-height: 100%;
+    outline: none;
+}
+
+/* ---- 左右切换按钮 ---- */
+.photos .preview-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(60, 60, 65, 0.55);
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s;
+    z-index: 10;
+}
+.photos .preview-nav:hover {
+    background: rgba(80, 80, 85, 0.75);
+}
+.photos .preview-nav.btn-prev { left: 16px; }
+.photos .preview-nav.btn-next { right: 16px; }
+.photos .preview-nav:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+/* ---- 详情面板 ---- */
+.photos .preview-detail {
+    position: absolute;
+    top: var(--ph-toolbar-h);
+    right: 0;
+    width: 260px;
+    bottom: 0;
+    background: rgba(40, 40, 43, 0.78);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    -webkit-backdrop-filter: blur(30px);
+    backdrop-filter: blur(30px);
+    padding: 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.2s ease-out;
+    z-index: 20;
+}
+.photos .preview-detail.show {
+    transform: translateX(0);
+}
+.photos .detail-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.photos .detail-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+.photos .detail-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+.photos .detail-thumb img,
+.photos .detail-thumb video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.photos .detail-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 16px;
+    word-break: break-all;
+}
+.photos .detail-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 12px;
+}
+.photos .detail-label {
+    color: rgba(255, 255, 255, 0.55);
+}
+.photos .detail-value {
+    color: rgba(255, 255, 255, 0.9);
+    text-align: right;
+    max-width: 60%;
+    word-break: break-all;
+}
+
+/* ============================
+ * 右键菜单
+ * ============================ */
+.photos .context-menu {
+    position: fixed;
+    min-width: 180px;
+    background: var(--ph-toolbar-bg);
+    border: 1px solid var(--ph-separator);
+    border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    padding: 6px 0;
+    z-index: 300;
+    font-size: 13px;
+    color: var(--ph-text);
+}
+.photos .context-item {
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.photos .context-item:hover {
+    background: var(--ph-accent);
+    color: #fff;
+}
+.photos .context-separator {
+    height: 1px;
+    background: var(--ph-separator);
+    margin: 5px 8px;
+}
+
+/* ============================
+ * 新建相簿弹窗
+ * ============================ */
+.photos .modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 400;
+}
+.photos .modal-overlay.show {
+    display: flex;
+}
+.photos .modal {
+    width: 320px;
+    background: var(--ph-bg);
+    border: 1px solid var(--ph-separator);
+    border-radius: 12px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    padding: 18px;
+    box-sizing: border-box;
+}
+.photos .modal-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+.photos .modal-input {
+    width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--ph-separator);
+    border-radius: 7px;
+    background: var(--ph-active);
+    color: var(--ph-text);
+    font-size: 13px;
+    font-family: var(--ph-font);
+    outline: none;
+    margin-bottom: 16px;
+    box-sizing: border-box;
+}
+.photos .modal-input:focus {
+    border-color: var(--ph-accent);
+    box-shadow: 0 0 0 3px var(--ph-accent-bg);
+}
+.photos .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.photos .modal-btn {
+    height: 28px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: var(--ph-font);
+    cursor: pointer;
+}
+.photos .modal-btn.primary {
+    background: var(--ph-accent);
+    color: #fff;
+}
+.photos .modal-btn.secondary {
+    background: transparent;
+    color: var(--ph-text);
+}
+.photos .modal-btn.secondary:hover {
+    background: var(--ph-hover);
+}
+
+/* ============================
+ * 相簿卡片视图
+ * ============================ */
+.photos .albums-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 18px;
+    padding: 14px;
+}
+.photos .album-card {
+    cursor: pointer;
+    user-select: none;
+}
+.photos .album-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    background: var(--ph-thumb-bg);
+    overflow: hidden;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    position: relative;
+}
+.photos .album-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.photos .album-empty {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ph-text-3);
+}
+.photos .album-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ph-text);
+    margin-bottom: 2px;
+}
+.photos .album-count {
+    font-size: 12px;
+    color: var(--ph-text-2);
+}
+
+/* ============================
+ * 导入按钮隐藏
+ * ============================ */
+.photos .file-input {
+    display: none;
+}

@@ -1,0 +1,129 @@
+.finderbar {
+  width: 100vw;
+  height: 24px !important;
+  /* M2+ MacBook 35px, normal Mac 24px */
+  backdrop-filter: blur(50px) saturate(0.8);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+.finderbar.macbook {
+  height: 35px !important;
+}
+.finderbar.black-text .left {
+  color: black;
+  text-shadow: none;
+}
+.finderbar.black-text .right {
+  color: black;
+  text-shadow: none;
+}
+.finderbar.black-text .right img {
+  filter: invert(1);
+}
+.finderbar .left {
+  display: inline-flex;
+  align-items: center;
+  color: white;
+  text-shadow: 1px 2px 10px rgba(0, 0, 0, 0.3333333333);
+}
+.finderbar .left .logo {
+  font-size: 16.3px;
+  margin-left: 10px;
+}
+.finderbar .left .appname {
+  font-family: "SFPro-Semibold", "PingFang-Semibold";
+  font-weight: bold;
+  font-size: 13px;
+  /* margin-top: 0.75px; */
+  letter-spacing: normal;
+  margin-left: 0;
+}
+.finderbar .left p {
+  font-size: 13.5px;
+  letter-spacing: -0.2px;
+  padding: 0 10.5px;
+  border-radius: 4px;
+  height: 100%;
+  text-align: center;
+  line-height: 20px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium";
+}
+.finderbar .left p.active {
+  background: rgba(250, 250, 250, 0.337254902);
+}
+.finderbar .right {
+  display: inline-flex;
+  flex-direction: row-reverse;
+  color: white;
+  text-shadow: 1px 2px 10px rgba(0, 0, 0, 0.3333333333);
+  align-items: center;
+  /* justify-content: center; */
+}
+.finderbar .right img {
+  transform: scale(0.5);
+  /* transform: scale(0.1); */
+  filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.3333333333));
+  margin: 0 4px;
+  width: auto;
+  height: 18px;
+}
+.finderbar .right .date {
+  margin-left: 7px;
+  margin-right: 7px;
+  font-size: 13.5px;
+  letter-spacing: -0.2px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium";
+  line-height: 16px;
+}
+.finderbar .right .time {
+  margin-right: 17px;
+  font-size: 13.5px;
+  letter-spacing: -0.2px;
+  line-height: 16px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium";
+}
+
+/* 插件图标容器：位于系统内置图标与时间控件之间 */
+.finderbar .right .plugin-icons {
+  display: inline-flex;
+  flex-direction: row-reverse;
+  align-items: center;
+}
+
+/* 插件图标：复用顶栏内置图标的尺寸与阴影风格 */
+.finderbar .right .plugin-icon {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.finderbar .right .plugin-icon:hover {
+  opacity: 0.7;
+}
+.finderbar .right .plugin-icon-img {
+  transform: scale(0.5);
+  filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.333));
+  margin: 0 4px;
+  width: auto;
+  height: 18px;
+}
+.finderbar .right .plugin-icon-html {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 4px;
+  width: 18px;
+  height: 18px;
+}
+.finderbar .right .plugin-icon-html svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.333));
+}/*# sourceMappingURL=finderbar.css.map */

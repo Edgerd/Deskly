@@ -1,0 +1,397 @@
+p {
+    margin: 0;
+}
+
+.window {
+    box-shadow: 0 36px 100px 0 rgba(0, 0, 0, 0.40), 0 0 3px 0 rgba(0, 0, 0, 0.55), inset 0 0 3px 0 rgba(255, 255, 255, 0.10);
+    border-radius: 16px;
+    width: auto;
+    height: 570px;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    /* 不设 justify-content:stretch，避免在插件的 column 布局里把子项垂直拉伸撑爆 */
+    position: absolute;
+    top: calc(50% - 285px);
+    left: calc(50% - 358px);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* 最小化状态：窗口淡出后移除交互。
+   关键禁忌：曾经使用 transform: scale(0.15) translateY(120vh) 触发 Chrome 3D 合成层，
+   强烈破坏 backdrop-filter，导致亚克力面板大窗整片失效 / 闪烁 / 颜色偏移。
+   这里仅使用 opacity + 显隐控制，所有视觉过渡由 dock.js 的 fallBackFadeOut 通过
+   内联 transition 完成，避免任何残留合成层。
+   visibility 必须延迟到淡出结束再生效：否则第一帧就不可见，注释里承诺的「绝不瞬间消失」
+   实际上从未成立（visibility 不可插值，加过渡时间是唯一办法）。 */
+.window.minimized {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+
+/* 窗口缩放手柄：由 window.js 的 resetWindowListeners 统一注入到每个窗口。
+   此前样式表中没有 .resizer 规则，手柄是 .window(display:flex) 里的零宽子项，
+   mousedown 永远命中不到，缩放功能整体失效。 */
+.window > .resizer {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    z-index: 5;
+    cursor: nwse-resize;
+    border-bottom-right-radius: 16px;
+    touch-action: none;
+
+    &::after {
+        content: "";
+        position: absolute;
+        right: 3px;
+        bottom: 3px;
+        width: 7px;
+        height: 7px;
+        border-right: 1.5px solid rgba(0, 0, 0, 0.28);
+        border-bottom: 1.5px solid rgba(0, 0, 0, 0.28);
+    }
+}
+
+/* manifest.window.resizable = false 的插件不出现手柄 */
+.window.no-resize > .resizer {
+    display: none;
+}
+
+.window {
+    > .left {
+        flex: 0 0 214px;
+        width: 214px;
+        min-width: 214px;
+        max-width: 214px;
+        height: 100%;
+        background:
+            linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1)),
+            rgba(246, 246, 246, 0.84);
+        backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+        -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+        /* 亚克力稳定层（0.2.74 固化）：隔离让侧栏成为独立 backdrop-root，不被 .window 容器或
+           任何开启 stacking context 的祖先截断；overflow:hidden 同时固化侧栏外缘，不出矩形光斑 */
+        isolation: isolate;
+        overflow: hidden;
+        /* 禁忌：切勿给 backdrop-filter 元素自身加 transform / translateZ / will-change:transform，
+           Chrome 会将其提为 3D 合成层并禁用 backdrop-filter（背景退化、失去毛玻璃、大窗整片失效）。
+           抑制闪烁靠根因已修（brightness(2) 去除）+ 降饱和度，不在本元素做 GPU 提升。 */
+
+        .topbar {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: auto;
+        }
+
+        /* 红绿灯（窗口控制按钮）的容器与圆点几何已收敛到
+         * assets/stylesheets/ui/trafficlights.css（令牌驱动的唯一来源），
+         * 符号绘制在 windowtraffic.css。
+         * 原先此处的 .wintools > .red/.yellow/.green 基础块漏了 .gray（禁用位），
+         * 导致关于本机自写 .gray 时缺 box-sizing 而比三色点大 1px；
+         * 下方的 .window > .left .topbar .wintools 容器规则在全仓库无任何 DOM 命中
+         * （只有 .window 直接子节点的 .topbar，不在 .left 内），是逼着 11 个界面
+         * 各自重写布局的根因，一并移除。 */
+        .topbar swift-input {
+            width: 200px;
+            align-self: center;
+            margin-top: 20px;
+            margin-bottom: 5px;
+        }
+
+        .list {
+            width: 100%;
+            height: calc(100% - 48px);
+            display: flex;
+            flex-direction: column;
+            margin-top: 15px;
+            overflow-y: scroll;
+            margin-right: 4px;
+
+            &::-webkit-scrollbar {
+                background: transparent;
+                width: 8px;
+                height: 100%;
+                margin-right: 4px;
+                padding-right: 4px;
+            }
+
+            &::-webkit-scrollbar-thumb {
+                border-radius: 100px;
+                width: 8px !important;
+                background: #a8a9a9;
+            }
+
+            .margin {
+                width: 100%;
+                height: 10px;
+            }
+
+            .selection {
+                width: 180px;
+                height: auto;
+                border-radius: 5px;
+                display: inline-flex;
+                align-items: center;
+                padding-top: 5px;
+                padding-bottom: 5px;
+                padding-left: 3px;
+                padding-right: 3px;
+                margin-left: 10px;
+
+                .icon {
+                    width: 24px;
+                    height: 24px;
+                }
+
+                p {
+                    /* 侧栏是亚克力面（本元素自带 backdrop-filter）：文字走系统强制的黑/白档，
+                       着色打开后深色墙纸配 --text-primary 的黑字会在深侧栏上糊成一片 */
+                    color: var(--surface-text);
+                    margin-left: 6.5px;
+                    font-size: 13px;
+                }
+
+                &.id {
+                    .icon {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 50%;
+                    }
+
+                    p.title {
+                        font-size: 13px;
+                        font-family: "SFPro-Medium", "PingFangSC-Medium";
+                    }
+
+                    p.detail {
+                        font-size: 11px;
+                        opacity: 0.55;
+                    }
+                }
+
+                &.focus {
+                    background: #0a82ff;
+
+                    p {
+                        color: rgba(255, 255, 255, 0.85);
+                    }
+
+                    p.detail {
+                        color: white;
+                    }
+                }
+            }
+        }
+    }
+
+    > .edge {
+        flex: 0 0 1px;
+        width: 1px;
+        min-width: 1px;
+        max-width: 1px;
+        height: 100%;
+        box-shadow: -1px 0 0.5px rgba(0, 0, 0, 0.05);
+        background: rgba(0, 0, 0, 0.1);
+        position: absolute;
+        left: 214px;
+        top: 0;
+    }
+
+    > .right {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+        width: 501px;
+        height: 100%;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        .toolbar {
+            width: 100%;
+            height: 52px;
+            display: inline-flex;
+            align-items: center;
+
+            .controls {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: auto;
+                height: 100%;
+                padding: 0 10px;
+                filter: invert(1);
+                margin-left: 14px;
+
+                img {
+                    width: 10px;
+                    margin-right: 14px;
+                }
+            }
+
+            p {
+                margin: 0;
+                font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+                color: black;
+                font-size: 15px;
+            }
+        }
+
+        .main {
+            width: 100%;
+            height: 100%;
+
+            .page {
+                display: none;
+
+                .row {
+                    width: calc(100% - 60px);
+                    height: auto;
+                    margin-left: 20px;
+                    margin-right: 20px;
+                    padding: 10px;
+                    border-radius: 6px;
+                    border: solid 1px rgba(0, 0, 0, 0.04);
+                    background: rgba(0, 0, 0, 0.02);
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    z-index: -2;
+
+                    p {
+                        font-size: 13px;
+                        align-self: flex-start;
+                    }
+
+                    .contents {
+                        display: inline-flex;
+
+                        .pic {
+                            display: inline-flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                            margin: 0 5px;
+
+                            &:last-child {
+                                margin-right: 0
+                            }
+
+                            img {
+                                width: 86px;
+                                border-radius: 6px;
+                            }
+
+                            p {
+                                margin-top: 5px;
+                                font-size: 11px;
+                                margin-bottom: -2.5px;
+                                opacity: 0.5;
+                                align-self: center;
+                            }
+
+                            &.focus {
+                                img {
+                                    outline: solid #0a82ff 2.5px;
+                                }
+
+                                p {
+                                    font-family: "SFPro-Semibold", "PingFang-Semibold";
+                                    opacity: 1;
+                                }
+                            }
+                        }
+
+                        .oval {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 8px;
+                            outline: solid 1px rgba(0, 0, 0, 0.04);
+                            margin-left: 5px;
+
+                            &.all {
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
+
+                                .overlay {
+                                    width: 6px;
+                                    height: 6px;
+                                    border-radius: 4px;
+                                    background: white;
+                                    outline: solid 1px rgba(0, 0, 0, 0.04);
+                                }
+                            }
+
+                            &.blue {
+                                background: #006fff
+                            }
+
+                            &.purple {
+                                background: #8a358b
+                            }
+
+                            &.pink {
+                                background: #F64694
+                            }
+
+                            &.red {
+                                background: #DB3136
+                            }
+
+                            &.orange {
+                                background: #f67719
+                            }
+
+                            &.yellow {
+                                background: #FFC022
+                            }
+
+                            &.green {
+                                background: #57B13D
+                            }
+
+                            &.gray {
+                                background: #8D8D8D
+                            }
+                        }
+                    }
+
+                    &.first {
+                        border-radius: 6px 6px 0 0;
+                        border-bottom: solid 0.5px rgba(0, 0, 0, 0.04);
+                    }
+
+                    &.middle {
+                        border-radius: 0;
+                        border-top: solid 0.5px rgba(0, 0, 0, 0.04);
+                        border-bottom: solid 0.5px rgba(0, 0, 0, 0.04);
+                    }
+
+                    &.last {
+                        border-radius: 0 0 6px 6px;
+                        border-top: solid 0.5px rgba(0, 0, 0, 0.04);
+                    }
+                }
+
+                .margin {
+                    width: 100%;
+                    height: 10px;
+                }
+
+                &.focus {
+                    display: initial;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,1 @@
+{"id": "siri", "name": "Siri", "version": "1.0.1", "type": "app", "entry": "window", "author": "Edgerd", "description": "iOS 18 风格 Siri 悬浮小球", "permissions": ["apps:launch"], "main": "index.html", "style": "style.css", "script": "script.js", "icon": "Siri.png"}

@@ -1,0 +1,33 @@
+{
+  "id": "notepad",
+  "name": "记事本",
+  "version": "1.2.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "多格式笔记工具：内置 TXT 与 Markdown 所见即所得编辑，通过扩展支持更多格式。",
+  "permissions": ["files:read", "files:write", "default-apps:read"],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "TextEdit.png",
+  "formats": ["txt", "md"],
+  "store": {
+    "category": "效率",
+    "tagline": "纯文本与 Markdown 笔记，三种编辑视图随手切换",
+    "summary": "多格式笔记工具。同一篇笔记可以在所见即所得、分屏预览与纯源码三种视图之间切换，Markdown 与 TXT 都直接读写本地文件，不经过任何服务端。\n笔记列表、标签与打开状态都会持久化，重启后回到上一次的位置。",
+    "features": [
+      "所见即所得 / 分屏 / 源码三种编辑视图",
+      "Markdown 与纯文本双格式",
+      "多标签编辑，标签内可切换笔记",
+      "查找与替换",
+      "字数统计（按码点计，emoji 不拆半）",
+      "快捷键全集",
+      "本地持久化，离线可用"
+    ],
+    "usage": "从启动台或程序坞打开后，左侧列表选笔记，右上角切换编辑视图；Ctrl/Cmd + S 保存，Ctrl/Cmd + F 查找替换。双击 .txt / .md 文件也会由它打开。",
+    "updated": "2026-10",
+    "author": "Edgerd",
+    "screenshots": []
+  }
+}

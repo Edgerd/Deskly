@@ -1,0 +1,827 @@
+/* 记事本应用样式 v2 — Apple Design 规范
+ * 三层工具栏 + 侧边栏 + 编辑区 + 状态栏
+ * 遵循项目亚克力禁忌：.notepad 自身及祖先不加 transform
+ *
+ * 令牌说明：浅色值一律写在 var() 的回退参数里（历史上 .np-var 从未被任何元素使用，
+ * 故该块已删除）；暗色直接覆盖在 .notepad 上。
+ * 文字三档（--np-text / -secondary / -tertiary）是唯一的例外：它们只在 .notepad
+ * 一处指向系统的 --surface-text* 令牌，自身已随明暗主题翻转，所以深色块里不再重复定义。
+ */
+
+html[data-theme="dark"] .notepad {
+    --np-bg: rgba(28, 28, 30, 0.95);
+    --np-toolbar: rgba(44, 44, 46, 0.75);
+    --np-sidebar: rgba(40, 40, 42, 0.6);
+    --np-editor-bg: #1c1c1e;
+    /* --np-text / --np-text-secondary / --np-text-tertiary 不再在这里各写一份深色灰度：
+       三档已在 .notepad 基块里统一指向 --surface-text*（只黑或白，由 surface.js
+       按主题 + 壁纸着色 + 亮度推导），令牌自身随主题翻转，这里再覆盖等于退回第二套写死色。
+       底色类令牌（--np-bg / --np-toolbar / --np-editor-bg …）仍按主题各写一份。 */
+    --np-divider: rgba(255, 255, 255, 0.1);
+    --np-accent: #0a84ff;
+    --np-hover: rgba(255, 255, 255, 0.08);
+    --np-active: rgba(10, 132, 255, 0.18);
+    --np-border: rgba(255, 255, 255, 0.15);
+    --np-code-bg: rgba(255, 255, 255, 0.08);
+}
+
+.notepad {
+    /* 窗口可被 resize 到 200×150（window.js），这里的下限只挡住无意义的小值，
+       真正的适配交给 @container 断点：低于断点时区域依次降级而不是被裁掉 */
+    min-width: 220px;
+    min-height: 160px;
+    width: 100%;
+    height: 100%;
+    /* 尺寸容器：让内部区域按窗口宽度自适应（媒体查询看的是视口，对窗口无用） */
+    container-type: inline-size;
+    container-name: np;
+    /* 文字三档统一在这里指向表面系统令牌（src/javascripts/surface.js）：
+       --surface-text 只取黑或白，由「壁纸主色 → 色调偏移 → 着色浓度 → 明暗主题 →
+       显示器亮度」推导，secondary / tertiary 是同一支墨色的弱化层级。
+       因此这一处定义同时覆盖浅色与深色两个主题（令牌自己翻），下面各规则里
+       `var(--np-text, #1d1d1f)` 这类回退值从此只是「令牌还没生效时的兜底」，不再参与配色。 */
+    --np-text: var(--surface-text);
+    --np-text-secondary: var(--surface-text-secondary);
+    --np-text-tertiary: var(--surface-text-tertiary);
+    background: var(--np-bg, rgba(255, 255, 255, 0.95));
+    /* 模糊改由系统按等级分配：原 blur(30px)（≤34px → 第 3 档），无配套函数 */
+    backdrop-filter: blur(var(--surface-blur-3));
+    -webkit-backdrop-filter: blur(var(--surface-blur-3));
+    /* 亚克力稳定层（0.2.74 固化）：isolation: isolate 强制自身成 backdrop-root，
+       不受祖先 stacking context（含 .window 的 stacking context）截断；
+       配合既有 overflow:hidden 形成「固定 blur 区域 + 强隔离 backdrop-root」的最简方案 */
+    isolation: isolate;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--np-text, #1d1d1f);
+    box-sizing: border-box;
+}
+
+/* 红绿灯：无独立标题栏，标记带 overlay 属性即由 trafficlights.css 统一定位
+   （左内缩 20px、垂直居中由 38px 标题栏高度推导、z 用令牌默认 10）。 */
+
+/* ── 工具栏通用 ── */
+.notepad .toolbar {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.notepad .toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: none;
+    background: transparent;
+    color: var(--np-text, #1d1d1f);
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background 0.15s ease, color 0.15s ease;
+    font-family: inherit;
+}
+
+.notepad .toolbar button:hover {
+    background: var(--np-hover, rgba(0, 0, 0, 0.05));
+}
+
+.notepad .toolbar button:active {
+    background: var(--np-active, rgba(0, 122, 255, 0.1));
+}
+
+/* ── 第一行：文件操作 ── */
+.notepad .toolbar-primary {
+    height: 36px;
+    background: var(--np-toolbar, rgba(246, 246, 246, 0.75));
+    border-bottom: 1px solid var(--np-divider, rgba(0, 0, 0, 0.08));
+    padding: 0 12px;
+    gap: 6px;
+    margin-top: 32px;
+}
+
+.notepad .toolbar-primary .heading-group {
+    display: flex;
+    gap: 2px;
+}
+
+.notepad .toolbar-primary .btn-heading {
+    min-width: 28px;
+    height: 26px;
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* ── 下拉菜单（最左侧）── */
+.notepad .menu-dropdown {
+    position: relative;
+}
+
+.notepad .btn-menu {
+    width: 28px;
+    height: 28px;
+    color: var(--np-text, #1d1d1f);
+}
+
+/* 下拉浮层。打开时由 src/javascripts/ui/popover.js 搬进 body 上的浮出层，
+   position/top/left 会被改写成内联样式（按视口定位、放不下就朝上翻），
+   下面这三条只是浮出层没加载成功时的退路。
+   载体节点带 notepad + menu-dropdown 两个类名，本文件的 .notepad .menu-popup 与
+   .notepad .menu-dropdown .menu-item 才继续命中，--np-* 令牌也照样继承。 */
+.notepad .menu-popup {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 184px;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid var(--np-border, rgba(0, 0, 0, 0.1));
+    border-radius: 9px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.2);
+    padding: 5px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.notepad .menu-popup[hidden] {
+    display: none;
+}
+
+.notepad .menu-dropdown .menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    height: 24px;
+    padding: 0 10px;
+    font-size: 13px;
+    color: var(--np-text, #1d1d1f);
+    border-radius: 5px;
+    background: transparent;
+}
+
+/* 以下三处 hover 的白字保持写死：它们落在 --np-accent（实色强调底）上，
+   属于「强调色上的文字」，规则明确排除在 --surface-text 迁移之外
+   —— 换成表面墨色会在浅色主题变成黑字压蓝底。下面 .menu-item-keys /
+   .menu-toggle-state 的 hover 覆盖是同一情形。 */
+.notepad .menu-dropdown .menu-item:hover {
+    background: var(--np-accent, #007aff);
+    color: #fff;
+}
+
+.notepad .menu-dropdown .menu-item-keys {
+    font-size: 11px;
+    color: var(--np-text-tertiary, rgba(0, 0, 0, 0.3));
+}
+
+.notepad .menu-dropdown .menu-item:hover .menu-item-keys {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.notepad .menu-sep {
+    height: 1px;
+    background: var(--np-divider, rgba(0, 0, 0, 0.08));
+    margin: 4px 8px;
+}
+
+.notepad .menu-toggle-state {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--np-accent, #007aff);
+}
+
+.notepad .menu-dropdown .menu-item:hover .menu-toggle-state {
+    color: #fff;
+}
+
+html[data-theme="dark"] .notepad .menu-popup {
+    background: rgba(40, 40, 42, 0.98);
+}
+
+/* ── 第二行：视图切换 ── */
+.notepad .toolbar-view {
+    height: 32px;
+    background: var(--np-toolbar, rgba(246, 246, 246, 0.75));
+    border-bottom: 1px solid var(--np-divider, rgba(0, 0, 0, 0.08));
+    padding: 0 12px;
+    justify-content: space-between;
+}
+
+.notepad .view-switch {
+    display: inline-flex;
+    background: var(--np-hover, rgba(0, 0, 0, 0.05));
+    border-radius: 7px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.notepad .view-switch .btn-view {
+    height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.45));
+}
+
+.notepad .view-switch .btn-view.active {
+    background: var(--np-bg, #fff);
+    color: var(--np-accent, #007aff);
+    font-weight: 500;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.notepad .toolbar-view .file-name {
+    font-size: 13px;
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.45));
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── 第三行：格式化工具栏 ── */
+.notepad .toolbar-format {
+    height: 34px;
+    background: var(--np-toolbar, rgba(246, 246, 246, 0.75));
+    border-bottom: 1px solid var(--np-divider, rgba(0, 0, 0, 0.08));
+    padding: 0 12px;
+    gap: 4px;
+}
+
+.notepad .fmt-group {
+    display: flex;
+    gap: 2px;
+}
+
+.notepad .fmt-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--np-divider, rgba(0, 0, 0, 0.08));
+    margin: 0 6px;
+}
+
+.notepad .toolbar-format .btn-heading {
+    min-width: 26px;
+    height: 26px;
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.notepad .toolbar-format .btn-bold,
+.notepad .toolbar-format .btn-italic,
+.notepad .toolbar-format .btn-strike {
+    width: 26px;
+    height: 26px;
+    font-size: 13px;
+}
+
+.notepad .toolbar-format .btn-code,
+.notepad .toolbar-format .btn-quote,
+.notepad .toolbar-format .btn-ul,
+.notepad .toolbar-format .btn-ol,
+.notepad .toolbar-format .btn-link,
+.notepad .toolbar-format .btn-image,
+.notepad .toolbar-format .btn-hr,
+.notepad .toolbar-format .btn-table {
+    min-width: 26px;
+    height: 26px;
+    padding: 0 6px;
+    font-size: 12px;
+}
+
+/* ── 主体 ── */
+.notepad .body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* 侧边栏 */
+.notepad .sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    background: var(--np-sidebar, rgba(245, 245, 245, 0.6));
+    border-right: 1px solid var(--np-divider, rgba(0, 0, 0, 0.06));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.notepad .sidebar-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.5));
+    padding: 16px 12px 8px;
+}
+
+.notepad .note-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px;
+}
+
+.notepad .note-item {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-left: 3px solid transparent;
+    transition: background 0.12s ease;
+}
+
+.notepad .note-item:hover {
+    background: var(--np-hover, rgba(0, 0, 0, 0.04));
+}
+
+.notepad .note-item.active {
+    background: var(--np-active, rgba(0, 122, 255, 0.1));
+    border-left-color: var(--np-accent, #007aff);
+    font-weight: 500;
+}
+
+.notepad .note-empty {
+    padding: 20px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--np-text-tertiary, rgba(0, 0, 0, 0.3));
+}
+
+.notepad .note-empty[hidden] {
+    display: none;
+}
+
+/* 编辑列：标签条 / 查找栏 + 编辑区 */
+.notepad .editor-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* 编辑区 */
+.notepad .editor-area {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: var(--np-editor-bg, #ffffff);
+    min-width: 0;
+    min-height: 0;
+}
+
+/* 所见即所得 */
+.notepad .editor-wysiwyg {
+    --np-pad-x: 40px;
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    padding: 24px var(--np-pad-x);
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--np-text, #1d1d1f);
+    outline: none;
+    max-width: 720px;   /* 规划 §2.1 纸张感宽度 */
+    margin: 0 auto;
+}
+
+.notepad .editor-wysiwyg.is-empty::before {
+    content: attr(data-placeholder);
+    position: absolute;
+    top: 24px;
+    left: var(--np-pad-x);
+    color: var(--np-text-tertiary, rgba(0, 0, 0, 0.3));
+    pointer-events: none;
+}
+
+.notepad .editor-wysiwyg h1 { font-size: 28px; font-weight: 700; margin: 0.6em 0 0.3em; line-height: 1.3; }
+.notepad .editor-wysiwyg h2 { font-size: 24px; font-weight: 700; margin: 0.6em 0 0.3em; line-height: 1.3; }
+.notepad .editor-wysiwyg h3 { font-size: 20px; font-weight: 600; margin: 0.6em 0 0.3em; line-height: 1.3; }
+.notepad .editor-wysiwyg p { margin: 0.5em 0; }
+.notepad .editor-wysiwyg ul, .notepad .editor-wysiwyg ol { padding-left: 1.6em; margin: 0.5em 0; }
+.notepad .editor-wysiwyg li { margin: 0.2em 0; }
+.notepad .editor-wysiwyg blockquote {
+    margin: 0.6em 0;
+    padding: 0.4em 1em;
+    border-left: 3px solid var(--np-accent, #007aff);
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.5));
+    background: var(--np-hover, rgba(0, 0, 0, 0.03));
+}
+.notepad .editor-wysiwyg code {
+    font-family: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+    font-size: 0.9em;
+    background: var(--np-code-bg, rgba(0, 0, 0, 0.04));
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+}
+.notepad .editor-wysiwyg pre {
+    background: var(--np-code-bg, rgba(0, 0, 0, 0.04));
+    padding: 12px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 0.6em 0;
+}
+.notepad .editor-wysiwyg pre code {
+    background: transparent;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.notepad .editor-wysiwyg a { color: var(--np-accent, #007aff); text-decoration: none; }
+.notepad .editor-wysiwyg a:hover { text-decoration: underline; }
+.notepad .editor-wysiwyg img {
+    max-width: 100%;
+    border-radius: 4px;
+    margin: 0.4em 0;
+}
+.notepad .editor-wysiwyg hr {
+    border: none;
+    border-top: 1px solid var(--np-divider, rgba(0, 0, 0, 0.1));
+    margin: 1em 0;
+}
+.notepad .editor-wysiwyg table {
+    border-collapse: collapse;
+    margin: 0.6em 0;
+    width: 100%;
+}
+.notepad .editor-wysiwyg th, .notepad .editor-wysiwyg td {
+    border: 1px solid var(--np-border, rgba(0, 0, 0, 0.1));
+    padding: 6px 10px;
+    text-align: left;
+}
+.notepad .editor-wysiwyg th { background: var(--np-hover, rgba(0, 0, 0, 0.03)); font-weight: 600; }
+
+/* 源码模式 */
+.notepad .editor-source-wrap,
+.notepad .editor-split .split-source-pane {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    overflow: hidden;
+    font-family: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+}
+
+.notepad .editor-source-wrap .line-numbers,
+.notepad .editor-split .split-source-pane .line-numbers {
+    width: 48px;
+    flex-shrink: 0;
+    padding: 16px 8px;
+    text-align: right;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--np-text-tertiary, rgba(0, 0, 0, 0.4));
+    background: var(--np-sidebar, rgba(245, 245, 245, 0.6));
+    border-right: 1px solid var(--np-divider, rgba(0, 0, 0, 0.06));
+    user-select: none;
+    overflow: hidden;
+}
+
+.notepad .editor-source,
+.notepad .editor-source-split {
+    flex: 1;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    font-family: inherit;
+    color: var(--np-text, #1d1d1f);
+    background: transparent;
+    tab-size: 4;
+}
+
+.notepad .editor-source::placeholder,
+.notepad .editor-source-split::placeholder {
+    color: var(--np-text-tertiary, rgba(0, 0, 0, 0.3));
+}
+
+/* 文本选区高亮：统一使用主题色 */
+.notepad .editor-wysiwyg ::selection,
+.notepad .editor-source::selection,
+.notepad .editor-source-split::selection {
+    background: rgba(0, 122, 255, 0.28);
+    color: inherit;
+}
+
+html[data-theme="dark"] .notepad .editor-wysiwyg ::selection,
+html[data-theme="dark"] .notepad .editor-source::selection,
+html[data-theme="dark"] .notepad .editor-source-split::selection {
+    background: rgba(10, 132, 255, 0.4);
+    color: inherit;
+}
+
+/* 分屏模式 */
+.notepad .editor-split {
+    position: absolute;
+    inset: 0;
+    display: flex;
+}
+
+.notepad .editor-split .split-pane {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.notepad .editor-split .split-source-pane {
+    position: relative;
+    border-right: none;
+}
+
+.notepad .editor-split .split-divider {
+    width: 1px;
+    background: var(--np-divider, rgba(0, 0, 0, 0.1));
+    flex-shrink: 0;
+}
+
+.notepad .editor-split .split-preview-pane {
+    background: var(--np-editor-bg, #fff);
+}
+
+/* 分屏右栏预览：显式声明可见（分屏下它就是「可见的那一块」编辑区） */
+.notepad .editor-split .split-preview {
+    display: block;
+    position: relative;
+    inset: auto;
+    flex: 1;
+    padding: 24px 32px;
+    max-width: none;
+    margin: 0;
+}
+
+/* 视图切换：根据 data-view 控制显示。
+   隐藏规则必须限定 .editor-area 的直接子元素——分屏预览同样带 .editor-wysiwyg 类，
+   用后代选择器会把预览一起隐藏（分屏右栏变空白）。 */
+.notepad .editor-source-wrap,
+.notepad .editor-split { display: none; }
+
+.notepad[data-view="source"] .editor-area > .editor-wysiwyg { display: none; }
+.notepad[data-view="source"] .editor-area > .editor-source-wrap { display: flex; }
+
+.notepad[data-view="split"] .editor-area > .editor-wysiwyg { display: none; }
+.notepad[data-view="split"] .editor-area > .editor-split { display: flex; }
+
+/* Markdown 模式关闭时：隐藏格式化工具栏 + 主工具栏标题组 + 抑制 Markdown 提示 */
+.notepad[data-md="off"] .toolbar-format,
+.notepad[data-md="off"] .toolbar-primary .heading-group,
+.notepad[data-md="off"] .editor-wysiwyg.is-empty::before { display: none; }
+
+/* ── 标签条 ── */
+.notepad .tabbar {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    height: 30px;
+    flex-shrink: 0;
+    padding: 3px 8px 0;
+    background: var(--np-toolbar, rgba(246, 246, 246, 0.75));
+    border-bottom: 1px solid var(--np-divider, rgba(0, 0, 0, 0.08));
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.notepad .tabbar::-webkit-scrollbar { display: none; }
+
+.notepad .tabbar[hidden] { display: none; }
+
+.notepad .tab-list {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+}
+
+.notepad .tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 180px;
+    padding: 0 6px 0 10px;
+    border-radius: 6px 6px 0 0;
+    font-size: 12px;
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.45));
+    cursor: pointer;
+    user-select: none;
+}
+
+.notepad .tab:hover { background: var(--np-hover, rgba(0, 0, 0, 0.05)); }
+
+.notepad .tab.active {
+    background: var(--np-editor-bg, #fff);
+    color: var(--np-text, #1d1d1f);
+    font-weight: 500;
+}
+
+.notepad .tab-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.notepad .tab.is-dirty .tab-label::after {
+    content: "•";
+    margin-left: 4px;
+    color: var(--np-accent, #007aff);
+}
+
+.notepad .tab-close {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.5;
+}
+
+.notepad .tab-close:hover { opacity: 1; background: var(--np-hover, rgba(0, 0, 0, 0.08)); }
+
+.notepad .tab-new {
+    align-self: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.45));
+    font-size: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.notepad .tab-new:hover { background: var(--np-hover, rgba(0, 0, 0, 0.05)); color: var(--np-accent, #007aff); }
+
+/* ── 查找 / 替换 ── */
+.notepad .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    flex-shrink: 0;
+    padding: 0 10px;
+    background: var(--np-toolbar, rgba(246, 246, 246, 0.75));
+    border-bottom: 1px solid var(--np-divider, rgba(0, 0, 0, 0.08));
+    overflow: hidden;
+}
+
+.notepad .search-bar[hidden] { display: none; }
+
+.notepad .search-bar input {
+    height: 22px;
+    min-width: 0;
+    flex: 1 1 120px;
+    max-width: 220px;
+    padding: 0 8px;
+    border: 1px solid var(--np-border, rgba(0, 0, 0, 0.1));
+    border-radius: 5px;
+    background: var(--np-editor-bg, #fff);
+    color: var(--np-text, #1d1d1f);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+
+.notepad .search-bar input:focus { border-color: var(--np-accent, #007aff); }
+
+.notepad .search-count {
+    font-size: 11px;
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.45));
+    min-width: 42px;
+    white-space: nowrap;
+}
+
+.notepad .search-bar button {
+    height: 22px;
+    min-width: 22px;
+    padding: 0 6px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--np-text, #1d1d1f);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.notepad .search-bar button:hover { background: var(--np-hover, rgba(0, 0, 0, 0.05)); }
+
+/* 弹窗输入框（core/dialog.js 的 prompt 承载体）
+   注意：这段 HTML 是塞进内核 swift-messagebox 里的，不在 .notepad 子树内，
+   所以拿不到 --np-* 这一层，直接引用系统令牌。对话框本体也是亚克力面
+   （assets/stylesheets/ui/alert.css 的 rgba(250,250,250,.72) / 深色 rgba(46,46,50,.72)），
+   --surface-text 自己会随主题翻，于是深色块里那条 color 覆盖成了死样式，已删。 */
+.np-prompt-label { display: block; margin-bottom: 8px; font-size: 13px; }
+
+.np-prompt-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--surface-text);
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    border-radius: 6px;
+}
+
+html[data-theme="dark"] .np-prompt-input {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.24);
+}
+
+/* ── 状态栏 ── */
+.notepad .statusbar {
+    height: 24px;
+    flex-shrink: 0;
+    background: var(--np-toolbar, rgba(246, 246, 246, 0.5));
+    border-top: 1px solid var(--np-divider, rgba(0, 0, 0, 0.08));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-size: 11px;
+    color: var(--np-text-secondary, rgba(0, 0, 0, 0.4));
+    user-select: none;
+}
+
+.notepad .statusbar span { white-space: nowrap; }
+
+.notepad .statusbar .format-badge {
+    background: var(--np-hover, rgba(0, 0, 0, 0.06));
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+/* 保存状态指示器（规划 §7-P3「自动保存指示器」） */
+.notepad .statusbar .save-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--np-hover, rgba(0, 0, 0, 0.06));
+}
+
+.notepad .statusbar .save-state::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--np-text-tertiary, rgba(0, 0, 0, 0.3));
+}
+
+.notepad .statusbar .save-state[data-state="saved"]::before { background: #34c759; }
+.notepad .statusbar .save-state[data-state="unsaved"]::before { background: #ff9f0a; }
+.notepad .statusbar .save-state[data-state="saving"]::before { background: var(--np-accent, #007aff); animation: np-pulse 0.9s ease-in-out infinite; }
+.notepad .statusbar .save-state[data-state="error"]::before { background: #ff3b30; }
+
+@keyframes np-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+}
+
+/* ── 窗口尺寸自适应 ──
+   .notepad 是 inline-size 容器：窗口被拖窄时按区域重要性依次让位，
+   而不是靠 min-width 把内容裁掉（window.js 允许缩到 200×150）。 */
+@container np (max-width: 860px) {
+    .notepad .sidebar { display: none; }
+    .notepad .editor-wysiwyg {
+        --np-pad-x: 24px;
+        padding-left: var(--np-pad-x);
+        padding-right: var(--np-pad-x);
+    }
+}
+
+@container np (max-width: 680px) {
+    .notepad .view-switch .btn-view span { display: none; }
+    .notepad .toolbar-primary .heading-group { display: none; }
+    .notepad .statusbar .file-info { display: none; }
+}
+
+@container np (max-width: 520px) {
+    .notepad .statusbar .cursor-info,
+    .notepad .fmt-divider { display: none; }
+    .notepad .toolbar-format { gap: 2px; overflow-x: auto; scrollbar-width: none; }
+    .notepad .toolbar-format::-webkit-scrollbar { display: none; }
+}
+
+@container np (max-width: 420px) {
+    .notepad .statusbar .stats { display: none; }
+    .notepad .menu-dropdown .menu-item-keys { display: none; }
+}

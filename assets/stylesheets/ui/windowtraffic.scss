@@ -1,0 +1,95 @@
+// windowtraffic.scss — 本文件由 windowtraffic.css 逐行收编而来，是 windowtraffic.css 的唯一样式源。
+// 纯 CSS 同时是合法 SCSS，故本文件与编译产物一一对应；改样式请只改这里，
+// 再执行：npx sass --no-source-map --style expanded assets/stylesheets/ui/windowtraffic.scss assets/stylesheets/ui/windowtraffic.css
+/* ============================================================
+ * windowtraffic.css — 窗口标题栏红绿灯按钮悬浮图标
+ *
+ * 复刻 macOS 原生红绿灯按钮的悬浮效果：
+ * - 鼠标悬停在交通灯按钮组上时，三个按钮同时显示对应符号
+ * - 关闭按钮（红）：居中 X 符号
+ * - 最小化按钮（黄）：居中横杠
+ * - 最大化按钮（绿）：两个实心小三角（一个朝右上、一个朝左下）
+ *
+ * 图标使用 ::before / ::after 伪元素绘制，悬浮时淡入淡出，
+ * 不修改任何按钮原有背景与交互逻辑。
+ *
+ * 尺寸一律取自 trafficlights.css 的 --traffic-* 令牌：
+ * 原先绿三角用 top/right:2.5px 角锚定（那 2.5px 是「12px 减掉 0.5px×2 边框后
+ * 再居中」手算出来的 magic number），改按钮直径就会立刻错位。
+ * 禁用位 .gray 不参与：它没有符号规则，也不加 hover/active。
+ * ============================================================ */
+
+/* 鼠标悬停在按钮组上时，三个图标同时显示 */
+.wintools:hover > .red::before,
+.wintools:hover > .red::after,
+.wintools:hover > .yellow::before,
+.wintools:hover > .green::before,
+.wintools:hover > .green::after {
+  opacity: 1;
+}
+
+/* ---------- 关闭按钮（红）：居中 X 符号 ---------- */
+.wintools > .red::before,
+.wintools > .red::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--traffic-bar-w);
+  height: var(--traffic-bar-h);
+  margin: calc(var(--traffic-bar-h) * -0.5) 0 0 calc(var(--traffic-bar-w) * -0.5);
+  background: #4d0000;
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.wintools > .red::before {
+  transform: rotate(45deg);
+}
+.wintools > .red::after {
+  transform: rotate(-45deg);
+}
+
+/* ---------- 最小化按钮（黄）：居中横杠（单条，无 ::after 是对称的） ---------- */
+.wintools > .yellow::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--traffic-bar-w);
+  height: var(--traffic-bar-h);
+  margin: calc(var(--traffic-bar-h) * -0.5) 0 0 calc(var(--traffic-bar-w) * -0.5);
+  background: #995700;
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* ---------- 最大化按钮（绿）：两个实心小三角 ---------- */
+.wintools > .green::before,
+.wintools > .green::after {
+  content: "";
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+/* 右上三角：顶点朝右上 */
+.wintools > .green::before {
+  top: var(--traffic-tri-inset);
+  right: var(--traffic-tri-inset);
+  border-top: var(--traffic-tri-leg) solid #006500;
+  border-right: var(--traffic-tri-leg) solid #006500;
+  border-bottom: var(--traffic-tri-leg) solid transparent;
+  border-left: var(--traffic-tri-leg) solid transparent;
+}
+/* 左下三角：顶点朝左下 */
+.wintools > .green::after {
+  bottom: var(--traffic-tri-inset);
+  left: var(--traffic-tri-inset);
+  border-bottom: var(--traffic-tri-leg) solid #006500;
+  border-left: var(--traffic-tri-leg) solid #006500;
+  border-top: var(--traffic-tri-leg) solid transparent;
+  border-right: var(--traffic-tri-leg) solid transparent;
+}

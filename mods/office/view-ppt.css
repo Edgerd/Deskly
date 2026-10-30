@@ -1,0 +1,462 @@
+/* view-ppt.css — 演示视图：左侧缩略图列 + 右侧幻灯片纸面 + 窗口内放映覆盖层。
+   全部选择器限定在 .office-ppt 窗口内（三个视图的 CSS 都会同时挂在同一份文档上），
+   界面颜色取外壳的 --office-accent / --office-text / --office-muted / --office-divider；
+   纸面内部的配色由 view-ppt.js 按模型（background / color / titleColor）写成行内样式，
+   深色背景时另加派生类 .ppt-on-dark 换掉占位符与纸面 chrome 的颜色（对比度阈值见 JS 注释）。 */
+
+/* 外壳只给 .office-view 定了 min-height，这里把它拉成两栏的 flex 轨道 */
+.office-ppt .office-view {
+    display: flex;
+}
+
+.office-ppt .ppt {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 100%;
+    display: flex;
+    color: var(--office-text);
+    box-sizing: border-box;
+}
+
+/* 显隐一律走类名：CSS 的 display 会盖过 hidden 属性 */
+.office-ppt .ppt-hide {
+    display: none !important;
+}
+
+/* ── 左栏：工具条 + 缩略图 ── */
+.office-ppt .ppt-side {
+    flex: none;
+    width: 196px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    background: var(--office-chrome);
+    border-right: 1px solid var(--office-divider);
+    box-sizing: border-box;
+}
+
+.office-ppt .ppt-tools {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.office-ppt .ppt-tool {
+    flex: 1 1 calc(50% - 3px);
+    min-width: 0;
+    height: 24px;
+    padding: 0 4px;
+    font: inherit;
+    font-size: 11.5px;
+    color: var(--office-text);
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid var(--office-divider);
+    border-radius: 6px;
+    cursor: default;
+}
+
+.office-ppt .ppt-tool:hover { background: #fff; }
+.office-ppt .ppt-tool[disabled] { opacity: 0.4; }
+
+.office-ppt .ppt-thumbs {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+}
+
+/* 每页一张按显示比例（16:9 / 4:3）缩放的小卡 */
+.office-ppt .ppt-thumb {
+    position: relative;
+    flex: none;
+    aspect-ratio: 16 / 9;
+    padding: 6px 8px 16px;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid var(--office-divider);
+    border-radius: 5px;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+/* 显示比例（ppt.fitSlide）只改视图，模型里没有这个字段；比例类加在视图根 .ppt 上 */
+.office-ppt .ppt.ppt-ratio43 .ppt-thumb { aspect-ratio: 4 / 3; }
+
+.office-ppt .ppt-thumb:hover { border-color: var(--office-muted); }
+
+.office-ppt .ppt-active {
+    border-color: var(--office-accent);
+    box-shadow: 0 0 0 1px var(--office-accent);
+}
+
+.office-ppt .ppt-thumb-no {
+    display: block;
+    font-size: 9px;
+    line-height: 1.2;
+    color: var(--office-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.office-ppt .ppt-thumb-title {
+    display: block;
+    margin-top: 1px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.office-ppt .ppt-thumb-lines { display: block; margin-top: 1px; }
+
+.office-ppt .ppt-thumb-lines span {
+    display: block;
+    font-size: 9px;
+    line-height: 1.4;
+    color: var(--office-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 版式角标：切版式后不用点开才知道这页是什么版式 */
+.office-ppt .ppt-thumb-layout {
+    position: absolute;
+    right: 5px;
+    bottom: 3px;
+    font-size: 8.5px;
+    line-height: 1.2;
+    color: var(--office-muted);
+    opacity: 0.85;
+}
+
+.office-ppt .ppt-thumb.ppt-on-dark .ppt-thumb-no,
+.office-ppt .ppt-thumb.ppt-on-dark .ppt-thumb-lines span,
+.office-ppt .ppt-thumb.ppt-on-dark .ppt-thumb-layout {
+    color: rgba(255, 255, 255, 0.62);
+}
+
+/* ── 右栏：纸面 ── */
+.office-ppt .ppt-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 22px;
+    overflow: auto;
+    box-sizing: border-box;
+}
+
+.office-ppt .ppt-sheet {
+    flex: none;
+    width: 100%;
+    max-width: 820px;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: clamp(14px, 4.5%, 36px);
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid var(--office-divider);
+    border-radius: 8px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+    /* 字号按纸面宽度换算（cqw），窗口再小也只缩字号、不裁文字 */
+    container-type: inline-size;
+}
+
+/* 显示比例（ppt.fitSlide）只改视图，模型里没有这个字段；比例类加在视图根 .ppt 上 */
+.office-ppt .ppt.ppt-ratio43 .ppt-sheet { aspect-ratio: 4 / 3; }
+
+.office-ppt .ppt-title {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    padding: 0 0 6px;
+    font: inherit;
+    font-size: clamp(15px, 3.5cqw, 34px);
+    font-weight: 650;
+    color: var(--office-text);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px dashed var(--office-divider);
+    outline: 0;
+    box-sizing: border-box;
+}
+
+.office-ppt .ppt-title:focus { border-bottom-color: var(--office-accent); }
+
+/* 正文区：单栏时占满，双栏时左右各半。
+   默认字号按纸面宽度换算（纸面宽 = 幻灯片宽 960pt，故 1.95cqw ≈ 18.7pt 正文），
+   11px 只是屏显兜底；模型选了字号时 JS 会写行内值（见 view-ppt.js 的 bodyFontSize）。 */
+.office-ppt .ppt-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    gap: 4%;
+    font-size: clamp(11px, 1.95cqw, 26px);
+}
+
+.office-ppt .ppt-bullets {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    color: inherit;
+}
+
+/* 双栏时右栏画一条浅分隔线，好认哪一栏是哪一栏 */
+.office-ppt .ppt-body.ppt-two .ppt-bullets-right {
+    padding-left: 4%;
+    border-left: 1px dashed var(--office-divider);
+}
+
+.office-ppt .ppt-row {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 项目符号只画在纸上，不进文本 */
+.office-ppt .ppt-row::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--office-accent);
+}
+
+.office-ppt .ppt-bullet {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 1px 0;
+    font: inherit;
+    /* 字号跟 .ppt-body（默认按纸面宽度换算；模型选了字号时由 JS 写成行内值） */
+    font-size: inherit;
+    /* 跟随 .ppt-bullets 的文字色：模型里选了色就用色，没选就用派生 / 主题色 */
+    color: inherit;
+    background: transparent;
+    border: 0;
+    outline: 0;
+}
+
+.office-ppt .ppt-bullet::placeholder { color: var(--office-muted); }
+
+.office-ppt .ppt-rowdel {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    font: inherit;
+    font-size: 13px;
+    line-height: 16px;
+    color: var(--office-muted);
+    background: transparent;
+    border: 1px solid var(--office-divider);
+    border-radius: 50%;
+    cursor: default;
+}
+
+.office-ppt .ppt-rowdel:hover {
+    color: #fff;
+    background: var(--office-accent);
+    border-color: transparent;
+}
+
+.office-ppt .ppt-addbullet {
+    flex: none;
+    align-self: flex-start;
+    height: 24px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 11.5px;
+    color: var(--office-muted);
+    background: transparent;
+    border: 1px dashed var(--office-divider);
+    border-radius: 6px;
+    cursor: default;
+}
+
+.office-ppt .ppt-addbullet:hover {
+    color: var(--office-accent);
+    border-color: var(--office-accent);
+}
+
+/* 「+ 右栏要点」与左栏那颗同款（只有「双栏」版式才显示），靠到右栏那一侧，
+   一眼看得出加的是哪一栏；深色底下的颜色由下面的 .ppt-addbullet 派生规则一起管 */
+.office-ppt .ppt-addbullet-right {
+    align-self: flex-end;
+}
+
+/* 纸面在深色底上：占位符与 chrome 换成白系，深字才看得见 */
+.office-ppt .ppt-sheet.ppt-on-dark .ppt-bullet::placeholder { color: rgba(255, 255, 255, 0.45); }
+.office-ppt .ppt-sheet.ppt-on-dark .ppt-title { border-bottom-color: rgba(255, 255, 255, 0.28); }
+.office-ppt .ppt-sheet.ppt-on-dark .ppt-rowdel {
+    color: rgba(255, 255, 255, 0.65);
+    border-color: rgba(255, 255, 255, 0.28);
+}
+.office-ppt .ppt-sheet.ppt-on-dark .ppt-addbullet {
+    color: rgba(255, 255, 255, 0.65);
+    border-color: rgba(255, 255, 255, 0.28);
+}
+.office-ppt .ppt-sheet.ppt-on-dark .ppt-addbullet:hover { color: #fff; border-color: #fff; }
+.office-ppt .ppt-sheet.ppt-on-dark .ppt-body.ppt-two .ppt-bullets-right { border-left-color: rgba(255, 255, 255, 0.22); }
+
+.office-ppt .ppt-note {
+    flex: none;
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--office-muted);
+}
+
+.office-ppt .ppt-sheet.ppt-on-dark .ppt-note { color: rgba(255, 255, 255, 0.6); }
+
+/* ── 放映覆盖层：贴在窗口根（.office）上，不用浏览器全屏 API ── */
+.office-ppt .ppt-show {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px 12px;
+    background: #101013;
+    box-sizing: border-box;
+    outline: 0;
+    user-select: none;
+}
+
+.office-ppt .ppt-show-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.office-ppt .ppt-show-count {
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+.office-ppt .ppt-show-hint { margin-left: auto; }
+
+.office-ppt .ppt-show-exit {
+    height: 22px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 11.5px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    border-radius: 4px;
+    cursor: default;
+}
+
+.office-ppt .ppt-show-exit:hover { background: rgba(255, 255, 255, 0.2); }
+
+.office-ppt .ppt-show-stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #fff;
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+.office-ppt .ppt-show-page {
+    width: min(100%, 1180px);
+    aspect-ratio: 16 / 9;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2.5%;
+    padding: 0 7%;
+    box-sizing: border-box;
+    color: #1d1d1f;
+    /* 画面宽度 = 幻灯片宽度，故正文字号用 cqw 换算（写在子容器上，不自指查询容器） */
+    container-type: inline-size;
+}
+
+/* 放映也按 ppt.fitSlide 的比例出画面（同样只是显示比例，不进模型） */
+.office-ppt .ppt-show-stage.ppt-ratio43 .ppt-show-page { aspect-ratio: 4 / 3; }
+
+.office-ppt .ppt-show-title {
+    flex: none;
+    margin: 0 0 2%;
+    font-size: clamp(20px, 3.5cqw, 52px);
+    font-weight: 650;
+    line-height: 1.2;
+}
+
+/* 正文档位：默认 1.95cqw ≈ 18.7pt；模型选了字号时 JS 写行内值（bodyFontSize） */
+.office-ppt .ppt-show-cols {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    gap: 5%;
+    font-size: clamp(13px, 1.95cqw, 34px);
+}
+
+.office-ppt .ppt-show-cols > .ppt-show-lines {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.office-ppt .ppt-show-lines p {
+    position: relative;
+    margin: 0 0 0.5em;
+    padding-left: 1.1em;
+    font-size: inherit;
+    line-height: 1.45;
+}
+
+.office-ppt .ppt-show-lines p::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 0.42em;
+    height: 0.42em;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.55;
+}
+
+.office-ppt .ppt-show-stage.ppt-on-dark .ppt-show-page { color: #f2f2f5; }
+
+/* ── 深色主题：纸面与卡片跟着变暗 ── */
+html[data-theme="dark"] .office-ppt .ppt-thumb,
+html[data-theme="dark"] .office-ppt .ppt-sheet {
+    background: #1c1c1f;
+    color: var(--office-text);
+}
+
+html[data-theme="dark"] .office-ppt .ppt-sheet { box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); }
+
+html[data-theme="dark"] .office-ppt .ppt-tool { background: rgba(255, 255, 255, 0.08); }
+html[data-theme="dark"] .office-ppt .ppt-tool:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* ── 打印 / 导出 PDF：放映覆盖层不落进纸里 ── */
+@media print {
+    .office-ppt .ppt-show { display: none !important; }
+}

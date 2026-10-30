@@ -1,0 +1,392 @@
+p {
+  margin: 0;
+}
+
+.window {
+  box-shadow: 0 36px 100px 0 rgba(0, 0, 0, 0.4), 0 0 3px 0 rgba(0, 0, 0, 0.55), inset 0 0 3px 0 rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  width: auto;
+  height: 570px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  /* 不设 justify-content:stretch，避免在插件的 column 布局里把子项垂直拉伸撑爆 */
+  position: absolute;
+  top: calc(50% - 285px);
+  left: calc(50% - 358px);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* ===== 墙纸为主窗口着色（html[data-wallpaper-tint="on"]） =====
+   颜色一律读 main.css :root 里推导好的 --tint-rgb / --tint-color：
+   优先 wallpaper.js 写的 --wallpaper-tint-rgb / --wallpaper-tint-color，
+   其次 appearance.js 写的 --window-tint-rgb，最后兜底中性蓝灰 #6b7c93，
+   两任写主都不在场时界面仍与今天一致（不会闪成黑色或透明）。
+   着色只改 background：这些元素带 backdrop-filter，加 transform / will-change
+   会让 Chrome 把它提升为 3D 合成层，毛玻璃当场退化成一块半透明白色矩形。 */
+html[data-wallpaper-tint="on"] .window {
+  background: rgba(var(--tint-rgb), calc(0.62 * var(--tint-strength)));
+}
+html[data-wallpaper-tint="on"] .window > .left {
+  background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1)),
+    rgba(var(--tint-rgb), calc(0.84 * var(--tint-strength)));
+}
+/* 侧栏被墙纸染深之后，文字该按「墙纸那一层」取黑白，而不是按菜单用的主题面板取。
+   自定义属性沿继承树生效，整块侧栏里的 .selection p 等一起换，JS 不用逐个登记。
+   :not([data-transparency="off"]) 是必要的：关掉透明度后侧栏变成「实色面板 + 45% 掺色」，
+   仍以面板为主，那种组合下让文字去读墙纸档反而会推出白字压在浅侧栏上。 */
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .window > .left {
+  --surface-text: var(--surface-text-wallpaper);
+  --surface-text-rgb: var(--surface-text-wallpaper-rgb);
+  --surface-text-secondary: var(--surface-text-wallpaper-secondary);
+  --surface-text-tertiary: var(--surface-text-wallpaper-tertiary);
+}
+/* 内容区原本是不透明白底：掺色而不是半透明叠色，正文对比度不会被玻璃底吃掉 */
+html[data-wallpaper-tint="on"] .window > .right {
+  background: color-mix(in srgb, var(--tint-color) calc(16% * var(--tint-strength)), #fff);
+}
+html[data-theme="dark"][data-wallpaper-tint="on"] .window {
+  background: rgba(var(--tint-rgb), calc(0.4 * var(--tint-strength)));
+}
+html[data-theme="dark"][data-wallpaper-tint="on"] .window > .left {
+  background: linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)),
+    rgba(var(--tint-rgb), calc(0.8 * var(--tint-strength)));
+}
+html[data-theme="dark"][data-wallpaper-tint="on"] .window > .right {
+  background: color-mix(in srgb, var(--tint-color) calc(22% * var(--tint-strength)), #1e1e1e);
+}
+
+/* 最小化状态：窗口淡出后移除交互。
+   关键禁忌：曾经使用 transform: scale(0.15) translateY(120vh) 触发 Chrome 3D 合成层，
+   强烈破坏 backdrop-filter，导致亚克力面板大窗整片失效 / 闪烁 / 颜色偏移。
+   这里仅使用 opacity + 显隐控制，所有视觉过渡由 dock.js 的 fallBackFadeOut 通过
+   内联 transition 完成，避免任何残留合成层。
+   visibility 必须延迟到淡出结束再生效：否则第一帧就不可见，注释里承诺的「绝不瞬间消失」
+   实际上从未成立（visibility 不可插值，加过渡时间是唯一办法）。 */
+.window.minimized {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+
+/* 窗口缩放手柄：由 window.js 的 resetWindowListeners 统一注入到每个窗口。
+   此前样式表中没有 .resizer 规则，手柄是 .window(display:flex) 里的零宽子项，
+   mousedown 永远命中不到，缩放功能整体失效。 */
+.window > .resizer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  z-index: 5;
+  cursor: nwse-resize;
+  border-bottom-right-radius: 16px;
+  touch-action: none;
+}
+.window > .resizer::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--resizer-line, rgba(0, 0, 0, 0.28));
+  border-bottom: 1.5px solid var(--resizer-line, rgba(0, 0, 0, 0.28));
+}
+/* manifest.window.resizable = false 的插件不出现手柄 */
+.window.no-resize > .resizer {
+  display: none;
+}
+/* legacy 三栏布局（.window > .left / .edge / .right 与 .right 里的 .main / .page / .row /
+   .selection 一整套）：固定侧栏与分隔条宽度，右侧内容区自适应撑满剩余宽度，解决左右白边。
+   ⚠ 这一段是「旧版系统设置外壳」遗留的命名，与设置插件自己的 .ss-row / .ss-group 等同名前缀
+   类只是碰巧相似，并不是同一套组件；今天仍在用它的宿主是 mods/system-settings/index.html
+   （.settings.window > .left/.right）以及任何直接套用三栏结构的窗口。
+   保留原因：删掉这些规则会同时改掉仍在用它们的窗口；因此本文件的约定是
+   —— 新增规则只在「同一或更低特殊度」上跟随（暗色档统一用 html[data-theme="dark"] +
+   原有选择器，不额外加类名），不要用更高权重的选择器覆盖这一段，
+   否则旧外壳（含关于本机所在的 .window 家族）会出现难以回滚的偏移。 */
+.window > .left {
+  flex: 0 0 214px;
+  width: 214px;
+  min-width: 214px;
+  max-width: 214px;
+  height: 100%;
+  background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1)), var(--sidebar-bg, rgba(246, 246, 246, 0.84));
+  backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+  -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+  /* 亚克力稳定层（0.2.74 固化）：隔离让侧栏成为独立 backdrop-root，不被 .window 容器或
+     任何开启 stacking context 的祖先截断；overflow:hidden 同时固化侧栏外缘，不出矩形光斑 */
+  isolation: isolate;
+  overflow: hidden;
+  /* 禁忌：切勿给 backdrop-filter 元素自身加 transform / translateZ / will-change:transform，
+     Chrome 会将其提为 3D 合成层并禁用 backdrop-filter（背景退化、失去毛玻璃、大窗整片失效）。
+     抑制闪烁靠根因已修（brightness(2) 去除）+ 降饱和度，不在本元素做 GPU 提升。 */
+}
+.window > .left .topbar {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+}
+/* 红绿灯（窗口控制按钮）的容器与圆点几何已收敛到
+ * assets/stylesheets/ui/trafficlights.css（令牌驱动的唯一来源），
+ * 符号绘制在 windowtraffic.css。
+ * 原先此处的 .wintools > .red/.yellow/.green 基础块漏了 .gray（禁用位），
+ * 导致关于本机自写 .gray 时缺 box-sizing 而比三色点大 1px；
+ * 下方的 .window > .left .topbar .wintools 容器规则在全仓库无任何 DOM 命中
+ * （只有 .window 直接子节点的 .topbar，不在 .left 内），是逼着 11 个界面
+ * 各自重写布局的根因，一并移除。 */
+.window > .left .topbar swift-input {
+  width: 200px;
+  align-self: center;
+  margin-top: 20px;
+  margin-bottom: 5px;
+}
+.window > .left .list {
+  width: 100%;
+  height: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+  margin-top: 15px;
+  overflow-y: scroll;
+  margin-right: 4px;
+}
+.window > .left .list::-webkit-scrollbar {
+  background: transparent;
+  width: 8px;
+  height: 100%;
+  margin-right: 4px;
+  padding-right: 4px;
+}
+.window > .left .list::-webkit-scrollbar-thumb {
+  border-radius: 100px;
+  width: 8px !important;
+  background: var(--scrollbar-thumb, #a8a9a9);
+}
+.window > .left .list .margin {
+  width: 100%;
+  height: 10px;
+}
+.window > .left .list .selection {
+  width: 180px;
+  height: auto;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  padding-left: 3px;
+  padding-right: 3px;
+  margin-left: 10px;
+}
+.window > .left .list .selection .icon {
+  width: 24px;
+  height: 24px;
+}
+.window > .left .list .selection p {
+  /* 侧栏是亚克力面（本元素自带 backdrop-filter）：文字走系统强制的黑/白档，
+     着色打开后深色墙纸配 --text-primary 的黑字会在深侧栏上糊成一片 */
+  color: var(--surface-text);
+  margin-left: 6.5px;
+  font-size: 13px;
+}
+.window > .left .list .selection.id .icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.window > .left .list .selection.id p.title {
+  font-size: 13px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium";
+}
+.window > .left .list .selection.id p.detail {
+  font-size: 11px;
+  opacity: 0.55;
+}
+.window > .left .list .selection.focus {
+  /* 强调色驱动：选中行底色跟随「强调色」设置，不再钉死系统蓝 */
+  background: var(--accent, #0a82ff);
+}
+.window > .left .list .selection.focus p {
+  color: rgba(255, 255, 255, 0.85);
+}
+.window > .left .list .selection.focus p.detail {
+  color: white;
+}
+.window > .edge {
+  flex: 0 0 1px;
+  width: 1px;
+  min-width: 1px;
+  max-width: 1px;
+  height: 100%;
+  box-shadow: -1px 0 0.5px var(--hairline, rgba(0, 0, 0, 0.05));
+  background: var(--separator, rgba(0, 0, 0, 0.1));
+  position: absolute;
+  left: 214px;
+  top: 0;
+}
+.window > .right {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 501px;
+  height: 100%;
+  background: var(--content-bg, #fff);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.window > .right .toolbar {
+  width: 100%;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+}
+.window > .right .toolbar .controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 100%;
+  padding: 0 10px;
+  filter: invert(1);
+  margin-left: 14px;
+}
+/* 暗色：前进/后退箭头是白色 SVG，浅色栏靠 invert(1) 压黑；
+   深色栏继续 invert 就会「黑底画黑字」彻底看不见，所以暗色档取消反转。 */
+html[data-theme="dark"] .window > .right .toolbar .controls {
+  filter: none;
+}
+.window > .right .toolbar .controls img {
+  width: 10px;
+  margin-right: 14px;
+}
+.window > .right .toolbar p {
+  margin: 0;
+  font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+  color: var(--text-primary, black);
+  font-size: 15px;
+}
+.window > .right .main {
+  width: 100%;
+  height: 100%;
+}
+.window > .right .main .page {
+  display: none;
+}
+.window > .right .main .page .row {
+  width: calc(100% - 60px);
+  height: auto;
+  margin-left: 20px;
+  margin-right: 20px;
+  padding: 10px;
+  border-radius: 6px;
+  border: solid 1px var(--hairline, rgba(0, 0, 0, 0.04));
+  background: var(--group-bg, rgba(0, 0, 0, 0.02));
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: -2;
+}
+.window > .right .main .page .row p {
+  font-size: 13px;
+  align-self: flex-start;
+}
+.window > .right .main .page .row .contents {
+  display: inline-flex;
+}
+.window > .right .main .page .row .contents .pic {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 5px;
+}
+.window > .right .main .page .row .contents .pic:last-child {
+  margin-right: 0;
+}
+.window > .right .main .page .row .contents .pic img {
+  width: 86px;
+  border-radius: 6px;
+}
+.window > .right .main .page .row .contents .pic p {
+  margin-top: 5px;
+  font-size: 11px;
+  margin-bottom: -2.5px;
+  opacity: 0.5;
+  align-self: center;
+}
+.window > .right .main .page .row .contents .pic.focus img {
+  outline: solid var(--accent, #0a82ff) 2.5px;
+}
+.window > .right .main .page .row .contents .pic.focus p {
+  font-family: "SFPro-Semibold", "PingFang-Semibold";
+  opacity: 1;
+}
+.window > .right .main .page .row .contents .oval {
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  outline: solid 1px var(--hairline, rgba(0, 0, 0, 0.04));
+  margin-left: 5px;
+}
+.window > .right .main .page .row .contents .oval.all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
+}
+.window > .right .main .page .row .contents .oval.all .overlay {
+  width: 6px;
+  height: 6px;
+  border-radius: 4px;
+  background: white;
+  outline: solid 1px var(--hairline, rgba(0, 0, 0, 0.04));
+}
+.window > .right .main .page .row .contents .oval.blue {
+  background: #006fff;
+}
+.window > .right .main .page .row .contents .oval.purple {
+  background: #8a358b;
+}
+.window > .right .main .page .row .contents .oval.pink {
+  background: #F64694;
+}
+.window > .right .main .page .row .contents .oval.red {
+  background: #DB3136;
+}
+.window > .right .main .page .row .contents .oval.orange {
+  background: #f67719;
+}
+.window > .right .main .page .row .contents .oval.yellow {
+  background: #FFC022;
+}
+.window > .right .main .page .row .contents .oval.green {
+  background: #57B13D;
+}
+.window > .right .main .page .row .contents .oval.gray {
+  background: #8D8D8D;
+}
+.window > .right .main .page .row.first {
+  border-radius: 6px 6px 0 0;
+  border-bottom: solid 0.5px var(--hairline, rgba(0, 0, 0, 0.04));
+}
+.window > .right .main .page .row.middle {
+  border-radius: 0;
+  border-top: solid 0.5px var(--hairline, rgba(0, 0, 0, 0.04));
+  border-bottom: solid 0.5px var(--hairline, rgba(0, 0, 0, 0.04));
+}
+.window > .right .main .page .row.last {
+  border-radius: 0 0 6px 6px;
+  border-top: solid 0.5px var(--hairline, rgba(0, 0, 0, 0.04));
+}
+.window > .right .main .page .margin {
+  width: 100%;
+  height: 10px;
+}
+.window > .right .main .page.focus {
+  display: initial;
+}/*# sourceMappingURL=window.css.map */

@@ -1,0 +1,14 @@
+{
+  "id": "system-settings",
+  "name": "系统设置",
+  "version": "2.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "系统设置：所有设置项的唯一读写入口",
+  "permissions": ["default-apps:read", "default-apps:write", "apps:launch"],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Réglages système.png"
+}

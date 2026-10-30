@@ -1,0 +1,179 @@
+/* view-word.css — 文稿视图（Office 2016 功能区形态）：A4 纸张 + 块级 contenteditable。
+   功能区自身的视觉在 ribbon.css（由外壳装载），本文件只管纸张与块。
+   本视图的类共 10 个，与 view-word.js 一一对应：
+   word-view / word-stage / word-zoom-layer / word-paper / word-block / word-tab /
+   word-width-narrow / word-width-standard / word-width-wide / show-marks。
+   块上的格式一律读 data-*（由 view-word.js 写入）：能枚举的（段式、四个字符开关、对齐）
+   走属性选择器；不能枚举的（字体名、磅值、色值、缩进级数）由 JS 写成行内 style。 */
+
+.word-view {
+    --word-page: #fff;
+    --word-page-text: #24252a;
+    --word-page-border: rgba(0, 0, 0, 0.07);
+    --word-placeholder: rgba(0, 0, 0, 0.28);
+    --word-rule: rgba(0, 0, 0, 0.08);
+    --word-soft: rgba(0, 0, 0, 0.05);
+    --word-focus-ring: rgba(0, 0, 0, 0.035);
+    --word-mark: rgba(0, 0, 0, 0.34);
+    /* 页宽由 ribbon「视图 → 页宽」改 --word-page-max，缩放由「视图 → 缩放」改 --word-zoom */
+    --word-page-max: 720px;
+    --word-zoom: 1;
+
+    display: block;
+    min-height: 100%;
+    box-sizing: border-box;
+    color: var(--word-page-text);
+}
+
+html[data-theme="dark"] .word-view {
+    --word-page: #33343a;
+    --word-page-text: #e8e8ee;
+    --word-page-border: rgba(255, 255, 255, 0.08);
+    --word-placeholder: rgba(255, 255, 255, 0.32);
+    --word-rule: rgba(255, 255, 255, 0.1);
+    --word-soft: rgba(255, 255, 255, 0.08);
+    --word-focus-ring: rgba(255, 255, 255, 0.04);
+    --word-mark: rgba(255, 255, 255, 0.4);
+}
+
+/* 页宽三档（max-width 语义：纸张随窗口收缩，但不超过这一档） */
+.word-view.word-width-narrow { --word-page-max: 560px; }
+.word-view.word-width-standard { --word-page-max: 720px; }
+.word-view.word-width-wide { --word-page-max: 940px; }
+
+/* ── 缩放三层结构 ──
+   stage 管外边距；layer 管「缩放后的视觉尺寸」（宽度用 calc 交给 CSS，高度由 JS 量过再写死）；
+   paper 保持未缩放的排版尺寸，只套一层 transform: scale()。
+   transform 不改布局盒，所以滚动容器必须由 JS 同步高度，否则 150% 时纸的下半截滚不到。 */
+.word-stage {
+    padding: 18px 16px 48px;
+}
+
+.word-zoom-layer {
+    width: min(100%, calc(var(--word-page-max) * var(--word-zoom)));
+    margin: 0 auto;
+    /* JS 写的是内容高度，上下留白算在外面 */
+    box-sizing: content-box;
+}
+
+.word-paper {
+    /* 这里的 100% 是 layer 的宽度（已含缩放），除以缩放值才等于未缩放的排版宽度 */
+    width: min(100% / var(--word-zoom), var(--word-page-max));
+    min-height: 1016px;
+    padding: 64px 68px;
+    background: var(--word-page);
+    color: var(--word-page-text);
+    border: 1px solid var(--word-page-border);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+    font-size: 15px;
+    line-height: 1.75;
+    box-sizing: border-box;
+    /* 刻意不用 CSS `zoom` 属性，理由写在 view-word.js 的 setZoom() 注释里 */
+    transform: scale(var(--word-zoom));
+    transform-origin: top left;
+}
+
+html[data-theme="dark"] .word-paper { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); }
+
+/* ── 块：一个 Block 一个 contenteditable ── */
+.word-block {
+    margin: 0 0 10px;
+    padding: 1px 4px;
+    outline: none;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    caret-color: var(--office-accent);
+}
+
+.word-block:focus { background: var(--word-focus-ring); }
+
+/* 段式：标题不换标签，靠 data-kind / data-level（role=heading 由 JS 同步写，无障碍不缺） */
+.word-block[data-kind="heading"] {
+    margin: 20px 0 8px;
+    font-weight: 650;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+}
+
+.word-block[data-level="1"] { font-size: 26px; }
+.word-block[data-level="2"] { font-size: 21px; }
+.word-block[data-level="3"] { font-size: 17.5px; }
+
+/* 四个字符开关：下划线与删除线可以叠加，所以补一条双属性选择器盖掉单条的 text-decoration-line */
+.word-block[data-bold="true"] { font-weight: 700; }
+.word-block[data-italic="true"] { font-style: italic; }
+.word-block[data-underline="true"] { text-decoration-line: underline; }
+.word-block[data-strike="true"] { text-decoration-line: line-through; }
+.word-block[data-underline="true"][data-strike="true"] { text-decoration-line: underline line-through; }
+
+/* 对齐：data-align 为空串表示「跟随默认（左）」，所以不写字段为空的规则 */
+.word-block[data-align="center"] { text-align: center; }
+.word-block[data-align="right"] { text-align: right; }
+.word-block[data-align="justify"] { text-align: justify; }
+
+/* 空块占位提示：contenteditable 被清空后浏览器常留一个 <br>，:empty 因此失效，
+   所以再认一层 JS 在 input / focusout 时维护的 data-empty。 */
+.word-block:empty::before,
+.word-block[data-empty="true"]::before {
+    content: attr(data-placeholder);
+    color: var(--word-placeholder);
+    font-weight: 400;
+    font-style: normal;
+    pointer-events: none;
+}
+
+.word-block[data-empty="true"][data-kind="heading"]::before { font-weight: 650; }
+
+/* 制表符：DOM 里就是 `\t` 文本本身（pre-wrap 撑出位置），
+   包一层 span 只为了让「段落标记可视化」有东西可以挂样式。 */
+.word-tab {
+    background: transparent;
+}
+
+/* ── 段落标记与制表符可视化（ribbon「开始 → 显示 → 段落标记」切 show-marks） ── */
+.word-view.show-marks .word-block::after {
+    content: "¶";
+    margin-left: 2px;
+    color: var(--word-mark);
+    font-weight: 400;
+    font-style: normal;
+    pointer-events: none;
+}
+
+.word-view.show-marks .word-tab {
+    background: var(--word-soft);
+    outline: 1px solid var(--word-rule);
+    border-radius: 2px;
+}
+
+.word-view.show-marks .word-tab::before {
+    content: "→";
+    margin-right: 1px;
+    color: var(--word-mark);
+}
+
+@media (max-width: 560px) {
+    .word-stage { padding: 12px 10px 32px; }
+    .word-paper { padding: 40px 30px; }
+}
+
+/* ── 打印 / 导出 PDF：外壳给 <html> 挂 .office-printing 并隐藏功能区与状态栏，
+   这里负责把缩放归零（纸面永远 1:1）并把屏幕上的编辑线索擦掉 ── */
+@media print {
+    .word-stage { padding: 0; }
+    .word-zoom-layer { width: auto; height: auto !important; }
+    .word-paper {
+        width: auto;
+        min-height: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        transform: none;
+    }
+    .word-view.show-marks .word-block::after,
+    .word-view.show-marks .word-tab::before { content: none; }
+    .word-view.show-marks .word-tab { background: transparent; outline: none; }
+}

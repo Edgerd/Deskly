@@ -1,0 +1,301 @@
+/* ribbon.css — Office 2016 风格功能区、快速访问工具栏与打印样式 */
+
+/* ── 功能区 ── */
+.office-ribbon {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    background: #f3f3f3;
+    border-bottom: 1px solid #d6d6d6;
+    user-select: none;
+}
+
+.rb-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    padding: 0 10px;
+    background: #f3f3f3;
+    border-bottom: 1px solid #d0d0d0;
+}
+
+.rb-tab {
+    position: relative;
+    padding: 5px 13px 6px;
+    font-size: 12px;
+    color: #444;
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
+    cursor: default;
+}
+
+.rb-tab:hover { color: #1f3d6b; background: rgba(43, 87, 154, 0.07); }
+
+/* 2016 的选中态：白底 + 左右上描边，与功能区融为一体，底部不画线 */
+.rb-tab.is-active {
+    color: #2b579a;
+    font-weight: 600;
+    background: #fff;
+    border-color: #d0d0d0;
+    margin-bottom: -1px;
+    padding-bottom: 7px;
+}
+
+.rb-tab-file {
+    color: #fff;
+    background: #2b579a;
+    border-radius: 3px;
+    margin: 2px 8px 2px 0;
+    padding: 4px 15px;
+}
+
+.rb-tab-file:hover { color: #fff; background: #1f4480; }
+.rb-tab-file.is-active { color: #fff; background: #17375f; border-color: transparent; margin-bottom: 2px; padding-bottom: 4px; }
+
+.rb-body {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    min-height: 78px;
+    padding: 4px 8px 0;
+    background: #fff;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.rb-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2px 8px 0;
+    border-right: 1px solid #e1e1e1;
+}
+
+.rb-group:last-child { border-right: none; }
+
+.rb-group-items {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.rb-group-label {
+    padding: 2px 0 5px;
+    font-size: 10.5px;
+    color: #777;
+    white-space: nowrap;
+}
+
+/* ── 控件 ── */
+.rb-ctl { display: flex; }
+
+.rb-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 7px;
+    font: inherit;
+    font-size: 12px;
+    color: #333;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: default;
+}
+
+.rb-btn:hover { background: #dcf0fa; border-color: #90c9ea; }
+.rb-btn:active { background: #bde6f7; }
+.rb-btn[disabled] { opacity: 0.4; pointer-events: none; }
+.rb-type-toggle .rb-btn.is-on { background: #cfe6f7; border-color: #7fb4d9; color: #17375f; }
+
+/* 大按钮：图标在上、文字在下（2016 的 primary 命令样式） */
+.rb-large .rb-btn {
+    flex-direction: column;
+    gap: 2px;
+    min-width: 58px;
+    padding: 6px 4px 4px;
+    line-height: 1.2;
+}
+
+.rb-large .rb-label { font-size: 11.5px; }
+
+.rb-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: #2b579a;
+}
+
+.rb-icon svg { width: 14px; height: 9px; fill: currentColor; }
+.rb-large .rb-icon svg { width: 18px; height: 12px; }
+.rb-icon-text { font-size: 13px; font-weight: 600; }
+.rb-label { white-space: nowrap; }
+.rb-sep { width: 1px; height: 22px; margin: 0 2px; background: #e1e1e1; }
+
+/* 下拉：字体名 / 字号 / 对齐之类的取值控件 */
+.rb-select {
+    height: 22px;
+    max-width: 128px;
+    font: inherit;
+    font-size: 12px;
+    color: #333;
+    background: #fff;
+    border: 1px solid #c6c6c6;
+    border-radius: 2px;
+    padding: 0 4px;
+}
+
+.rb-select:hover { border-color: #2b579a; }
+.rb-select-label { font-size: 11px; color: #777; margin-right: 4px; }
+.rb-type-menu { flex-direction: column; gap: 2px; }
+
+/* ── 文件（Backstage 风格） ── */
+.rb-backstage {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    width: 100%;
+    padding: 8px 6px 10px;
+}
+
+.rb-backstage-title { font-size: 15px; font-weight: 600; color: #2b579a; margin: 4px 10px 0 0; }
+
+.rb-backstage-list { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.rb-backstage-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 118px;
+    padding: 7px 12px;
+    font: inherit;
+    text-align: left;
+    color: #333;
+    background: #f7f7f7;
+    border: 1px solid #e1e1e1;
+    border-radius: 3px;
+    cursor: default;
+}
+
+.rb-backstage-item:hover { background: #dcf0fa; border-color: #90c9ea; }
+.rb-backstage-item .rb-hint { font-size: 11px; color: #8a8a8a; }
+
+/* ── 快速访问工具栏（标题栏里的 保存 / 撤销 / 重做） ── */
+.office-qat {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 6px;
+}
+
+.office-qat button {
+    display: inline-flex;
+    width: 20px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #4a4a4a;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: default;
+}
+
+.office-qat button:hover { background: rgba(43, 87, 154, 0.1); border-color: rgba(43, 87, 154, 0.25); }
+.office-qat button[disabled] { opacity: 0.35; }
+
+/* ── 查找与替换浮层 ── */
+.office-find {
+    position: absolute;
+    top: 44px;
+    right: 14px;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 320px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.office-find-row { display: flex; align-items: center; gap: 6px; }
+.office-find input {
+    flex: 1;
+    height: 24px;
+    font: inherit;
+    font-size: 12.5px;
+    padding: 0 7px;
+    border: 1px solid #c6c6c6;
+    border-radius: 2px;
+}
+.office-find .rb-btn { font-size: 12px; }
+.office-find-count { font-size: 11.5px; color: #777; margin-left: auto; }
+.office-find .is-current { color: #2b579a; font-weight: 600; }
+
+/* ── 深色主题：2016 的深色功能区是深灰底 + 浅字，强调色仍用 Office 蓝 ── */
+html[data-theme="dark"] .office-ribbon,
+html[data-theme="dark"] .rb-tabs { background: #2b2b2e; border-bottom-color: #3c3c3f; }
+html[data-theme="dark"] .rb-body { background: #232326; }
+html[data-theme="dark"] .rb-tab { color: #c8c8cc; }
+html[data-theme="dark"] .rb-tab.is-active { color: #7fb1e8; background: #232326; border-color: #3c3c3f; }
+html[data-theme="dark"] .rb-group { border-right-color: #3c3c3f; }
+html[data-theme="dark"] .rb-group-label { color: #9a9aa0; }
+html[data-theme="dark"] .rb-btn { color: #dcdce0; }
+html[data-theme="dark"] .rb-btn:hover { background: #33333a; border-color: #4a4a55; }
+html[data-theme="dark"] .rb-type-toggle .rb-btn.is-on { background: #1f3d6b; border-color: #3f6fae; color: #dceaff; }
+html[data-theme="dark"] .rb-icon { color: #7fb1e8; }
+html[data-theme="dark"] .rb-sep { background: #3c3c3f; }
+html[data-theme="dark"] .rb-select { background: #1b1b1e; color: #dcdce0; border-color: #3c3c3f; }
+html[data-theme="dark"] .rb-select-label { color: #9a9aa0; }
+html[data-theme="dark"] .rb-backstage-item { background: #2b2b2e; border-color: #3c3c3f; color: #dcdce0; }
+html[data-theme="dark"] .rb-backstage-item:hover { background: #33333a; border-color: #4a4a55; }
+html[data-theme="dark"] .rb-backstage-title { color: #7fb1e8; }
+html[data-theme="dark"] .office-qat button { color: #c8c8cc; }
+html[data-theme="dark"] .office-qat button:hover { background: #33333a; border-color: #4a4a55; }
+html[data-theme="dark"] .office-find { background: #232326; border-color: #3c3c3f; }
+html[data-theme="dark"] .office-find input { background: #1b1b1e; color: #dcdce0; border-color: #3c3c3f; }
+html[data-theme="dark"] .office-find-count { color: #9a9aa0; }
+
+/* ── 打印 / 导出 PDF ──
+   外壳在打印前给 <html> 挂 .office-printing，并把目标窗口标记为 .office-print-target：
+   此时整个桌面（壁纸、Dock、其它窗口、功能区与状态栏）全部隐藏，只有文档区留在纸上，
+   于是 Chrome 的「打印 → 另存为 PDF」出来的就是干净的文档本身。 */
+@media print {
+    html.office-printing body > *:not(.window.office-print-target) { display: none !important; }
+    html.office-printing .window.office-print-target {
+        position: static !important;
+        display: block !important;
+        width: auto !important;
+        height: auto !important;
+        max-height: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: #fff !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        overflow: visible !important;
+    }
+    html.office-printing .window.office-print-target .office-titlebar,
+    html.office-printing .window.office-print-target .office-ribbon,
+    html.office-printing .window.office-print-target .office-statusbar,
+    html.office-printing .window.office-print-target .office-find,
+    html.office-printing .window.office-print-target .wintools,
+    html.office-printing .window.office-print-target .resizer { display: none !important; }
+    html.office-printing .window.office-print-target .office-canvas {
+        overflow: visible !important;
+        background: #fff !important;
+        padding: 0 !important;
+    }
+    html.office-printing .window.office-print-target .office-view { color: #000 !important; }
+}

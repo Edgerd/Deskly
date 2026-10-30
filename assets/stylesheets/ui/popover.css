@@ -1,0 +1,78 @@
+/*
+ * popover.css — 浮出层样式（配套 src/javascripts/ui/popover.js）
+ *
+ * 分工：这里只负责「层」本身，不负责任何一个具体菜单的外观。
+ * 菜单的几何（position/top/left/max-height/min-width）由 popover.js 写成内联样式 ——
+ * 插件的 style.css 是运行时注入的，同权重规则谁赢取决于加载顺序，写在样式表里
+ * 摆不平 `.settings .ss-menu{top:calc(100%+4px);right:0}` 这类原本为「在窗口内定位」
+ * 而写的声明。
+ */
+
+.os-popover-layer {
+    position: fixed;
+    inset: 0;
+    /* 与 src/javascripts/zindex.js 的 Z.POPOVER 同值（CSS 无法 import，改一处要改两处，
+       见 dev/devdoc/z-layers.md）。压在窗口(≤9000)/Dock(9500)/控制中心(9630)之上，
+       菜单栏(9999)、亮度压暗层(10000)、锁屏遮罩(10010)之下。 */
+    z-index: 9640;
+    /* 整层不吃鼠标：只有真正浮出来的菜单可点，否则这一层会盖住桌面拦掉所有点击 */
+    pointer-events: none;
+    /* 这一层存在的意义就是把浮层送到窗口裁剪区之外，自己绝不能再裁一次 */
+    overflow: visible;
+}
+
+/* 作用域载体：popover.js 把所属窗口的根类名（settings / notepad / finder）抄到这里，
+   `.settings .ss-menu` 这类后代选择器与 --ss-* / --np-* 令牌才继续命中。
+   载体本身必须是透明节点，所以把裸类上可能带的一切盒模型与视觉效果全部压掉 ——
+   漏一条就是事故：记事本的 `.notepad` 裸类上有 backdrop-filter + overflow:hidden +
+   border-radius，transform/backdrop-filter 还会把这里变成 fixed 后代的包含块，
+   等于把裁剪又搬回视口层。 */
+.os-popover-scope {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    transform: none !important;
+    will-change: auto !important;
+    contain: none !important;
+    container-type: normal !important;
+    clip-path: none !important;
+    isolation: auto !important;
+    mix-blend-mode: normal !important;
+    z-index: auto !important;
+    pointer-events: none;
+}
+
+/* 浮层节点自己开鼠标事件（pointer-events 会继承，载体是 none） */
+.os-popover-scope > * {
+    pointer-events: auto;
+}
+
+/* 隐藏态兜底：菜单被搬出 .window 之后，原本那条
+   `.settings.window [hidden]{display:none !important}` 就不管用了，而布局规则给了它
+   display:flex，光靠 UA 的 [hidden] 遮不住。 */
+.os-popover-layer [hidden] {
+    display: none !important;
+}
+
+/* 降低动效：与 main.css 里对 .ss-menu 的处理保持一致（这一层的过渡也钉掉） */
+html[data-reduce-motion="on"] .os-popover-layer * {
+    transition: none !important;
+    animation: none !important;
+}

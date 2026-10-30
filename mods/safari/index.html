@@ -1,0 +1,244 @@
+<!--
+    Safari 浏览器 — macOS Sequoia 版式
+
+    结构对齐原版：一条统一工具栏（红绿灯 / 侧栏 / 标签组 / 前进后退 /
+    紧凑标签栏 / 共享 / 新建 / 标签页概览），单标签时地址栏就是当前标签本身，
+    多标签时左右出现标签胶囊；侧栏在工具栏下方展开，网页内容与起始页共用舞台。
+
+    尺寸唯一来源在根元素 data-window；窗口 id 必须保持「Safari浏览器」，
+    顶栏菜单与程序坞都按这个名字找窗口。
+-->
+<div class="safari window" id="Safari浏览器" lang="zh-CN" data-window="size:1120x700 min:720x460 centered">
+<svg class="safari-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+    <defs>
+        <symbol id="safari-i-sidebar" viewBox="0 0 16 16">
+            <rect x="2.2" y="2.9" width="11.6" height="10.2" rx="2.2"/>
+            <path d="M6.1 3v10"/>
+        </symbol>
+        <symbol id="safari-i-chevron-down" viewBox="0 0 16 16">
+            <path d="m4.5 6.2 3.5 3.6 3.5-3.6"/>
+        </symbol>
+        <symbol id="safari-i-back" viewBox="0 0 16 16">
+            <path d="M9.8 3.7 5.6 8l4.2 4.3"/>
+        </symbol>
+        <symbol id="safari-i-forward" viewBox="0 0 16 16">
+            <path d="m6.2 3.7 4.2 4.3-4.2 4.3"/>
+        </symbol>
+        <symbol id="safari-i-page" viewBox="0 0 16 16">
+            <rect x="3" y="2.4" width="10" height="11.2" rx="2"/>
+            <path d="M5.4 5.4h5.2M5.4 8h5.2M5.4 10.6h3.1"/>
+        </symbol>
+        <symbol id="safari-i-reload" viewBox="0 0 16 16">
+            <path d="M13 8.2a5 5 0 1 1-1.5-3.6"/>
+            <path d="M13.1 2.9v3.4h-3.4"/>
+        </symbol>
+        <symbol id="safari-i-stop" viewBox="0 0 16 16">
+            <path d="m4.7 4.7 6.6 6.6M11.3 4.7l-6.6 6.6"/>
+        </symbol>
+        <symbol id="safari-i-share" viewBox="0 0 16 16">
+            <path d="M8 2.6v8.5"/>
+            <path d="M5.1 5.4 8 2.5l2.9 2.9"/>
+            <path d="M3.4 8.2v4.4h9.2V8.2"/>
+        </symbol>
+        <symbol id="safari-i-plus" viewBox="0 0 16 16">
+            <path d="M8 2.8v10.4M2.8 8h10.4"/>
+        </symbol>
+        <symbol id="safari-i-overview" viewBox="0 0 16 16">
+            <rect x="2.4" y="4.4" width="8.2" height="7.2" rx="1.7"/>
+            <rect x="5.4" y="2.4" width="8.2" height="7.2" rx="1.7"/>
+        </symbol>
+        <symbol id="safari-i-magnifier" viewBox="0 0 16 16">
+            <circle cx="7.2" cy="7.2" r="4.1"/>
+            <path d="m10.3 10.3 3 3"/>
+        </symbol>
+        <symbol id="safari-i-globe" viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="5.6"/>
+            <path d="M2.6 8h10.8M8 2.4c1.7 1.7 2.5 3.5 2.5 5.6S9.7 11.9 8 13.6C6.3 11.9 5.5 10.1 5.5 8S6.3 4.1 8 2.4Z"/>
+        </symbol>
+        <symbol id="safari-i-star" viewBox="0 0 16 16">
+            <path d="m8 2.3 1.7 3.6 3.9.5-2.9 2.7.7 3.9L8 11.1 4.6 13l.7-3.9L2.4 6.4l3.9-.5Z"/>
+        </symbol>
+        <symbol id="safari-i-clock" viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="5.6"/>
+            <path d="M8 4.6V8l2.4 1.5"/>
+        </symbol>
+        <symbol id="safari-i-book" viewBox="0 0 16 16">
+            <path d="M8 4.3C6.7 3.4 5.1 3 3 3v8.2c2.1 0 3.7.3 5 1.2 1.3-.9 2.9-1.2 5-1.2V3c-2.1 0-3.7.4-5 1.3Z"/>
+            <path d="M8 4.3v8.1"/>
+        </symbol>
+        <symbol id="safari-i-warning" viewBox="0 0 16 16">
+            <path d="M8 2.4 14 13H2Z"/>
+            <path d="M8 6.2v3.2M8 11.4v.2"/>
+        </symbol>
+        <symbol id="safari-i-close" viewBox="0 0 16 16">
+            <path d="m4.6 4.6 6.8 6.8M11.4 4.6l-6.8 6.8"/>
+        </symbol>
+        <symbol id="safari-i-sliders" viewBox="0 0 16 16">
+            <path d="M2.6 5h10.8M2.6 11h10.8"/>
+            <circle cx="6" cy="5" r="1.5"/>
+            <circle cx="10" cy="11" r="1.5"/>
+        </symbol>
+        <symbol id="safari-i-check" viewBox="0 0 16 16">
+            <path d="m3.2 8.4 3 3 6.6-6.8"/>
+        </symbol>
+        <symbol id="safari-i-minus" viewBox="0 0 16 16">
+            <path d="M3.5 8h9"/>
+        </symbol>
+        <symbol id="safari-i-external" viewBox="0 0 16 16">
+            <path d="M9.4 2.6h4v4"/>
+            <path d="m13.4 2.6-6 6"/>
+            <path d="M11.8 9.2v4.2H2.6V4.2h4.2"/>
+        </symbol>
+        <symbol id="safari-i-folder" viewBox="0 0 16 16">
+            <path d="M2.4 4.3h4.1l1.2 1.5h5.9v7H2.4Z"/>
+        </symbol>
+        <symbol id="safari-i-link" viewBox="0 0 16 16">
+            <path d="M6.2 9.8a2.8 2.8 0 0 0 4 0l1.7-1.7a2.8 2.8 0 0 0-4-4l-1 1"/>
+            <path d="M9.8 6.2a2.8 2.8 0 0 0-4 0L4.1 7.9a2.8 2.8 0 0 0 4 4l1-1"/>
+        </symbol>
+        <symbol id="safari-i-tabs" viewBox="0 0 16 16">
+            <rect x="2.4" y="3.2" width="11.2" height="9.6" rx="1.8"/>
+            <path d="M2.4 6.2h11.2"/>
+        </symbol>
+    </defs>
+</svg>
+
+    <header class="safari-toolbar" id="safari-toolbar" data-titlebar>
+        <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
+
+        <button class="safari-tbbtn" id="safari-sidebar-toggle" type="button"
+                title="显示侧栏（⌃⌘S）" aria-label="显示侧栏" aria-pressed="false">
+            <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-sidebar"></use></svg>
+        </button>
+
+        <button class="safari-tbbtn safari-tabgroup-btn" id="safari-tabgroup-btn" type="button"
+                title="标签页" aria-label="显示标签页列表" aria-haspopup="menu" aria-expanded="false">
+            <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-chevron-down"></use></svg>
+        </button>
+
+        <div class="safari-nav">
+            <button class="safari-tbbtn" id="safari-back" type="button" title="后退（⌘[）" aria-label="后退" disabled>
+                <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-back"></use></svg>
+            </button>
+            <button class="safari-tbbtn" id="safari-forward" type="button" title="前进（⌘]）" aria-label="前进" disabled>
+                <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-forward"></use></svg>
+            </button>
+        </div>
+
+        <div class="safari-tabs" id="safari-tabs" role="tablist" aria-label="标签页"></div>
+
+        <div class="safari-toolbar-actions">
+            <button class="safari-tbbtn" id="safari-share" type="button" title="共享" aria-label="共享" aria-haspopup="menu" aria-expanded="false">
+                <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-share"></use></svg>
+            </button>
+            <button class="safari-tbbtn" id="safari-newtab" type="button" title="新建标签页（⌘T）" aria-label="新建标签页">
+                <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-plus"></use></svg>
+            </button>
+            <button class="safari-tbbtn" id="safari-overview-toggle" type="button" title="标签页概览" aria-label="标签页概览" aria-pressed="false">
+                <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-overview"></use></svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="safari-body">
+        <aside class="safari-sidebar" id="safari-sidebar" aria-label="侧栏" aria-hidden="true">
+            <div class="safari-sidebar-inner">
+                <header class="safari-sidebar-head">
+                    <button class="safari-sidebar-back" id="safari-sidebar-back" type="button" title="返回" aria-label="返回" hidden>
+                        <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-back"></use></svg>
+                    </button>
+                    <h2 class="safari-sidebar-title" id="safari-sidebar-title">侧栏</h2>
+                    <button class="safari-sidebar-action" id="safari-sidebar-add" type="button" aria-label="添加当前页面" hidden>
+                        <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-plus"></use></svg>
+                    </button>
+                    <button class="safari-sidebar-action safari-sidebar-clear" id="safari-sidebar-clear" type="button" aria-label="清除历史记录" hidden>
+                        清除
+                    </button>
+                </header>
+                <div class="safari-sidebar-search" id="safari-sidebar-search-wrap" hidden>
+                    <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-magnifier"></use></svg>
+                    <input class="safari-sidebar-input" id="safari-sidebar-input" type="text" spellcheck="false"
+                           autocomplete="off" placeholder="搜索" aria-label="搜索侧栏">
+                </div>
+                <div class="safari-sidebar-body" id="safari-sidebar-body"></div>
+            </div>
+        </aside>
+
+        <main class="safari-stage" id="safari-stage">
+            <section class="safari-start" id="safari-start" data-bg="sequoia" aria-label="起始页">
+                <div class="safari-start-bg" aria-hidden="true">
+                    <img class="safari-start-bg-day" src="./assets/images/sequoia.shape.day.jpg" alt="" draggable="false">
+                    <img class="safari-start-bg-night" src="./assets/images/sequoia.shape.night.jpg" alt="" draggable="false">
+                    <span class="safari-start-scrim"></span>
+                </div>
+                <div class="safari-start-scroll" id="safari-start-scroll">
+                    <div class="safari-start-inner">
+                        <section class="safari-start-section" id="safari-section-favorites" aria-labelledby="safari-heading-favorites">
+                            <h2 class="safari-start-heading" id="safari-heading-favorites">个人收藏</h2>
+                            <div class="safari-favorites" id="safari-favorites"></div>
+                        </section>
+                        <section class="safari-start-section" id="safari-section-frequent" aria-labelledby="safari-heading-frequent" hidden>
+                            <h2 class="safari-start-heading" id="safari-heading-frequent">经常访问</h2>
+                            <div class="safari-frequent" id="safari-frequent"></div>
+                        </section>
+                        <section class="safari-start-section" id="safari-section-reading" aria-labelledby="safari-heading-reading" hidden>
+                            <h2 class="safari-start-heading" id="safari-heading-reading">阅读列表</h2>
+                            <div class="safari-reading" id="safari-reading"></div>
+                        </section>
+                    </div>
+                </div>
+                <button class="safari-edit-btn" id="safari-edit-btn" type="button" aria-haspopup="dialog" aria-expanded="false">
+                    <svg class="safari-icon" aria-hidden="true"><use href="#safari-i-sliders"></use></svg>
+                    <span>编辑</span>
+                </button>
+            </section>
+
+            <div class="safari-pages" id="safari-pages" hidden></div>
+
+            <div class="safari-error" id="safari-error" hidden>
+                <div class="safari-error-card" role="alert">
+                    <div class="safari-error-glyph" aria-hidden="true">
+                        <svg class="safari-icon"><use href="#safari-i-globe"></use></svg>
+                    </div>
+                    <h2>无法打开页面</h2>
+                    <p id="safari-error-text"></p>
+                    <div class="safari-error-actions">
+                        <button class="safari-btn safari-btn--primary" id="safari-error-external" type="button">在默认浏览器中打开</button>
+                        <button class="safari-btn" id="safari-error-reload" type="button">重新载入</button>
+                    </div>
+                </div>
+            </div>
+
+            <section class="safari-overview" id="safari-overview" aria-label="标签页概览" hidden>
+                <header class="safari-overview-head">
+                    <div>
+                        <h2>标签页</h2>
+                        <p class="safari-overview-sub" id="safari-overview-sub"></p>
+                    </div>
+                    <button class="safari-btn safari-btn--plain" id="safari-overview-done" type="button">完成</button>
+                </header>
+                <div class="safari-overview-grid" id="safari-overview-grid"></div>
+            </section>
+        </main>
+    </div>
+
+    <div class="safari-popover safari-suggestions" id="safari-suggestions" role="listbox" aria-label="搜索建议" hidden></div>
+    <div class="safari-popover safari-menu" id="safari-page-menu" role="menu" aria-label="页面菜单" hidden></div>
+    <div class="safari-popover safari-menu" id="safari-share-menu" role="menu" aria-label="共享" hidden></div>
+    <div class="safari-popover safari-menu safari-tab-list" id="safari-tab-list" role="menu" aria-label="标签页列表" hidden></div>
+    <div class="safari-popover safari-edit-panel" id="safari-edit-panel" role="dialog" aria-label="起始页设置" hidden></div>
+    <div class="safari-popover safari-menu safari-context" id="safari-context-menu" role="menu" hidden></div>
+
+    <div class="safari-confirm" id="safari-confirm" hidden>
+        <div class="safari-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="safari-confirm-title" aria-describedby="safari-confirm-message">
+            <h2 id="safari-confirm-title"></h2>
+            <p id="safari-confirm-message"></p>
+            <div class="safari-confirm-actions">
+                <button class="safari-btn" id="safari-confirm-cancel" type="button">取消</button>
+                <button class="safari-btn safari-btn--danger" id="safari-confirm-ok" type="button">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="safari-toast" id="safari-toast" role="status" aria-live="polite" hidden></div>
+</div>

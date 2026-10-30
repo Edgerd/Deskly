@@ -1,0 +1,238 @@
+/* view-excel.css — 表格网格视图样式（与 view-excel.js 类名一一对应，探针做双向核对）。
+   作用域全部挂在 .excel-view 下，配色沿用外壳的 --office-* 变量；
+   深色主题走 html[data-theme="dark"] 前缀。
+   功能区按钮不在这里 —— 那是 ribbon.css 的活儿，本文件只管网格与地址栏。 */
+
+.excel-view {
+    /* --excel-zoom 是缩放档位（JS 写 0.8 / 1 / 1.2 / 1.4）。
+       刻意不用 CSS `zoom`：
+       1. `zoom` 会改变 sticky 表头的包含块计算，行 / 列头滚到边界容易飘（Chrome 的老 bug 反复出）；
+       2. 编辑器 <input> 绝对定位在 .excel-table 里，用 offsetLeft / offsetWidth 定位，
+          zoom 之后「布局像素」与「绘制像素」分家，编辑器会盖不准格子；
+       3. zoom 是位图级缩放，小字号发虚；按档位重算行高 / 列宽 / 字号，文字始终清晰。
+       代价是所有尺寸都要写成 calc(... * var(--excel-zoom))，JS 里的列宽模板同样乘一遍。 */
+    --excel-zoom: 1;
+
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    color: var(--office-text);
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+/* ── 地址栏：A1 坐标 + 选中格原文 + 公式错误计数（替代原来的按钮条） ── */
+.excel-view .excel-namebar {
+    height: 26px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    font-size: calc(11.5px * var(--excel-zoom));
+    background: var(--office-chrome);
+    border-bottom: 1px solid var(--office-divider);
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.excel-view .excel-addr {
+    min-width: 42px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--office-accent);
+}
+
+/* 原文：公式格在这里显示 `=SUM(A1:A3)` —— 格里显示算出来的数，存的是这条原文 */
+.excel-view .excel-raw {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--office-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.excel-view .excel-err {
+    flex: none;
+    padding: 1px 7px;
+    font-size: calc(10.5px * var(--excel-zoom));
+    color: #a4262c;
+    background: rgba(164, 38, 44, 0.1);
+    border-radius: 8px;
+}
+
+/* ── 网格滚动容器：键盘焦点载体（缩放作用在它内部的表格上，滚动条不受影响） ── */
+.excel-view .excel-grid {
+    flex: 1 1 auto;
+    overflow: auto;
+    background: var(--office-canvas);
+    outline: none;
+    box-sizing: border-box;
+}
+
+/* ── 网格本体：首列 46px 行头，行高 26px，列宽由 JS 写入 grid-template-columns（都已按档位缩放） ── */
+.excel-view .excel-table {
+    display: grid;
+    /* minmax 的上界用 auto：开了自动换行的格子会把行撑高，不会被固定行高裁掉 */
+    grid-auto-rows: minmax(calc(26px * var(--excel-zoom)), auto);
+    align-content: start;
+    position: relative;
+    width: max-content;
+    min-width: 100%;
+    background: #fff;
+    font-size: calc(12px * var(--excel-zoom));
+}
+
+.excel-view .excel-corner {
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 3;
+    background: var(--office-chrome);
+    border-right: 1px solid var(--office-divider);
+    border-bottom: 1px solid var(--office-divider);
+    box-sizing: border-box;
+}
+
+.excel-view .excel-colhead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(11px * var(--excel-zoom));
+    color: var(--office-muted);
+    background: var(--office-chrome);
+    border-right: 1px solid var(--office-divider);
+    border-bottom: 1px solid var(--office-divider);
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.excel-view .excel-rowhead {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(11px * var(--excel-zoom));
+    color: var(--office-muted);
+    background: var(--office-chrome);
+    border-right: 1px solid var(--office-divider);
+    border-bottom: 1px solid var(--office-divider);
+    box-sizing: border-box;
+    user-select: none;
+}
+
+/* 选中单元格所在行 / 列头高亮 */
+.excel-view .is-head {
+    color: var(--office-accent);
+    background: rgba(31, 158, 90, 0.08);
+    background: color-mix(in srgb, var(--office-accent) 10%, var(--office-chrome));
+}
+
+/* 列宽拖拽把手：压在列头右边界上 */
+.excel-view .excel-resizer {
+    position: absolute;
+    right: -3px;
+    top: 0;
+    width: 7px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 4;
+}
+
+.excel-view .excel-cell {
+    padding: 0 6px;
+    font-size: calc(12px * var(--excel-zoom));
+    line-height: calc(25px * var(--excel-zoom));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-right: 1px solid var(--office-divider);
+    border-bottom: 1px solid var(--office-divider);
+    background: #fff;
+    cursor: default;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+/* 网格线开关（「开始」与「视图」两处的同一个 toggle）：只隐格线，行头列头照旧 */
+.excel-view.no-gridlines .excel-cell {
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+}
+
+/* ── 单元格样式：字体 / 对齐 / 换行走类名（深色主题能覆盖），只有 color / fill 由 JS 写内联 ── */
+.excel-view .is-bold { font-weight: 600; }
+.excel-view .is-italic { font-style: italic; }
+.excel-view .is-underline { text-decoration: underline; }
+.excel-view .is-strike { text-decoration: line-through; }
+
+/* 同时开下划线与删除线：text-decoration 简写会互相覆盖，所以补一条组合规则 */
+.excel-view .is-underline.is-strike { text-decoration: underline line-through; }
+
+.excel-view .is-left { text-align: left; }
+.excel-view .is-center { text-align: center; }
+.excel-view .is-right { text-align: right; }
+
+/* 标准对齐（align = null）时数字靠右、文本靠左 —— 与 Excel 一致 */
+.excel-view .is-num { text-align: right; }
+
+/* 自动换行：行高由 .excel-table 的 minmax(..., auto) 撑开 */
+.excel-view .is-wrap {
+    white-space: normal;
+    overflow-wrap: break-word;
+    text-overflow: clip;
+}
+
+/* 选中格外框（inset 描边不挤占网格线） */
+.excel-view .is-sel {
+    box-shadow: inset 0 0 0 2px var(--office-accent);
+    background: color-mix(in srgb, var(--office-accent) 5%, #fff);
+}
+
+/* 编辑中：文本让位给覆盖其上的编辑器 input。
+   字色是 JS 写的内联样式，内联优先级高于类，所以这里必须 !important 才压得住。 */
+.excel-view .is-editing { color: transparent !important; }
+
+/* 拖列宽过程中整视图锁定选区与指针 */
+.excel-view.is-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+/* 全网格唯一的编辑器，绝对定位盖在当前格子上（尺寸由 JS 按格子写死） */
+.excel-view .excel-editor {
+    position: absolute;
+    z-index: 6;
+    margin: 0;
+    padding: 0 5px;
+    font: inherit;
+    font-size: calc(12px * var(--excel-zoom));
+    color: var(--office-text);
+    background: #fff;
+    border: 2px solid var(--office-accent);
+    border-radius: 0;
+    outline: none;
+    box-sizing: border-box;
+}
+
+/* ── 深色主题 ── */
+html[data-theme="dark"] .excel-view .excel-err {
+    color: #ff9a9a;
+    background: rgba(255, 154, 154, 0.14);
+}
+
+html[data-theme="dark"] .excel-view .excel-table { background: #1e1f22; }
+html[data-theme="dark"] .excel-view .excel-cell { background: #1e1f22; }
+html[data-theme="dark"] .excel-view .is-sel {
+    background: color-mix(in srgb, var(--office-accent) 14%, #1e1f22);
+}
+html[data-theme="dark"] .excel-view .is-head {
+    background: color-mix(in srgb, var(--office-accent) 14%, rgba(40, 40, 42, 0.86));
+}
+html[data-theme="dark"] .excel-view .excel-editor { background: #26272b; }

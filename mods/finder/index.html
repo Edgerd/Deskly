@@ -1,0 +1,249 @@
+<!-- 访达窗口尺寸与「可缩放」由本文件声明；最小尺寸留在 style.css 的 min-width/min-height，
+     窗口管理器直接读计算样式，两处不会各算一套边界。 -->
+<div class="finder window" id="访达" data-window="size:800x500 centered">
+    <!--
+      DOM 重构说明：
+      - .finder-clip 是内部裁剪容器，承载标题栏 / 标签栏 / 主体内容，承担 border-radius + overflow:hidden 的视觉裁剪；
+      - .tb-pop / .finder-quicklook / .finder-modal 作为 .finder.window 的直接子元素放在 .finder-clip 之外，
+        从而不被内层裁剪容器裁掉；但 `.window{overflow:hidden}` 仍然管着它们，
+        所以下拉弹层真正伸出窗口是靠 src/javascripts/ui/popover.js 把它临时搬进 body 上的浮出层
+        （.finder-quicklook / .finder-modal 本来就按窗口尺寸铺满，不需要）。
+    -->
+    <div class="finder-clip">
+
+    <!-- 合并单条标题栏（macOS 15：交通灯 + 导航 + 文件夹名 + 视图 + 分组/共享/标记/更多 + 搜索） -->
+    <div class="finder-titlebar" data-titlebar>
+        <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
+
+        <div class="tb-nav">
+            <button class="tb-btn" id="nav-back" aria-label="返回" title="返回">
+                <svg width="18" height="18" viewBox="0 0 20 20"><path d="M12.5 4L7 10l5.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="tb-btn" id="nav-forward" aria-label="前进" title="前进">
+                <svg width="18" height="18" viewBox="0 0 20 20"><path d="M7.5 4L13 10l-5.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+        </div>
+
+        <!-- 标题文本由 finder-toolbar.js 按当前路径写入，故不加 data-i18n（会被 applyTranslations 覆盖成应用名） -->
+        <div class="finder-window-title" id="finder-title">访达</div>
+
+        <div class="tb-spacer"></div>
+
+        <div class="tb-views" id="tb-views">
+            <button class="view-btn active" data-view="icon" id="view-icon" aria-label="图标" title="图标">
+                <svg width="18" height="18" viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="7" height="7" rx="1.6" fill="currentColor"/><rect x="10.5" y="2.5" width="7" height="7" rx="1.6" fill="currentColor"/><rect x="2.5" y="10.5" width="7" height="7" rx="1.6" fill="currentColor"/><rect x="10.5" y="10.5" width="7" height="7" rx="1.6" fill="currentColor"/></svg>
+            </button>
+            <button class="view-btn" data-view="list" id="view-list" aria-label="列表" title="列表">
+                <svg width="18" height="18" viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="2" rx="1" fill="currentColor"/><rect x="2.5" y="9" width="15" height="2" rx="1" fill="currentColor"/><rect x="2.5" y="14.5" width="15" height="2" rx="1" fill="currentColor"/></svg>
+            </button>
+            <button class="view-btn" data-view="column" id="view-column" aria-label="分栏" title="分栏">
+                <svg width="18" height="18" viewBox="0 0 20 20"><rect x="2.5" y="3" width="4.2" height="14" rx="1.4" fill="currentColor"/><rect x="7.9" y="3" width="4.2" height="14" rx="1.4" fill="currentColor"/><rect x="13.3" y="3" width="4.2" height="14" rx="1.4" fill="currentColor"/></svg>
+            </button>
+            <button class="view-btn" data-view="gallery" id="view-gallery" aria-label="画廊" title="画廊">
+                <svg width="18" height="18" viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="15" height="9" rx="1.6" fill="currentColor"/><rect x="2.5" y="13" width="4.4" height="4.5" rx="1.2" fill="currentColor" opacity="0.7"/><rect x="7.9" y="13" width="4.4" height="4.5" rx="1.2" fill="currentColor" opacity="0.7"/><rect x="13.3" y="13" width="4.2" height="4.5" rx="1.2" fill="currentColor" opacity="0.7"/></svg>
+            </button>
+        </div>
+
+        <div class="tb-actions">
+            <button class="tb-btn" id="action-group" aria-label="分组" title="分组">
+                <svg width="18" height="18" viewBox="0 0 20 20"><rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.4" fill="currentColor"/><rect x="11" y="2.5" width="6.5" height="6.5" rx="1.4" fill="currentColor"/><rect x="2.5" y="11" width="6.5" height="6.5" rx="1.4" fill="currentColor"/><rect x="11" y="11" width="6.5" height="6.5" rx="1.4" fill="currentColor"/><path d="M5 17.4l1.4 1.4 2.6-2.8 2.6 2.8L13 17.4 10.4 14.6 13 11.8 11.6 10.4 8.4 13.2 5.8 10.4 4.4 11.8 7 14.6z" fill="currentColor" opacity="0.55"/></svg>
+            </button>
+            <button class="tb-btn" id="action-share" aria-label="共享" title="共享">
+                <svg width="18" height="18" viewBox="0 0 20 20"><path d="M10 2.8v8.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M6.8 6L10 2.8 13.2 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 11v4.2a1.4 1.4 0 001.4 1.4h9.2a1.4 1.4 0 001.4-1.4V11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+            <button class="tb-btn" id="action-tag" aria-label="标记" title="标记">
+                <svg width="18" height="18" viewBox="0 0 20 20"><path d="M3 3h8l6 6-8 8-6-6V3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="6.5" cy="6.5" r="1.5" fill="currentColor"/></svg>
+            </button>
+            <button class="tb-btn" id="action-more" aria-label="更多" title="更多">
+                <svg width="18" height="18" viewBox="0 0 20 20"><circle cx="4" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="16" cy="10" r="1.6" fill="currentColor"/></svg>
+            </button>
+        </div>
+
+        <div class="tb-search">
+            <button class="tb-btn" id="search-toggle" aria-label="搜索" title="搜索">
+                <svg width="16" height="16" viewBox="0 0 20 20"><circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.4 12.4L17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+            <input type="text" id="finder-search" data-i18n-placeholder="finder.searchPlaceholder" placeholder="搜索" />
+        </div>
+
+        <!--
+          工具栏下拉弹层已移至 .finder-clip 之外（紧跟其后），
+          以便可以"超出窗口边界"显示而不被 overflow:hidden 裁剪。
+        -->
+    </div>
+
+    <!-- 标签栏：默认隐藏，标签页 > 1 时显示 -->
+    <div class="finder-tabs-bar finder-no-drag" id="finder-tabs-bar">
+        <div class="tab active" data-path="/">
+            <span class="tab-label" data-i18n="finder.title">访达</span>
+            <button class="tab-close" aria-label="关闭标签页">
+                <svg width="9" height="9" viewBox="0 0 10 10"><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            </button>
+        </div>
+        <button class="tab-new" id="tab-new" aria-label="新建标签页" title="新建标签页">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6H10M6 2V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+
+    <!-- 主体：侧边栏 + 分割线 + 内容区 -->
+    <!-- 注意：不再加 finder-no-drag，让内容区/侧边栏空白处可拖动窗口；弹层/QuickLook/授权框仍保留 finder-no-drag -->
+    <div class="finder-body">
+        <aside class="finder-sidebar" id="finder-sidebar">
+            <!-- 个人收藏 -->
+            <div class="sidebar-section" data-section="favorites">
+                <div class="section-header">
+                    <span class="section-title" data-i18n="finder.sidebar.favorites">个人收藏</span>
+                </div>
+                <div class="section-body" id="vfs-sidebar">
+                    <div class="sidebar-item finder-no-drag" data-path="/最近使用">
+                        <svg class="item-icon" width="16" height="16" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+                        <span class="item-label" data-i18n="finder.recent">最近使用</span>
+                    </div>
+                    <div class="sidebar-item finder-no-drag" data-path="/下载">
+                        <svg class="item-icon" width="16" height="16" viewBox="0 0 20 20"><path d="M10 2.5v9M6.5 8.5l3.5 3.5 3.5-3.5M4.5 15v1.2h11V15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span class="item-label" data-i18n="finder.downloads">下载</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 位置 -->
+            <!--
+              侧边栏只保留内核能解析的目标：顶层夹取自 OSFS.TOP（src/javascripts/osfs.js），
+              收藏夹与最近使用由 vfs.js 现算。隔空投送 / 应用程序 / iCloud 系列在 VFS 里没有实现，
+              list() 对未知顶层一律返回 []，点进去只会看到一个"空文件夹"，故不再呈现。
+            -->
+            <div class="sidebar-section" data-section="locations">
+                <div class="section-header">
+                    <span class="section-title" data-i18n="finder.sidebar.locations">位置</span>
+                </div>
+                <div class="section-body section-locations" id="vfs-locations">
+                    <div class="sidebar-item finder-no-drag" data-path="/下载">
+                        <svg class="item-icon" width="16" height="16" viewBox="0 0 20 20"><path d="M10 2.5v9M6.5 8.5l3.5 3.5 3.5-3.5M4.5 15v1.2h11V15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span class="item-label" data-i18n="finder.downloads">下载</span>
+                    </div>
+                    <div class="sidebar-item finder-no-drag" data-path="/文档">
+                        <svg class="item-icon" width="16" height="16" viewBox="0 0 20 20"><path d="M5 2.5h6l4 4v11H5z" fill="currentColor" opacity="0.85"/><path d="M11 2.5V6.5H15" fill="none" stroke="#fff" stroke-width="1" opacity="0.7"/></svg>
+                        <span class="item-label" data-i18n="finder.documents">文稿</span>
+                    </div>
+                    <div class="sidebar-item finder-no-drag" data-path="/图片">
+                        <svg class="item-icon" width="16" height="16" viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="currentColor" opacity="0.85"/><circle cx="7" cy="8" r="1.8" fill="#fff" opacity="0.9"/><path d="M3 14l4-4 3 3 3-3 4 4" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span class="item-label" data-i18n="finder.pictures">图片</span>
+                    </div>
+                    <div class="sidebar-item finder-no-drag" data-path="/收藏夹">
+                        <svg class="item-icon" width="16" height="16" viewBox="0 0 20 20"><path d="M5.5 2.5h9v15l-4.5-3.2L5.5 17.5z" fill="currentColor" opacity="0.85"/></svg>
+                        <span class="item-label" data-i18n="finder.bookmarks">收藏夹</span>
+                    </div>
+                    <div class="sidebar-item finder-no-drag" data-path="/桌面">
+                        <svg class="item-icon" width="16" height="16" viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="10" rx="1.4" fill="currentColor" opacity="0.85"/><path d="M7.5 16.5h5M10 13.5v3" stroke="currentColor" stroke-width="1.6"/></svg>
+                        <span class="item-label" data-i18n="finder.desktop">桌面</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 标签 -->
+            <div class="sidebar-section" data-section="tags">
+                <div class="section-header">
+                    <span class="section-title" data-i18n="finder.sidebar.tags">标签</span>
+                </div>
+                <div class="section-body section-tags" id="finder-tags-sidebar">
+                    <!-- 标签列表由 finder-tags.js 动态渲染 -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- 分割线是交互控件：finder-no-drag 阻止 window.js 的窗口拖拽在按下时被抢走 -->
+        <div class="finder-splitter finder-no-drag" id="finder-splitter"></div>
+
+        <main class="finder-main">
+            <!-- 内容区域（表头是它的子节点：视图 class 挂在 .finder-content 上，
+                 .finder-content.<视图>-view .list-header 这类选择器才可能命中） -->
+            <div class="finder-content" id="finder-content">
+                <div class="list-header finder-no-drag" id="list-header">
+                    <span class="col-name col-sortable" data-sort="name" data-i18n="finder.colName">名称</span>
+                    <span class="col-date col-sortable" data-sort="date" data-i18n="finder.colDate">修改日期</span>
+                    <span class="col-size col-sortable" data-sort="size" data-i18n="finder.colSize">大小</span>
+                    <span class="col-kind col-sortable" data-sort="kind" data-i18n="finder.colKind">种类</span>
+                </div>
+                <div class="list-body" id="list-body"></div>
+                <!-- 浮层 pointer-events:none（点击落到 .list-body 上），文案由 finder-views.js 按状态设置，不加 data-i18n -->
+                <div class="finder-empty" id="finder-empty" hidden>
+                    <svg width="48" height="48" viewBox="0 0 48 48"><path d="M8 12a2 2 0 012-2h10l4 4h16a2 2 0 012 2v20a2 2 0 01-2 2H10a2 2 0 01-2-2V12z" fill="currentColor" opacity="0.18"/></svg>
+                    <span class="finder-empty-text" id="finder-empty-text">此文件夹为空</span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    </div>
+    <!-- /.finder-clip -->
+
+    <!-- 工具栏下拉弹层（放在 .finder-clip 之外，可超出窗口边界显示） -->
+    <!-- 分组下拉 -->
+    <div class="tb-pop finder-no-drag" id="pop-group" hidden>
+        <div class="pop-item" data-group="none" data-i18n="finder.group.none">无</div>
+        <div class="pop-item" data-group="kind" data-i18n="finder.group.kind">种类</div>
+        <div class="pop-item" data-group="date" data-i18n="finder.group.date">日期</div>
+        <div class="pop-item" data-group="size" data-i18n="finder.group.size">大小</div>
+        <div class="pop-item" data-group="tag" data-i18n="finder.group.tag">标签</div>
+    </div>
+
+    <!-- 标记下拉（七色由 finder-tags.js 动态渲染） -->
+    <div class="tb-pop finder-no-drag" id="pop-tag" hidden></div>
+
+    <!-- 更多下拉 -->
+    <div class="tb-pop finder-no-drag" id="pop-more" hidden>
+        <div class="pop-item" data-action="new-folder" data-i18n="finder.newFolder">新建文件夹</div>
+        <div class="pop-sep"></div>
+        <div class="pop-label" data-i18n="finder.sortBy.name">排序方式</div>
+        <div class="pop-item" data-action="sort" data-sort="name" data-i18n="finder.sortBy.name">名称</div>
+        <div class="pop-item" data-action="sort" data-sort="date" data-i18n="finder.sortBy.date">日期</div>
+        <div class="pop-item" data-action="sort" data-sort="size" data-i18n="finder.sortBy.size">大小</div>
+        <div class="pop-sep"></div>
+        <div class="pop-item" data-action="toggle-tab-bar" data-i18n="finder.showTabBar">显示标签栏</div>
+        <div class="pop-sep"></div>
+        <div class="pop-item" data-action="refresh" data-i18n="common.refresh">刷新</div>
+        <div class="pop-item" data-action="reauth" data-i18n="finder.reauth">重新授权访问文件夹</div>
+    </div>
+
+    <!-- Quick Look 预览 -->
+    <div class="finder-quicklook finder-no-drag" id="finder-quicklook" hidden>
+        <div class="ql-backdrop"></div>
+        <div class="ql-card">
+            <div class="ql-header">
+                <span class="ql-name" id="ql-name"></span>
+                <button class="ql-close" id="ql-close" aria-label="关闭">
+                    <svg width="16" height="16" viewBox="0 0 20 20"><path d="M5 5L15 15M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <div class="ql-body" id="ql-body">
+                <div class="ql-content" id="ql-content"></div>
+            </div>
+            <div class="ql-footer">
+                <span class="ql-nav" id="ql-nav-prev" aria-label="上一个">
+                    <svg width="12" height="12" viewBox="0 0 20 20"><path d="M12 4L6 10L12 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+                <span class="ql-counter" id="ql-counter">1 / 1</span>
+                <span class="ql-nav" id="ql-nav-next" aria-label="下一个">
+                    <svg width="12" height="12" viewBox="0 0 20 20"><path d="M8 4L14 10L8 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 授权弹窗 -->
+    <div class="finder-modal finder-no-drag" id="auth-modal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+            <div class="modal-icon">
+                <svg width="48" height="48" viewBox="0 0 40 40"><rect x="8" y="4" width="24" height="32" rx="3" fill="currentColor" opacity="0.15"/><path d="M16 20l3 3 5-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="modal-title" data-i18n="finder.auth.title">访问本地文件夹（可选）</div>
+            <div class="modal-text" data-i18n="finder.auth.message">不挂载也能正常读写：文件存在应用内的根目录里。</div>
+            <div class="modal-note" id="auth-note"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn" id="auth-deny" data-i18n="finder.auth.deny">不允许</button>
+                <button class="modal-btn primary" id="auth-allow" data-i18n="finder.auth.allow">好</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,110 @@
+{
+  "id": "office",
+  "name": "办公",
+  "version": "0.2.0",
+  "type": "app",
+  "entry": "window",
+  "description": "文稿 / 表格 / 演示 办公套件（Office 2016 功能区）",
+  "permissions": ["files:read", "files:write", "apps:launch", "default-apps:read"],
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Office.png",
+  "store": {
+    "category": "办公",
+    "tagline": "文稿 / 表格 / 演示三件套，Office 2016 功能区界面",
+    "summary": "三个可以各自开窗口、互相独立使用的办公应用，共用一套功能区（Ribbon）界面：文稿处理 .docx，表格处理 .xlsx 与 .csv，演示处理 .pptx。\n读写都是本地完成的纯前端 OOXML 实现 —— 直接解析与生成压缩包内的 XML，不加载任何外部内核，也不联网。",
+    "features": [
+      "功能区工具栏：选项卡 / 分组 / 大小控件 / 下拉菜单",
+      "快速访问工具栏与 Backstage「文件」页",
+      "新建、打开、保存、下载副本、打印或导出 PDF",
+      "撤销与重做、查找与替换",
+      "表格支持公式与区域求和",
+      "演示支持放映视图",
+      "双击 .docx / .xlsx / .csv / .pptx 直接接管打开"
+    ],
+    "usage": "在启动台或程序坞点三件套中任一颗图标；也可以在访达里双击对应格式的文件。每个应用可以开多个窗口，关到最后一个窗口时才卸载共用外壳。",
+    "updated": "2026-10-06",
+    "author": "Edgerd",
+    "screenshots": []
+  },
+  "apps": [
+    {
+      "id": "word",
+      "name": "文稿",
+      "type": "app",
+      "entry": "window",
+      "main": "word.html",
+      "icon": "Pages.png",
+      "formats": [".docx", ".txt"],
+      "menus": {
+        "文件": [
+          { "label": "新建文稿", "shortcut": "⌘N", "cmd": "officeNewDocument('office.word')" },
+          { "label": "打开…", "shortcut": "⇧⌘O", "cmd": "officeOpenDocument('office.word')" },
+          { "label": "保存", "shortcut": "⌘S", "cmd": "officeSaveDocument('office.word')" },
+          { "label": "下载副本", "shortcut": "⇧⌘S", "cmd": "officeSaveAsDocument('office.word')" },
+          { "label": "打印 / 导出 PDF", "shortcut": "⌘P", "cmd": "officePrintDocument('office.word')" },
+          { "separator": true },
+          { "label": "关闭窗口", "shortcut": "⌘W", "cmd": "closeActiveWindow()" }
+        ],
+        "编辑": [
+          { "label": "撤销", "shortcut": "⌘Z", "cmd": "officeUndoDocument('office.word')" },
+          { "label": "重做", "shortcut": "⌘⇧Z", "cmd": "officeRedoDocument('office.word')" },
+          { "separator": true },
+          { "label": "查找与替换", "shortcut": "⌘F", "cmd": "officeFindDocument('office.word')" }
+        ]
+      }
+    },
+    {
+      "id": "excel",
+      "name": "表格",
+      "type": "app",
+      "entry": "window",
+      "main": "excel.html",
+      "icon": "Numbers.png",
+      "formats": [".xlsx", ".csv"],
+      "menus": {
+        "文件": [
+          { "label": "新建表格", "shortcut": "⌘N", "cmd": "officeNewDocument('office.excel')" },
+          { "label": "打开…", "shortcut": "⇧⌘O", "cmd": "officeOpenDocument('office.excel')" },
+          { "label": "保存", "shortcut": "⌘S", "cmd": "officeSaveDocument('office.excel')" },
+          { "label": "下载副本", "shortcut": "⇧⌘S", "cmd": "officeSaveAsDocument('office.excel')" },
+          { "label": "打印 / 导出 PDF", "shortcut": "⌘P", "cmd": "officePrintDocument('office.excel')" },
+          { "separator": true },
+          { "label": "关闭窗口", "shortcut": "⌘W", "cmd": "closeActiveWindow()" }
+        ],
+        "编辑": [
+          { "label": "撤销", "shortcut": "⌘Z", "cmd": "officeUndoDocument('office.excel')" },
+          { "label": "重做", "shortcut": "⌘⇧Z", "cmd": "officeRedoDocument('office.excel')" },
+          { "separator": true },
+          { "label": "查找与替换", "shortcut": "⌘F", "cmd": "officeFindDocument('office.excel')" }
+        ]
+      }
+    },
+    {
+      "id": "ppt",
+      "name": "演示",
+      "type": "app",
+      "entry": "window",
+      "main": "ppt.html",
+      "icon": "Keynote.png",
+      "formats": [".pptx"],
+      "menus": {
+        "文件": [
+          { "label": "新建演示", "shortcut": "⌘N", "cmd": "officeNewDocument('office.ppt')" },
+          { "label": "打开…", "shortcut": "⇧⌘O", "cmd": "officeOpenDocument('office.ppt')" },
+          { "label": "保存", "shortcut": "⌘S", "cmd": "officeSaveDocument('office.ppt')" },
+          { "label": "下载副本", "shortcut": "⇧⌘S", "cmd": "officeSaveAsDocument('office.ppt')" },
+          { "label": "打印 / 导出 PDF", "shortcut": "⌘P", "cmd": "officePrintDocument('office.ppt')" },
+          { "separator": true },
+          { "label": "关闭窗口", "shortcut": "⌘W", "cmd": "closeActiveWindow()" }
+        ],
+        "编辑": [
+          { "label": "撤销", "shortcut": "⌘Z", "cmd": "officeUndoDocument('office.ppt')" },
+          { "label": "重做", "shortcut": "⌘⇧Z", "cmd": "officeRedoDocument('office.ppt')" },
+          { "separator": true },
+          { "label": "查找与替换", "shortcut": "⌘F", "cmd": "officeFindDocument('office.ppt')" }
+        ]
+      }
+    }
+  ]
+}

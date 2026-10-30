@@ -1,0 +1,74 @@
+// contextMenu.scss — 本文件由 contextMenu.css 逐行收编而来，是 contextMenu.css 的唯一样式源。
+// 纯 CSS 同时是合法 SCSS，故本文件与编译产物一一对应；改样式请只改这里，
+// 再执行：npx sass --no-source-map --style expanded assets/stylesheets/ui/contextMenu.scss assets/stylesheets/ui/contextMenu.css
+/* 右键菜单只覆盖「与 .menu 不同」的部分：外观（内边距、边框、圆角、毛玻璃、
+   纵向排布）全部由 ui.css 的 .menu 提供。此前这里把 .menu 的整段盒子重抄了一遍，
+   还同时给出 position:fixed（ui.css 是 absolute）与 display:flex（ui.css 是 inline-flex），
+   等于同一个组件存在两套定义，改一处漏一处。 */
+.menu.contextmenu {
+  width: auto;
+  height: auto;
+  position: fixed;
+  /* 固定层级（zindex.js 的层级表）；createContextMenu 也会写入同样的值 */
+  z-index: 9620;
+  /* 亚克力稳定层（0.2.74 固化）：右键菜单全局弹出，不强制隔离可能被祖先截断；
+     隔离后采样边界绝对稳定 */
+  isolation: isolate;
+}
+
+.menu.contextmenu p {
+    font-size: 13px;
+    color: var(--surface-text);
+    line-height: 16px;
+    font-family: "SFPro-Medium", "PingFangSC-Medium";
+    margin: 1.5px 0;
+    border-radius: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+}
+
+.menu.contextmenu p:hover:not([disabled]) {
+    background: #0A82FF;
+    color: white;
+}
+
+.menu.contextmenu p:first-child {
+    margin-top: 0;
+}
+
+.menu.contextmenu p:last-child {
+    margin-bottom: 0;
+}
+
+.menu.contextmenu p[disabled] {
+    color: var(--surface-text-tertiary);
+    cursor: var(--deskly-cursor, default);
+}
+
+/* 菜单标题（如「排列窗口」）：不可点击，仅作分区说明 */
+.menu.contextmenu p.menu-header {
+    color: var(--surface-text-secondary);
+    font-family: "SFPro-Semibold", "PingFangSC-Semibold";
+    cursor: var(--deskly-cursor, default);
+    padding-bottom: 1px;
+}
+.menu.contextmenu p.menu-header:hover {
+    background: transparent;
+    color: var(--surface-text-secondary);
+}
+
+.menu.contextmenu hr {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 0.5px;
+    border: none;
+    width: calc(100% - 14px);
+    height: 1px;
+    margin: 4px 0;
+    align-self: center;
+}
+
+.desktop .item p[contenteditable="true"] {
+    outline: 2px solid #0A82FF;
+    outline-offset: 2px;
+    border-radius: 3px;
+}

@@ -1,0 +1,383 @@
+@keyframes parabola {
+    0% {
+        transform: translateY(0);
+        animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    50% {
+        transform: translateY(-20px);
+        animation-timing-function: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+    }
+
+    90% {
+        transform: translateY(-4px);
+        animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+@keyframes scale {
+    0% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes fade {
+    0% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes come {
+    0% {
+        transform: translateY(80px);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+.tip {
+    /* display: inline-block; */
+    width: auto;
+    height: auto;
+    background: #fff9;
+    backdrop-filter: blur(var(--surface-blur-2)) brightness(90%);
+    -webkit-backdrop-filter: blur(var(--surface-blur-2)) brightness(90%);
+    /* 亚克力稳定层（0.2.74 固化）：
+       isolation: isolate 强制将本元素作为 backdrop-root，避免祖先 stacking context（含 z-index 的定位元素、含 backdrop-filter 的兄弟等）
+       误把本元素的 backdrop-filter 采样范围截断到自身——回退为白色矩形。
+       同时 overflow:hidden 防止采样跨界导致边缘出现白色光斑 */
+    isolation: isolate;
+    overflow: hidden;
+    padding: 2px 12px;
+    border-radius: 5px;
+    border: solid 1px #0003;
+    border-bottom: none;
+    box-shadow: 0 0 10px #0005;
+    font-size: 12px;
+    /* 悬浮提示是亚克力面，文字色走系统强制的黑/白档（随壁纸着色与主题重算），
+       不再抄 --text-primary 那支「只看主题、不看表面底色」的共享令牌 */
+    color: var(--surface-text);
+    user-select: none;
+    -webkit-user-select: none;
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    /* Origin block */
+
+    &::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: -5px;
+        transform: translateX(-50%) rotate(180deg);
+        border-style: solid;
+        border-width: 0 5px 5px 5px;
+        border-color: transparent transparent #fff9 transparent;
+        // backdrop-filter: blur(var(--surface-blur-2)) brightness(90%);
+        // -webkit-backdrop-filter: blur(var(--surface-blur-2)) brightness(90%);
+        // scale: 0.9;
+    }
+}
+
+.dockcontainer {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 75%;
+    height: auto;
+    padding-bottom: 5px;
+}
+
+.dock {
+    // 玻璃面板下沉到 ::before，本元素不再裁剪，放大图标才能超出底栏上沿
+    position: relative;
+    width: auto;
+    // 固定高度 = 基准图标 + 间距(约10px含运行灯与内边距)；放大时图标向上溢出悬浮
+    height: calc(var(--dock-size, 50px) + 10px);
+    display: inline-flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 5px;
+    padding-bottom: 2.5px;
+    margin-bottom: 5px;
+    user-select: none;
+    -webkit-user-select: none;
+    /* 固定高位：Dock 永远置顶，窗口 z-index 封顶 9000（window.js），
+       层级表见 src/javascripts/zindex.js（Dock 9500 / 堆栈 9510 / 启动台 9600 /
+       弹窗 9610 / 右键菜单 9620 / 面板 9630 / 菜单栏 9999） */
+    z-index: 9500;
+    /* 亚克力稳定层（0.2.74 固化）：isolation: isolate 让本元素独立成 stacking context，
+       ::before 的 backdrop-filter 采样边界由 ::before 自身的圆角盒子收住，
+       因此 .dock 可以放开裁剪而不会出现矩形光斑。
+       亚克力禁忌（0.2.50 固化）：本元素及其 ::before 均带 backdrop-filter，
+       严禁 transform / translateZ / will-change:transform / 含 transform 的动画，
+       否则 Chrome 提升 3D 合成层，毛玻璃退化为半透明白色矩形（光斑）。
+       进入动画与显隐全部只走 opacity（JS 侧同步只写 opacity，不再写 transform）。 */
+    isolation: isolate;
+    overflow: visible;
+    opacity: 1;
+    transition: opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.4s ease;
+    animation: fade 0.35s ease;
+
+    // 底栏毛玻璃面板：只铺满底栏自身的盒子，图标在其上方自由溢出
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: 16px;
+        box-shadow: 0 -2px 20px #0005, inset 0 0 2px #1a1a1abb;
+        backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+        -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+        background: rgba(246, 246, 246, 0.46);
+    }
+
+    /* 自动隐藏态：透明 + 失活，位置不变（不滑动），保住 backdrop-filter 稳定 */
+    &.hidden {
+        opacity: 0;
+        pointer-events: none;
+        visibility: hidden;
+    }
+
+    &.show {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .container {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+
+        img {
+            width: var(--dock-size, 50px);
+            height: var(--dock-size, 50px);
+            transition: filter 0.05s;
+            /* 亚克力禁忌（0.2.50 固化）：移除非必要的 will-change:width 和 transform-origin，
+               避免子元素被提升为 GPU 合成层后干扰 .dock 父元素 backdrop-filter 渲染。
+               hover 放大通过 width/height 过渡即可，transform 全部交给父链承担。 */
+
+            // &.smooth-reset {
+            //     // transition: width 0.2s ease, height 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+            //     transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+            // }
+            &.opening {
+                /* 单次弹跳：旧值是 infinite，冷加载占住主线程时会连弹多轮。 */
+                animation: parabola 0.9s 1;
+            }
+
+            &.openingwithscale {
+                animation: parabola 0.9s 1, scale 0.9s ease forwards;
+            }
+
+            &:active {
+                filter: brightness(0.5);
+            }
+        }
+
+        /* Removed dead rule: `.dock .container hr` — the dock never renders an
+           <hr> inside `.container`; section dividers are `.dock-sep` divs (see dock.js). */
+
+        .light {
+            width: 4px;
+            height: 4px;
+            border-radius: 4px;
+            background: #0000;
+            margin-top: 2.5px;
+
+            &.on {
+                background: #0008;
+            }
+        }
+    }
+
+    /* 程序坞分段容器：收藏 / 运行 / 最近使用 / 废纸篓 */
+    .dock-section {
+        display: inline-flex;
+        align-items: flex-end;
+        justify-content: center;
+    }
+
+    /* 分段之间的分隔线 */
+    .dock-sep {
+        width: 1px;
+        height: 42.5px;
+        background: rgba(232, 232, 232, 0.4);
+        margin: 0 8px;
+        align-self: center;
+        border-radius: 1px;
+    }
+
+    /* 红色标记（Badge） */
+    .container .badge {
+        position: absolute;
+        top: -4px;
+        right: -6px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 9px;
+        background: #ff3b30;
+        color: #fff;
+        font-size: 11px;
+        line-height: 18px;
+        text-align: center;
+        font-weight: 600;
+        box-shadow: 0 0 0 2px rgba(246, 246, 246, 0.9);
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    .container {
+        position: relative;
+
+        /* 隐藏运行指示灯 */
+        &.no-indicator .light {
+            display: none;
+        }
+
+        /* 键盘导航高亮 */
+        &.dock-focused {
+            outline: 2px solid #007aff;
+            outline-offset: 3px;
+            border-radius: 10px;
+        }
+
+        /* 拖放打开文件时的目标高亮 */
+        &.drop-target {
+            background: rgba(0, 122, 255, 0.18);
+            border-radius: 12px;
+        }
+    }
+}
+
+/* 程序坞位置：左侧 / 右侧（垂直布局，固定定位贴边） */
+.dockcontainer.pos-left, .dockcontainer.pos-right {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 64px;
+    height: auto;
+    max-height: 100%;
+    /* 侧边 Dock 与底部 Dock 同级：永远置顶 */
+    z-index: 9500;
+}
+.dock.pos-left, .dock.pos-right {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: auto;
+    width: auto;
+    min-width: 64px;
+    margin-bottom: 0;
+    margin-left: 5px;
+}
+.dockcontainer.pos-left {
+    left: 0;
+    right: auto;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+.dockcontainer.pos-right {
+    right: 0;
+    left: auto;
+    justify-content: flex-end;
+    align-items: flex-end;
+}
+.dock.pos-left .dock-section, .dock.pos-right .dock-section {
+    flex-direction: column;
+    align-items: center;
+}
+.dock.pos-left .dock-sep, .dock.pos-right .dock-sep {
+    width: 42.5px;
+    height: 1px;
+    margin: 8px 0;
+}
+
+/* 文件夹栈（Stacks）弹层 */
+.dock-stack {
+    position: fixed;
+    width: 280px;
+    max-height: 420px;
+    overflow: auto;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(246, 246, 246, 0.82);
+    backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+    -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+    /* 亚克力稳定层（0.2.74 固化）：isolation: isolate + overflow:auto 兼得：
+       isolation 把 backdrop-root 强制为本元素，overflow 让滚动边缘平滑
+       （auto 内部是 hidden，外层是 scrollbar；backdrop 仍作用在元素盒子内） */
+    isolation: isolate;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    /* 堆栈直接挂在 body 上（见 dock.js），因此用的是根层叠上下文的层级：
+       曾经的 3000 落在窗口层级带（2050-9000）内，任何一个被点过的前台窗口都会
+       把「下载」堆栈整个盖住。取 Dock 之上的固定层 9510。 */
+    z-index: 9510;
+}
+.dock-stack-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--surface-text-secondary);
+    margin-bottom: 8px;
+    padding-left: 2px;
+}
+.dock-stack-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+.dock-stack-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+}
+.dock-stack-item:hover {
+    background: rgba(0, 122, 255, 0.15);
+}
+.dock-stack-item span {
+    font-size: 11px;
+    color: var(--surface-text);
+    word-break: break-all;
+}
+.dock-stack-item.disabled {
+    cursor: var(--deskly-cursor, default);
+    opacity: 0.6;
+}
+.dock-stack-item.disabled:hover {
+    background: none;
+}
+
+/* 拖拽排序：被拖拽图标半透明，其余图标轻微让位预览 */
+.dock .container.sortable-dragging {
+    opacity: 0.45;
+}
+.dock .container.sortable-dragging img {
+    filter: brightness(0.85);
+}
+.dock .container img {
+    cursor: grab;
+}
+.dock .container.sortable-dragging img {
+    cursor: grabbing;
+}

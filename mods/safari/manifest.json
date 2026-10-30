@@ -1,0 +1,19 @@
+{
+  "id": "safari",
+  "name": "Safari浏览器",
+  "version": "4.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "按 macOS Sequoia Safari 版式重写的浏览器：紧凑标签栏、起始页、侧栏、阅读列表与历史记录",
+  "permissions": [],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Safari.png",
+  "window": {
+    "width": 1120,
+    "height": 700,
+    "centered": true
+  }
+}

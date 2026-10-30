@@ -1,0 +1,20 @@
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(720deg);
+  }
+}
+body, body.cursor-default {
+  cursor: var(--deskly-cursor, default);
+}
+body.cursor-beachball {
+  cursor: url(../../cursors/beachball.ani), default !important;
+}
+body.cursor-none {
+  cursor: none !important;
+}/*# sourceMappingURL=cursor.css.map */

@@ -1,0 +1,49 @@
+.desktop {
+    width: 100%;
+    // 自适应填充顶栏与 Dock 之间的剩余空间（body 为 flex column）
+    flex: 1;
+    min-height: 0;
+    // 顶栏为 position: fixed（不占文档流），用 padding 让位其 24px 高度
+    padding-top: 24px;
+    box-sizing: border-box;
+    display: flex;
+    direction: rtl;
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    justify-content: flex-start;
+    /* padding: 2.5px; */
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+
+    .item {
+        width: 96px;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        margin: 15px;
+
+        img {
+            width: 64px;
+            height: auto;
+        }
+
+        p {
+            color: white;
+            text-shadow: 1px 2px 2px #0005, 1px 1px 3px #0005;
+            font-size: 13px;
+            font-family: "SFPro-Medium", "PingFangSC-Medium";
+            margin-top: 5px;
+        }
+    }
+}
+
+.container {
+    width: auto;
+    height: auto;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+}

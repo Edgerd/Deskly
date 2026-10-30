@@ -1,0 +1,42 @@
+<!--
+    index.html — 系统设置外壳（只有静态骨架）
+
+    侧栏条目与面板内容由 app.js / panes/*.js 依据 registry.js 与设置定义生成：
+    registry 里 implemented:false 的面板不进 DOM。静态写死的列表必然与注册表漂移
+    （旧版 23 个侧栏项里 16 个是「还没做」的占位页）。
+
+    文案写成中文默认值，由 app.js 用 t(key, 中文) 覆盖并在语言切换时重写。
+    这里不给 JS 写入的标签留 data-i18n：applyTranslations 会在切换语言后把标签覆写回
+    译文表里的值，而右侧的值仍是另一套（旧版「高亮色」标签就是这个 bug）。
+
+    根元素类名与 id 不能改：plugin-manager 按 manifest.name 去重（id=系统设置），
+    window.js 按 .window + .wintools 驱动红绿灯与拖拽，本文件不再自带三色点标记。
+-->
+<div class="settings window" id="系统设置" data-window="size:715x570 centered">
+    <div class="ss-titlebar" data-titlebar>
+        <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
+    </div>
+
+    <nav class="ss-sidebar" aria-label="设置边栏">
+        <div class="ss-search__wrap">
+            <i class="ss-search__glyph" aria-hidden="true"></i>
+            <input class="ss-search" type="text" spellcheck="false" autocomplete="off" placeholder="搜索设置项" aria-label="搜索设置项" />
+            <button class="ss-search__clear" type="button" aria-label="清除搜索" hidden></button>
+        </div>
+        <div class="ss-sidebar__list" id="ss-sidebar-list"></div>
+        <p class="ss-sidebar__empty" id="ss-sidebar-empty" hidden>没有匹配的设置项</p>
+    </nav>
+
+    <div class="ss-edge" aria-hidden="true"></div>
+
+    <section class="ss-content">
+        <header class="ss-toolbar" data-titlebar>
+            <div class="ss-nav">
+                <button class="ss-nav__btn ss-nav__btn--back" type="button" aria-label="返回" disabled></button>
+                <button class="ss-nav__btn ss-nav__btn--forward" type="button" aria-label="前进" disabled></button>
+            </div>
+            <h1 class="ss-toolbar__title" id="ss-toolbar-title"></h1>
+        </header>
+        <div class="ss-panes" id="ss-pane-host"></div>
+    </section>
+</div>

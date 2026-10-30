@@ -1,0 +1,113 @@
+// main.scss — 本文件由 main.css 逐行收编而来，是 main.css 的唯一样式源。
+// 纯 CSS 同时是合法 SCSS，故本文件与编译产物一一对应；改样式请只改这里，
+// 再执行：npx sass --no-source-map --style expanded assets/stylesheets/main/main.scss assets/stylesheets/main/main.css
+@font-face {
+    src: url(../../fonts/sf-pro-display_regular.woff2);
+    font-family: "SFPro-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Regular.woff2);
+    font-family: "PingFangSC-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/SFMono-Regular.otf);
+    font-family: "SFMono-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/sf-pro-display_semibold.woff2);
+    font-family: "SFPro-Semibold";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Semibold.woff2);
+    font-family: "PingFangSC-Semibold";
+}
+
+@font-face {
+    src: url(../../fonts/sf-pro-display_medium.woff2);
+    font-family: "SFPro-Medium";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Medium.woff2);
+    font-family: "PingFangSC-Medium";
+}
+
+body, html {
+    overflow: hidden;
+    /* 系统字体回退序列：字体文件加载失败时降级系统 UI 字体，避免回退到 Times 等衬线体 */
+    font-family: "SFPro-Regular", "PingFangSC-Regular", -apple-system, BlinkMacSystemFont,
+                 "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC",
+                 "Microsoft YaHei", sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: 0.009em;
+    width: 100vw;
+    /* 移动端动态视口优先（dvh），兜底 min-height: 100vh 兼容不支持 dvh 的浏览器 */
+    min-height: 100vh;
+    height: 100dvh;
+    position: relative;
+    inset: 0;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body > div.wallpaper {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    /* 壁纸地址的单一入口：head 里的 wallpaper-boot.js 在首帧前把用户配置写进
+       --deskly-wallpaper-image，壁纸元素第一次绘制就是用户那张图；没有配置
+       （或引导脚本未执行）时回落到内置默认壁纸。相对地址以文档为基准解析，
+       与 wallpaper.js 写的内联 background-image 指向同一资源。 */
+    background-color: #1e1e1e;
+    background-image: var(--deskly-wallpaper-image, url(../../images/Wallpaper.png));
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+body > div.overlay {
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    inset: 0;
+  z-index: 4000;
+  background: #0009;
+    backdrop-filter: blur(var(--surface-blur-2));
+    -webkit-backdrop-filter: blur(var(--surface-blur-2));
+}
+
+/* ===== 全局外观（系统设置）基础变量与主题 ===== */
+:root {
+    --accent: #0a82ff;
+    --accent-rgb: 10, 130, 255;
+    --highlight: #0a82ff;
+}
+
+/* 暗色主题：压暗桌面壁纸 + 基础背景，使明暗切换可见生效 */
+html[data-theme="dark"] body {
+    background: #1e1e1e;
+}
+html[data-theme="dark"] body > div.wallpaper::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 0;
+}
+
+/* 滚动条显示策略：仅「始终」强制常驻显示 */
+html[data-scrollbars="always"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+html[data-scrollbars="always"] * {
+    scrollbar-width: thin;
+}

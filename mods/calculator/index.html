@@ -1,0 +1,86 @@
+<!--
+    index.html — 计算器外壳（只有静态骨架）
+
+    键帽、位网格、单位菜单、历史纸带全部由 script.js 按当前模式生成：
+    四种模式的键位数量与栅格列数都不同（基础 4×5、科学 10×5、程序员 7×6），
+    静态写死必然与模式表漂移。
+
+    根元素类名与 data-mode 不能改：style.css 按 data-mode 决定栅格列数，
+    window.js 按 .window + .wintools 驱动红绿灯与拖拽，窗口 id 由内核写入。
+    data-window 的基础尺寸是缺省值，切模式时 script.js 用 Deskly.windows.configure 复述，
+    它会写回同一个属性，所以「科学模式」这类记忆不会在下次打开时退回基础尺寸。
+-->
+<!-- 尺寸与「不可缩放」由本文件声明（data-window → window-manager.readDeclaration）：
+     计算器是固定面板，边框不响应缩放、绿键随之熄灭、平铺/全屏菜单也不会可用。 -->
+<div class="calculator window" data-mode="basic" data-window="size:248x352 resizable:false centered">
+    <div class="calc-titlebar" data-titlebar>
+        <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
+        <div class="calc-titlebar-spacer"></div>
+        <button class="calc-iconbtn" data-role="history" type="button" title="历史记录（⌘H）" aria-label="历史记录">
+            <span class="calc-icon calc-icon--history" aria-hidden="true"></span>
+        </button>
+    </div>
+
+    <aside class="calc-history" data-role="historyPanel" aria-label="历史记录" hidden>
+        <header class="calc-history-head">
+            <span data-role="historyTitle">历史记录</span>
+            <button class="calc-linkbtn" data-role="historyClear" type="button">清除全部</button>
+        </header>
+        <div class="calc-history-body" data-role="historyList"></div>
+    </aside>
+
+    <div class="calc-main">
+        <div class="calc-display">
+            <div class="calc-entry" data-role="entry"></div>
+            <div class="calc-value" data-role="value" aria-live="polite">0</div>
+            <div class="calc-badges">
+                <span class="calc-badge" data-role="angle" hidden></span>
+                <span class="calc-badge" data-role="memory" hidden></span>
+                <span class="calc-badge" data-role="rpn" hidden>RPN</span>
+                <span class="calc-radix-tag" data-role="radixTag" hidden></span>
+            </div>
+        </div>
+
+        <div class="calc-convert" data-role="convert" hidden>
+            <div class="calc-conv-row">
+                <output class="calc-conv-value" data-role="convTop">0</output>
+                <button class="calc-unitbtn" data-role="convTopUnit" type="button">米</button>
+            </div>
+            <button class="calc-swap" data-role="convSwap" type="button" title="交换上下单位（⌘⇧X）">⇅</button>
+            <div class="calc-conv-row">
+                <output class="calc-conv-value calc-conv-value--big" data-role="convBottom">0</output>
+                <button class="calc-unitbtn" data-role="convBottomUnit" type="button">厘米</button>
+            </div>
+            <p class="calc-conv-note" data-role="convNote"></p>
+        </div>
+
+        <div class="calc-programmer" data-role="programmer" hidden>
+            <div class="calc-transliterate">
+                <div class="calc-seg" role="tablist">
+                    <button class="calc-segbtn" data-role="tableAscii" type="button">ASCII</button>
+                    <button class="calc-segbtn" data-role="tableUnicode" type="button">Unicode</button>
+                </div>
+                <output class="calc-char" data-role="charBox" title="当前值对应的字符"></output>
+                <button class="calc-chipbtn" data-role="bitsToggle" type="button">显示二进制</button>
+                <div class="calc-seg calc-seg--radix">
+                    <button class="calc-segbtn" data-radix="8" type="button">8</button>
+                    <button class="calc-segbtn" data-radix="10" type="button">10</button>
+                    <button class="calc-segbtn" data-radix="16" type="button">16</button>
+                </div>
+            </div>
+            <div class="calc-bits" data-role="bits"></div>
+        </div>
+
+        <div class="calc-rpn" data-role="rpn" hidden>
+            <div class="calc-rpn-rows" data-role="rpnRows"></div>
+            <div class="calc-rpn-keys">
+                <button data-key="rpnSwap" type="button" title="交换堆栈下面两个数（⌘E）">x⇄y</button>
+                <button data-key="rpnUp" type="button" title="向上滚动堆栈（⌘↑）">↑</button>
+                <button data-key="rpnDown" type="button" title="向下滚动堆栈（⌘↓）">↓</button>
+                <button data-key="rpnDrop" type="button" title="丢弃堆栈底部（⌘⌫）">丢弃</button>
+            </div>
+        </div>
+
+        <div class="calc-keypad" data-role="keypad"></div>
+    </div>
+</div>

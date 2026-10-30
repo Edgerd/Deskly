@@ -1,0 +1,51 @@
+<!--
+    index.html — App Store 外壳（只有静态骨架）
+
+    分类、卡片、详情内容全部由 script.js 依据 store-api 生成：静态写死的列表必然与
+    注册表漂移（旧版就是宿主把卡片画进这里、再由 mod 拿 MutationObserver 补按钮）。
+    侧栏 / 顶栏 / 内容区的版面照系统设置那一套（as-* 命名空间，不碰 window.css
+    里同名的遗留三栏规则）。
+
+    根元素类名与 id 不能改：plugin-manager 按 manifest.name 去重（id=App Store），
+    window.js 按 .window + .wintools 驱动红绿灯与拖拽。
+-->
+<div class="appstore window" id="App Store" data-window="size:900x600 centered">
+    <div class="as-titlebar" data-titlebar>
+        <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
+    </div>
+
+    <nav class="as-sidebar" aria-label="商店边栏">
+        <div class="as-search__wrap">
+            <input class="as-search" type="search" data-role="search" spellcheck="false"
+                   autocomplete="off" placeholder="搜索应用" aria-label="搜索应用" />
+        </div>
+        <div class="as-cats" data-role="cats"></div>
+        <button class="as-sidebtn" data-role="history" type="button">安装记录</button>
+        <p class="as-sw" data-role="sw"></p>
+    </nav>
+
+    <div class="as-edge" aria-hidden="true"></div>
+
+    <div class="as-content">
+        <header class="as-toolbar" data-titlebar>
+            <button class="as-back" data-role="back" type="button" hidden>返回</button>
+            <h2 class="as-heading" data-role="cat-title">全部</h2>
+            <span class="as-count" data-role="count"></span>
+            <span class="as-spacer"></span>
+            <button class="as-pick" data-role="pick" type="button">安装 ZIP…</button>
+            <input type="file" accept=".zip,application/zip" data-role="file" hidden />
+        </header>
+
+        <div class="as-pane" data-role="list">
+            <div class="as-grid" data-role="grid"></div>
+        </div>
+        <div class="as-pane as-detail" data-role="detail" hidden></div>
+
+        <footer class="as-status" data-role="status" hidden></footer>
+
+        <div class="as-veil" data-role="veil" hidden>
+            <p class="as-veil__text">松开以安装插件包</p>
+            <p class="as-veil__sub">manifest.json 需在包根，解包后不得超过 10MB</p>
+        </div>
+    </div>
+</div>

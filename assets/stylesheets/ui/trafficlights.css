@@ -1,0 +1,94 @@
+/* ============================================================
+ * trafficlights.css — 红绿灯（窗口控制按钮）几何唯一来源
+ *
+ * 为什么单独成文件：核心此前只定义圆点尺寸/颜色，唯一的容器定位规则
+ * `.window > .left .topbar .wintools` 在全部 DOM 里没有任何命中（死规则），
+ * 于是 11 个界面各自重写 display / gap / 偏移，最终左内缩漂出
+ * 8/12/14/16/17/18/19px 七种、上偏移 8/12/13px 三种。
+ * 这里把「容器 + 圆点 + 内缩」收敛为令牌驱动的单一来源：
+ * 应用只允许覆盖 --traffic-* 令牌，不再重写几何。
+ *
+ * 引入顺序必须在 window.css 之后、windowtraffic.css（符号绘制）之前。
+ * ============================================================ */
+
+:root {
+  /* macOS 原生度量：12pt 直径、8pt 间距、20pt 左内缩，标题栏内垂直居中。
+     本项目标题栏高度保持 38px（0.2.63 定下的标准），故上偏移由高度推导，
+     将来改标题栏高度时红绿灯会自动跟随，不再需要逐应用改数值。 */
+  --traffic-size: 12px;
+  --traffic-gap: 8px;
+  --traffic-inset: 20px;
+  --traffic-titlebar: 38px;
+  --traffic-top: calc((var(--traffic-titlebar) - var(--traffic-size)) / 2);
+  --traffic-z: 10;
+
+  --traffic-close: #ff5f57;
+  --traffic-minimize: #febc2e;
+  --traffic-zoom: #28c840;
+  /* 禁用位（.gray）：与三色点同一盒模型，仅背景不同 */
+  --traffic-disabled: rgba(0, 0, 0, 0.1);
+  --traffic-ring: rgba(0, 0, 0, 0.2);
+
+  /* 符号尺寸全部由 --traffic-size 推导，杜绝 magic number */
+  --traffic-bar-w: calc(var(--traffic-size) * 0.5);
+  --traffic-bar-h: max(1px, calc(var(--traffic-size) / 10));
+  --traffic-tri-leg: calc(var(--traffic-size) * 0.25);
+  /* 三角盒 = 2 条腿；内缩要在 padding box（尺寸减去 0.5px×2 边框）内居中 */
+  --traffic-tri-inset: calc((var(--traffic-size) - var(--traffic-tri-leg) * 2 - 1px) * 0.5);
+}
+
+html[data-theme="dark"] {
+  --traffic-ring: rgba(255, 255, 255, 0.28);
+  --traffic-disabled: rgba(255, 255, 255, 0.18);
+}
+
+/* ---------- 容器 ---------- */
+.wintools {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--traffic-gap);
+  flex: 0 0 auto;
+}
+
+/* 无独立标题栏的界面（照片 / 记事本 / 关于本机）：
+   标记上加 overlay 属性即得到统一的悬浮定位，无需各自写 top/left/z-index。 */
+.wintools[overlay] {
+  position: absolute;
+  top: var(--traffic-top);
+  left: var(--traffic-inset);
+  z-index: var(--traffic-z);
+}
+
+/* ---------- 圆点 ----------
+   .gray 必须与三色点共用同一盒模型：历史上核心只选了 .red/.yellow/.green，
+   关于本机自写的 .gray 缺 box-sizing:border-box，于是 12px 内容 + 0.5px×2 边框
+   实际渲染 13px，比红点大一圈（用户截图里看到的"大小不一"）。 */
+.wintools > .red,
+.wintools > .yellow,
+.wintools > .green,
+.wintools > .gray {
+  width: var(--traffic-size);
+  height: var(--traffic-size);
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: solid 0.5px var(--traffic-ring);
+  position: relative;
+  cursor: var(--deskly-cursor, default);
+  flex: 0 0 auto;
+  transition: filter 0.15s ease;
+}
+
+.wintools > .red { background: var(--traffic-close); }
+.wintools > .yellow { background: var(--traffic-minimize); }
+.wintools > .green { background: var(--traffic-zoom); }
+.wintools > .gray { background: var(--traffic-disabled); }
+
+/* 悬停提亮 / 按下压暗只作用于可用按钮：禁用位保持恒定灰，
+   不加 hover/active，也不画符号（见 windowtraffic.css 的选择器）。 */
+.wintools > .red:hover,
+.wintools > .yellow:hover,
+.wintools > .green:hover { filter: brightness(1.08); }
+
+.wintools > .red:active,
+.wintools > .yellow:active,
+.wintools > .green:active { filter: brightness(0.9); }

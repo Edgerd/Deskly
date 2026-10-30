@@ -1,0 +1,112 @@
+.menu {
+  width: auto;
+  height: auto;
+  padding: 5px;
+  border: 0.5px solid var(--hairline, rgba(0, 0, 0, 0.06));
+  box-shadow: inset 0 0 1px 0 rgba(255, 255, 255, 0.5), 0 2px 4px 0 rgba(0, 0, 0, 0.15), 0 8px 15px 6px rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  background: var(--panel-bg, rgba(246, 246, 246, 0.6));
+  backdrop-filter: blur(var(--surface-blur-3));
+  -webkit-backdrop-filter: blur(var(--surface-blur-3));
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+  position: absolute;
+  z-index: 7000;
+  /* 亚克力稳定层（0.2.74 固化）：菜单常在 dock/launchpad 之上弹出，祖先链路复杂
+     （body > finderbar > 控制中心下拉/finder 下拉/右键菜单），不隔离会被祖先 stacking context
+     截断采样回退为白色矩形 */
+  isolation: isolate;
+  overflow: hidden;
+}
+/* 暗色：菜单此前完全没有覆盖，顶栏下拉与右键菜单在深色桌面下仍是白底黑字。
+   阴影也换一档——浅色那圈的 inset 白高光在深底上会变成一条亮边。 */
+html[data-theme="dark"] .menu {
+  box-shadow: inset 0 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 4px 0 rgba(0, 0, 0, 0.4), 0 8px 15px 6px rgba(0, 0, 0, 0.5);
+}
+.menu.visible {
+  opacity: 1;
+  pointer-events: initial;
+}
+.menu {
+  opacity: 0;
+  pointer-events: none;
+}
+.menu p {
+  font-size: 13px;
+  /* 菜单行在 .menu 的亚克力面上：文字走系统强制的黑/白档，
+     共享令牌 --text-primary 只跟主题、不跟表面底色，着色后会在深底上糊掉 */
+  color: var(--surface-text);
+  line-height: 16px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  margin: 1.5px 0;
+  border-radius: 5px;
+  padding: 3px 10px;
+}
+.menu p:hover {
+  /* 强调色驱动：原先写死 #0A82FF，换强调色后菜单高亮不会跟随 */
+  background: var(--accent, #0a82ff);
+  color: white;
+}
+/* 点击反馈：menu.js 会给被点击项加 .clicked 后 150ms 移除；
+   此前这个 class 无任何样式，反馈等于不存在。 */
+.menu p.clicked {
+  background: rgba(var(--accent-rgb, 10, 130, 255), 0.35);
+  color: #fff;
+}
+.menu p:first-child {
+  margin-top: 0;
+}
+.menu p:last-child {
+  margin-bottom: 0;
+}
+.menu p[disabled] {
+  color: var(--surface-text-tertiary);
+}
+.menu hr {
+  background: var(--separator, rgba(0, 0, 0, 0.1));
+  border-radius: 0.5px;
+  border: none;
+  width: calc(100% - 14px);
+  height: 1px;
+  margin: 4px 0;
+  align-self: center;
+}
+/* 降低透明度：菜单不再取样身后的桌面，改成同色调实色底。
+   只动 backdrop-filter / background / border，isolation 与 overflow 原样保留。 */
+html[data-transparency="off"] .menu {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--surface-panel);
+  border-color: var(--separator);
+}
+/* 应用窗口淡入淡出：打开时淡入，关闭时由 window.js 添加 .closing 触发淡出。
+   关键禁忌：backdrop-filter 元素自身禁止包含 transform / translateZ / will-change:transform，
+   否则 Chrome 会将其提为 3D 合成层并禁用 backdrop-filter，导致亚克力闪烁/不全屏失效。
+   这里仅使用 opacity，不引入缩放进入感，以从源头保证所有 backdrop-filter 窗口稳定。 */
+.window {
+  animation: window-fade-in 0.22s ease-out;
+}
+/* 新窗口入场前的隐藏态（window-manager.prepareOpen）：等真实尺寸与居中落实，
+   避免先按默认 680×570 画一帧再跳。关闭态不命中，保证关闭淡出不被压住。 */
+.window.wm-preparing:not(.closing) {
+  visibility: hidden;
+  opacity: 0;
+  animation: none !important;
+}
+.window.closing {
+  animation: window-fade-out 0.18s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes window-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes window-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}/*# sourceMappingURL=ui.css.map */

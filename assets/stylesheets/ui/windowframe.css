@@ -1,0 +1,134 @@
+/* ============================================================
+ * windowframe.css — 窗口框架状态层（window-manager.js 的样式侧）
+ *
+ * 只放「窗口机制」相关的视觉状态：缩放带光标、拖拽/缩放期间的锁、
+ * 状态切换过渡、平铺预览、全屏收边、活跃/非活跃阴影。
+ * 窗口本体的外观（圆角、底色、着色、三栏旧外壳）仍在 window.css，
+ * 红绿灯几何在 trafficlights.css —— 这里一律不覆盖它们，只补状态。
+ *
+ * 固化禁忌（与 window.css / dock.css / ui.css 同源）：
+ * 本文件不得给 .window 引入 transform / filter / clip-path / will-change，
+ * 那会让带 backdrop-filter 的侧栏与内容区换 backdrop-root，亚克力当场失效。
+ * 所以缩放态、最小化、全屏的动画全部走 left/top/width/height 与 visibility。
+ * ============================================================ */
+
+/* ---------- 缩放边带 ----------
+ * 核心给每个窗口注入 8 条透明边带（四边 + 四角），窗口管理器按「命中了哪条边带」
+ * 决定缩放方向，光标也直接由各条边带自己声明 —— 不再用坐标猜命中区。
+ * 坐标判定在 Safari 这类「整面都是 iframe」的窗口上是根本不成立的：指针落在
+ * iframe 上时事件进的是 iframe 的文档，宿主页面连 pointerdown 都收不到。
+ *
+ * 边带压在内容之上，所以留了让位机制：hover 时核心会临时给窗口挂 .wm-peeking
+ * （此刻所有边带不吃指针）做一次 elementFromPoint，底下是滚动条槽 / 输入框 /
+ * 红绿灯就把那条边带标成 .blocked 让还给内容，其余情况边框优先（与 macOS 一致）。 */
+.window > .wm-edge {
+  position: absolute;
+  /* 压在窗口内容之上：应用侧栏 / 标签栏 / iframe 常自带很大的 z-index，
+     边带若低于它们，按下就被内容吃掉，等于没有边带（Safari 的标签栏实测如此）。
+     .window 自己有 z-index ⇒ 已成 stacking context，这个最大值只在窗口内部生效，
+     不会盖到别的窗口、Dock 或系统浮层。 */
+  z-index: 2147483646;
+  pointer-events: auto;
+  touch-action: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.window > .wm-edge-n { top: 0; left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+.window > .wm-edge-s { bottom: 0; left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+.window > .wm-edge-w { left: 0; top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+.window > .wm-edge-e { right: 0; top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+/* 四角压在四边之上，且比边更宽：角是最难抓的位置 */
+.window > .wm-edge-nw, .window > .wm-edge-ne, .window > .wm-edge-sw, .window > .wm-edge-se {
+  width: 14px; height: 14px; z-index: 2147483647;
+}
+.window > .wm-edge-nw { top: 0; left: 0; cursor: nwse-resize; }
+.window > .wm-edge-ne { top: 0; right: 0; cursor: nesw-resize; }
+.window > .wm-edge-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.window > .wm-edge-se { bottom: 0; right: 0; cursor: nwse-resize; }
+/* 让位给内容 / 正在做 elementFromPoint 探测 / 不可缩放 / 全屏：都不吃指针 */
+.window > .wm-edge.blocked,
+.window.wm-peeking > .wm-edge,
+.window.no-resize > .wm-edge,
+.window.wm-fullscreen > .wm-edge {
+  pointer-events: none;
+}
+
+/* ---------- 交互遮罩 ----------
+ * 拖动 / 缩放进行中铺在整页上：窗口内容里的 <iframe> 会吞指针事件，
+ * 没有这层，窗口拖到一半就断线。层级在所有窗口之上、Dock 之下。 */
+#deskly-interaction-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 9499;
+  background: transparent;
+}
+
+/* 拖动时禁止选中正文：从标题栏起手拖窗口，不该顺手把标题文字刷成一片蓝。
+   放在 <html> 上，因为拖到窗口外时选中同样会开始。 */
+html.deskly-dragging,
+html.deskly-dragging * {
+  -webkit-user-select: none !important;
+          user-select: none !important;
+}
+
+/* ---------- 状态切换过渡 ----------
+ * 缩放 / 全屏 / 平铺/还原时由 window-manager 临时挂上，动画结束自行摘掉。
+ * 只过渡几何，不过渡 transform（见上方禁忌）。
+ * 降级动画（系统设置「减弱动态效果」）由 main.css 的
+ * [data-reduce-motion="on"] .window { transition: none !important } 负责，
+ * 这里不加 !important，免得反过来盖掉它。 */
+/* 最小化期间让位给 .window.minimized 的淡出。
+   这两条类规则权重相同，靠源码顺序决胜（windowframe.css 在 window.css 之后加载），
+   于是一扇正在跑状态过渡的窗口被点最小化时，这条 left/top/width/height 会整条
+   盖掉 .window.minimized 的 opacity + visibility 延迟 —— 淡出又一次不成立。
+   dock.js 那边已经不再写内联 transition，这里的 :not(.minimized) 是另一半修复。 */
+.window.wm-animating:not(.minimized) {
+  transition: left 0.3s ease, top 0.3s ease, width 0.3s ease, height 0.3s ease;
+}
+
+/* ---------- 活跃 / 非活跃 ----------
+ * macOS 的非活跃窗口阴影明显更浅：焦点此前只用 z-index 表达，
+ * 读不出数字关系的 CSS 只能让所有窗口一样重，层叠关系全靠红绿灯灰化。 */
+.window:not(.is-active) {
+  box-shadow: 0 12px 34px 0 rgba(0, 0, 0, 0.22), 0 0 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- 全屏 ----------
+ * 全屏 = 覆盖整块视口（macOS 的独立 Space）：窗口自己贴边去掉圆角，
+ * 菜单栏与程序坞收起来，指针顶到对应边缘再临时探出。
+ * 菜单栏 / Dock 都带 backdrop-filter，收起一律用 top / visibility，
+ * 不用 transform —— 位移一个带毛玻璃的祖先会把它的采样面圈进来。 */
+.window.wm-fullscreen {
+  border-radius: 0;
+}
+html.deskly-fullscreen .finderbar {
+  top: -24px;
+  transition: top 0.18s ease;
+}
+html.deskly-fullscreen.deskly-menubar-reveal .finderbar {
+  top: 0;
+}
+html.deskly-fullscreen .dockcontainer {
+  visibility: hidden;
+  transition: visibility 0s linear 0.12s;
+}
+html.deskly-fullscreen.deskly-dock-reveal .dockcontainer {
+  visibility: visible;
+  transition: none;
+}
+
+/* ---------- 平铺预览 ----------
+ * 拖动推到屏幕边缘时提示「松手会平铺到这里」。
+ * 纯描边 + 淡填充，不加 backdrop-filter：它在拖动的每一帧被移动与改尺寸，
+ * 现场采样整屏是笔不小的开销，而它只活几百毫秒。 */
+#deskly-tile-preview {
+  position: fixed;
+  box-sizing: border-box;
+  border-radius: 16px;
+  border: 2px solid color-mix(in srgb, var(--accent, #0a82ff) 55%, transparent);
+  background: color-mix(in srgb, var(--accent, #0a82ff) 16%, transparent);
+  pointer-events: none;
+  transition: left 0.12s ease, top 0.12s ease, width 0.12s ease, height 0.12s ease;
+}

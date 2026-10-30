@@ -1,0 +1,509 @@
+@font-face {
+    src: url(../../fonts/sf-pro-display_regular.woff2);
+    font-family: "SFPro-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Regular.woff2);
+    font-family: "PingFangSC-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/SFMono-Regular.otf);
+    font-family: "SFMono-Regular";
+}
+
+@font-face {
+    src: url(../../fonts/sf-pro-display_semibold.woff2);
+    font-family: "SFPro-Semibold";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Semibold.woff2);
+    font-family: "PingFangSC-Semibold";
+}
+
+@font-face {
+    src: url(../../fonts/sf-pro-display_medium.woff2);
+    font-family: "SFPro-Medium";
+}
+
+@font-face {
+    src: url(../../fonts/PingFangSC-Medium.woff2);
+    font-family: "PingFangSC-Medium";
+}
+
+body, html {
+    overflow: hidden;
+    /* 系统字体回退序列：字体文件加载失败时降级系统 UI 字体，避免回退到 Times 等衬线体 */
+    font-family: "SFPro-Regular", "PingFangSC-Regular", -apple-system, BlinkMacSystemFont,
+                 "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC",
+                 "Microsoft YaHei", sans-serif;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    letter-spacing: 0.009em;
+    width: 100vw;
+    /* 移动端动态视口优先（dvh），兜底 min-height: 100vh 兼容不支持 dvh 的浏览器 */
+    min-height: 100vh;
+    height: 100dvh;
+    position: relative;
+    inset: 0;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body > div.wallpaper {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    /* 壁纸地址的单一入口：head 里的 wallpaper-boot.js 在首帧前把用户配置写进
+       --deskly-wallpaper-image，壁纸元素第一次绘制就是用户那张图；没有配置
+       （或引导脚本未执行）时回落到内置默认壁纸。相对地址以文档为基准解析，
+       与 wallpaper.js 写的内联 background-image 指向同一资源。 */
+    background-color: #1e1e1e;
+    background-image: var(--deskly-wallpaper-image, url(../../images/Wallpaper.png));
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+body > div.overlay {
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    inset: 0;
+  z-index: 4000;
+  background: #0009;
+    backdrop-filter: blur(var(--surface-blur-2));
+    -webkit-backdrop-filter: blur(var(--surface-blur-2));
+}
+
+/* ===== 全局外观（系统设置）基础变量与主题 ===== */
+:root {
+    --accent: #0a82ff;
+    --accent-rgb: 10, 130, 255;
+    --highlight: #0a82ff;
+    /* 窗口着色令牌：--window-tint 由 appearance.js 按当前壁纸的主色实时写在 <html> 上，
+       这里的值是「还没算出主色」时的兜底；--window-tint-rgb 是同一颜色的通道形式，
+       让各面板自己决定浓度（侧栏 0.84、控制中心 0.55 本来就不同）。
+       --wallpaper-tint-color / --wallpaper-tint-rgb 是 wallpaper.js 侧的同义令牌，
+       存在时优先用它，缺省时回落到 --window-tint（见下面 --tint-* 的推导）。
+       禁忌：这些令牌只喂给 background，绝不与 transform 同层出现在带
+       backdrop-filter 的元素上（见 dock.css / window.css 的亚克力禁忌说明）。 */
+    --window-tint: #6b7c93;
+    --window-tint-rgb: 107, 124, 147;
+    --tint-color: var(--tint-adjusted-color, var(--wallpaper-tint-color, var(--window-tint, #6b7c93)));
+    --tint-rgb: var(--tint-adjusted-rgb, var(--wallpaper-tint-rgb, var(--window-tint-rgb, 107, 124, 147)));
+    /* 着色浓度：由系统设置 appearance.tintStrength 实时写在 <html> 上，默认 1 = 迁移前观感。
+       各表面把自己的固有浓度写成 calc(<固有浓度> * var(--tint-strength))，
+       于是「浓度」滑块只影响浓度，不会把某个面板整体调没。 */
+    --tint-strength: 1;
+
+    /* ===== 亚克力表面令牌（由 src/javascripts/surface.js 统一分配）=====
+       模糊等级是**系统分配**的：等级只决定基准步长 --surface-blur-unit，
+       各表面按角色取 --surface-blur-1..5（= unit × 1 / 1.75 / 2.75 / 4 / 6.5），
+       --surface-blur 是「本表面用哪一档」的中间层，元素上覆盖它即可换档。
+       第 5 档是被真实素材逼出来的：启动台展开态原本 78px，四档下要么把它压进
+       第 4 档（明显变薄），要么和 45px 并档（丢层次），加一档后两者原位可表达。
+       下面这组是「JS 还没跑」时的兜底值；运行时 surface.js 会把同名属性写在 <html>
+       内联样式上（内联优先于 :root），所以这里只保证首帧不闪、且是唯一的定义处。
+       规则：样式表里除本节之外不得再出现 blur(<数字px>) 字面量
+       —— dev/static-check.mjs 会按这条 lint，插件想自行调节请覆盖 --surface-blur，
+       写裸 px 属于「可以但不推荐」（见 dev/devdoc/os-api.md 表面一节）。
+       禁忌照旧：带 backdrop-filter 的元素不得加 transform（亚克力采样会截断成白块）。 */
+    --surface-blur-unit: 12px;
+    --surface-blur-1: calc(var(--surface-blur-unit) * 1);
+    --surface-blur-2: calc(var(--surface-blur-unit) * 1.75);
+    --surface-blur-3: calc(var(--surface-blur-unit) * 2.75);
+    --surface-blur-4: calc(var(--surface-blur-unit) * 4);
+    --surface-blur-5: calc(var(--surface-blur-unit) * 6.5);
+    --surface-blur: var(--surface-blur-3);
+    --surface-saturate: 1.6;
+
+    /* 磨砂表面上的文字色：只有黑与白，由 surface.js 按「壁纸主色 → 色相偏移 →
+       着色浓度 → 明暗主题 → 显示器亮度」逐层合成出真实底色后取 WCAG 对比度赢家。
+       --surface-text 给正文，secondary/tertiary 是同一支黑/白降透明度的层级，
+       保证「弱化文字」也仍然来自同一支颜色而不是各表里抄来的 #333/#888。
+
+       「什么在文字下面」决定用哪一套，插件不该自己判断明暗：
+       - --surface-text*：主题面板（菜单、弹层、提示条），着色开关对它们无效，
+         所以判定必须按面板色而不是墙纸底色 —— 实测过：按墙纸推全局会让开着色的
+         浅色主题给出白字压在浅菜单上，107 个文字节点里 95 个掉到 3:1 以下。
+       - --surface-text-wallpaper*：背后就是墙纸的表面 —— 启动台、图片预览、锁屏这类
+         全屏浮层，以及开着墙纸着色时的侧栏 / 控制中心（那些表面合成后仍≈墙纸色）。
+         下面 ui/window.css、ui/controlcenter.css、main.css 的着色节各自把三个属性
+         指过来，整棵子树的文字跟着换，插件不需要知道自己在哪一档。 */
+    --surface-text: #000;
+    --surface-text-rgb: 0, 0, 0;
+    --surface-text-secondary: rgba(0, 0, 0, .70);
+    --surface-text-tertiary: rgba(0, 0, 0, .48);
+    --surface-text-wallpaper: #fff;
+    --surface-text-wallpaper-rgb: 255, 255, 255;
+    --surface-text-wallpaper-secondary: rgba(255, 255, 255, .70);
+    --surface-text-wallpaper-tertiary: rgba(255, 255, 255, .48);
+
+    /* 共用表面令牌：把此前以 magic number 散落在各样式表里的文字/分隔/悬停色收成一组，
+       暗色主题只改这一组，各组件文件不再各自抄 rgba(0,0,0,.x)。
+       注意：这里只覆盖「内核自带的共享界面」（菜单、窗口外壳、Dock、弹层），
+       插件自己的 --finder-* / --np-* 令牌仍由插件维护，不做跨层接管。 */
+    --text-primary: rgba(0, 0, 0, 0.85);
+    --text-secondary: rgba(0, 0, 0, 0.55);
+    --text-tertiary: rgba(0, 0, 0, 0.35);
+    --separator: rgba(0, 0, 0, 0.1);
+    --hairline: rgba(0, 0, 0, 0.06);
+    --hover-bg: rgba(0, 0, 0, 0.08);
+    --press-bg: rgba(0, 0, 0, 0.14);
+    --group-bg: rgba(0, 0, 0, 0.02);
+    --resizer-line: rgba(0, 0, 0, 0.28);
+    --scrollbar-thumb: #a8a9a9;
+    --panel-bg: rgba(246, 246, 246, 0.6);
+    --sidebar-bg: rgba(246, 246, 246, 0.84);
+    --content-bg: #ffffff;
+    /* 「降低透明度」用的不透明底：同色调但不带 alpha，毛玻璃关掉后层次仍读得出来 */
+    --surface-panel: #f4f4f6;
+    --surface-sidebar: #e9e9ec;
+    --surface-content: #ffffff;
+    --surface-menubar: #e6e6e9;
+    --surface-scrim: #26262a;
+    --menubar-text: rgba(0, 0, 0, 0.78);
+}
+
+html[data-theme="dark"] {
+    --text-primary: rgba(255, 255, 255, 0.88);
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --text-tertiary: rgba(255, 255, 255, 0.38);
+    --separator: rgba(255, 255, 255, 0.16);
+    --hairline: rgba(255, 255, 255, 0.12);
+    --hover-bg: rgba(255, 255, 255, 0.1);
+    --press-bg: rgba(255, 255, 255, 0.18);
+    --group-bg: rgba(255, 255, 255, 0.06);
+    --resizer-line: rgba(255, 255, 255, 0.34);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.3);
+    --panel-bg: rgba(42, 42, 46, 0.62);
+    --sidebar-bg: rgba(48, 48, 52, 0.84);
+    --content-bg: #1e1e1e;
+    --surface-panel: #2c2c2e;
+    --surface-sidebar: #232325;
+    --surface-content: #1e1e1e;
+    --surface-menubar: #1c1c1e;
+    --surface-scrim: #121214;
+    --menubar-text: rgba(255, 255, 255, 0.88);
+}
+
+
+/* 暗色主题：压暗桌面壁纸 + 基础背景，使明暗切换可见生效 */
+html[data-theme="dark"] body {
+    background: #1e1e1e;
+}
+html[data-theme="dark"] body > div.wallpaper::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 0;
+}
+
+/* ===== 滚动条显示策略（appearance.scrollbars，三档都要有肉眼可见的差别） =====
+   always          8px 常驻（原有行为，保持不动）
+   auto            滑块平时完全不画，鼠标移到可滚动区域上才出现
+                   —— 即 macOS「根据鼠标或触控板自动」
+   when-scrolling  完全不画，只有该区域真的在滚动时出现，停手约 0.9s 后消失
+   「正在滚动」有两个信号源，两条都要认（写主不同，不能假设只有一个存在）：
+     [data-scrolling="on"] —— appearance.js applyScrollbars 的捕获 scroll 监听
+     .scrolling-active     —— scrollWatch.js（rAF 合并，停手 900ms 摘除）
+   为什么这一节大量用 !important：滚动条外观的写主不在内核一处，插件样式表注入更晚
+   而且类名更多（.settings .left .list::-webkit-scrollbar-thumb 特殊度 0,3,1、
+   .finder-sidebar / .list-body 各自带 var(--finder-scrollbar) 底色），
+   普通权重的档位规则会被它们整片盖掉，用户切到「自动 / 滚动时」看不到任何变化。
+   -webkit-* 给 Chromium，scrollbar-width/color 是 Firefox 侧的等价写法。 */
+html[data-scrollbars="always"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+html[data-scrollbars="always"] * {
+    scrollbar-width: thin;
+}
+
+/* ---- auto：平时隐身，悬停才画滑块 ---- */
+html[data-scrollbars="auto"] * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent !important;
+}
+html[data-scrollbars="auto"] ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+html[data-scrollbars="auto"] ::-webkit-scrollbar-thumb {
+    background: transparent !important;
+    border-radius: 4px;
+    border: 1.5px solid transparent;
+    background-clip: content-box;
+}
+html[data-scrollbars="auto"] :hover,
+html[data-scrollbars="auto"] :focus-within {
+    scrollbar-color: rgba(0, 0, 0, 0.32) transparent !important;
+}
+html[data-scrollbars="auto"] :hover::-webkit-scrollbar-thumb,
+html[data-scrollbars="auto"] :focus-within::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.32) !important;
+    background-clip: content-box;
+}
+html[data-scrollbars="auto"] :hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.5) !important;
+    background-clip: content-box;
+}
+html[data-theme="dark"][data-scrollbars="auto"] :hover,
+html[data-theme="dark"][data-scrollbars="auto"] :focus-within {
+    scrollbar-color: rgba(255, 255, 255, 0.34) transparent !important;
+}
+html[data-theme="dark"][data-scrollbars="auto"] :hover::-webkit-scrollbar-thumb,
+html[data-theme="dark"][data-scrollbars="auto"] :focus-within::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.34) !important;
+    background-clip: content-box;
+}
+html[data-theme="dark"][data-scrollbars="auto"] :hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.52) !important;
+    background-clip: content-box;
+}
+
+/* ---- when-scrolling：只有真的在滚的那 0.9 秒里画滑块 ---- */
+html[data-scrollbars="when-scrolling"] * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent !important;
+}
+html[data-scrollbars="when-scrolling"] ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+html[data-scrollbars="when-scrolling"] ::-webkit-scrollbar-thumb {
+    background: transparent !important;
+    border-radius: 4px;
+    border: 1.5px solid transparent;
+    background-clip: content-box;
+    transition: background-color 0.25s ease;
+}
+html[data-scrollbars="when-scrolling"] [data-scrolling="on"],
+html[data-scrollbars="when-scrolling"] .scrolling-active {
+    scrollbar-color: rgba(0, 0, 0, 0.34) transparent !important;
+}
+html[data-scrollbars="when-scrolling"] [data-scrolling="on"]::-webkit-scrollbar-thumb,
+html[data-scrollbars="when-scrolling"] .scrolling-active::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.34) !important;
+    background-clip: content-box;
+}
+html[data-theme="dark"][data-scrollbars="when-scrolling"] [data-scrolling="on"],
+html[data-theme="dark"][data-scrollbars="when-scrolling"] .scrolling-active {
+    scrollbar-color: rgba(255, 255, 255, 0.4) transparent !important;
+}
+html[data-theme="dark"][data-scrollbars="when-scrolling"] [data-scrolling="on"]::-webkit-scrollbar-thumb,
+html[data-theme="dark"][data-scrollbars="when-scrolling"] .scrolling-active::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.4) !important;
+    background-clip: content-box;
+}
+
+/* ===== 墙纸为窗口着色（appearance.wallpaper.tint -> html[data-wallpaper-tint]） =====
+   开关为 on 时，把各处硬编码的半透明灰底换成壁纸主色。颜色读取一律走 --tint-rgb /
+   --tint-color（本文件 :root 里推导）：优先 surface.js 写的 --tint-adjusted-*（已按
+   「色调偏移」旋转过色相），其次 wallpaper.js 的 --wallpaper-tint-rgb / -color，再缺省
+   回落到 appearance.js 的 --window-tint-rgb，最后兜底中性蓝灰 —— 所以任一写主在场着色
+   就成立，全都没写也只是一块中性灰。
+   浓度一律写成 calc(固有浓度 * var(--tint-strength))：appearance.tintStrength 只改浓度，
+   不会把某块面板整体调没，也不会让滑块只作用于预览而真实界面不动。
+   内核窗口外壳（.window / .window > .left / .window > .right）的同款规则在 ui/window.css，
+   控制中心卡片的在 ui/controlcenter.css，这里只补「样式表在插件目录里」的界面
+   —— 插件样式表注入更晚，所以本文件的规则都多带一个 html 属性段来提高特殊度。
+   带 backdrop-filter 的元素只改 background，绝不加 transform / will-change。 */
+/* 访达侧栏：插件自己把底色收成 --finder-sidebar-bg 令牌（mods/finder/style.css 的
+   :root 与 data-theme=dark 各写一份），所以内核只在 .finder 这一层改写令牌值，
+   不复制它的选择器、也不抢它插件内部的其它属性。浓度与窗口侧栏一致（0.72 掺色），
+   并且同样乘以 --tint-strength —— 否则「着色浓度」滑块只影响预览不影响真实界面。 */
+html[data-wallpaper-tint="on"] .finder {
+    --finder-sidebar-bg: rgba(var(--tint-rgb), calc(0.72 * var(--tint-strength)));
+}
+html[data-theme="dark"][data-wallpaper-tint="on"] .finder {
+    --finder-sidebar-bg: rgba(var(--tint-rgb), calc(0.6 * var(--tint-strength)));
+}
+/* 侧栏被墙纸染深后文字要跟着换档：--finder-text* 在插件 :root 就已代入全局 --surface-text，
+   所以在侧栏这一层直接重指到墙纸档（自定义属性按元素计算，越近的后代赢）。 */
+html[data-wallpaper-tint="on"] .finder-sidebar {
+    --finder-text: var(--surface-text-wallpaper);
+    --finder-text-secondary: var(--surface-text-wallpaper-secondary);
+    --finder-text-tertiary: var(--surface-text-wallpaper-tertiary);
+}
+
+/* ===== 边栏图标大小（appearance.sidebar.size -> html[data-sidebar-size]） =====
+   medium = 现状，故意不写规则，保证默认外观零变化；small / large 只调图标本身，
+   文字与行高交给各自的样式表，避免把侧栏行撑出容器。
+   选择器同时覆盖内核窗口侧栏（.window > .left，系统设置旧外壳用的就是它）
+   与访达侧栏（.finder-sidebar .item-icon）。 */
+html[data-sidebar-size="small"] .window > .left .list .selection .icon,
+html[data-sidebar-size="small"] .finder-sidebar .item-icon {
+    width: 16px;
+    height: 16px;
+}
+html[data-sidebar-size="large"] .window > .left .list .selection .icon,
+html[data-sidebar-size="large"] .finder-sidebar .item-icon {
+    width: 28px;
+    height: 28px;
+}
+
+/* ===== 减少动态效果（appearance.reduceMotion -> html[data-reduce-motion]） =====
+   取舍说明（为什么不用 * { transition: none } 一把梭）：
+   1) 站内大量「状态反馈」是颜色/透明度过渡（菜单项 hover 底色、日历格、控制中心卡片、
+      光标图标淡入），* 级 nuke 会把它们一并抹掉，界面看起来像坏掉而不是「安静」；
+   2) 几何位移才是这里要消掉的动效：窗口 left/top/width/height、通知 translateX、
+      Dock 放大与 parabola、启动台 scale。这些写在 window.js / dock.js 的内联样式里
+      （window.js 的 "left 0.3s ease, top 0.3s ease, width …"、dock.js 的
+      DOCK_TRANSITION、notification.js 的 cssText），普通权重赢不过内联样式，
+      所以本节的每一条都必须是 !important。
+   3) 已知代价：窗口关闭依赖 ui.css 的 window-fade-out，动画被关掉后由
+      window.js closeWindow 里的 setTimeout(finish, 300) 兜底移除，功能不受影响，
+      只是「瞬间消失」——这正是本开关想要的结果。
+   4) 只消 animation/transition，不改 animation-play-state 之类的花活，
+      也不碰 opacity-only 的浮层淡入（控制中心 / 日历弹层）：macOS 的
+      「减少动态效果」同样保留交叉淡入，只取消位移与缩放。 */
+html[data-reduce-motion="on"] .window,
+html[data-reduce-motion="on"] .window.minimized,
+html[data-reduce-motion="on"] .window.closing {
+    transition: none !important;
+    animation: none !important;
+}
+/* 程序坞：入场淡入 + 图标 parabola + 逐帧放大。放大是 dock.js 每帧写内联
+   width/height 实现的，CSS 只能把尺寸重新钉回 --dock-size 令牌（dock.js 946 行
+   就写在这个元素上），于是「程序坞放大 / 放大倍数」在本模式下不再生效。 */
+html[data-reduce-motion="on"] .dock,
+html[data-reduce-motion="on"] .dock .container img,
+html[data-reduce-motion="on"] .tip {
+    transition: none !important;
+    animation: none !important;
+}
+html[data-reduce-motion="on"] .dock .container img {
+    width: var(--dock-size, 50px) !important;
+    height: var(--dock-size, 50px) !important;
+}
+/* 通知横幅：notification.js 的内联 transition 是 transform .4s + opacity .4s，
+   关掉后横幅直接出现 / 消失（收起定时器 CLOSE_ANIMATION=400ms 仍在，元素照常回收）。 */
+html[data-reduce-motion="on"] .os-notification {
+    transition: none !important;
+    animation: none !important;
+}
+/* 菜单与下拉：顶栏子菜单的 opacity 过渡是 finderbar.js 写在内联样式上的
+   （finderbar.js:898 / 938），系统设置的下拉浮层由插件样式给过渡，一并钉住。 */
+html[data-reduce-motion="on"] .menu,
+html[data-reduce-motion="on"] .ss-menu,
+html[data-reduce-motion="on"] .ss-dropdown__wrap {
+    transition: none !important;
+    animation: none !important;
+}
+/* 启动台与文件夹浮层的 scale/translate 入场（mods/launchpad 的 keyframes） */
+html[data-reduce-motion="on"] .launchpad,
+html[data-reduce-motion="on"] .launchpad .grid,
+html[data-reduce-motion="on"] .launchpad .folder-layer .folder-panel {
+    animation: none !important;
+}
+/* 启动台内新加的过渡（搜索条/根网格淡出、文件夹磁贴与图标悬停放大）同样要静音。
+   拖拽让位仍会跟手，只是不再有过渡；这正是「减少动态效果」的预期。 */
+html[data-reduce-motion="on"] .launchpad .grid-scroll,
+html[data-reduce-motion="on"] .launchpad .searchbar,
+html[data-reduce-motion="on"] .launchpad .container,
+html[data-reduce-motion="on"] .launchpad .container > img,
+html[data-reduce-motion="on"] .launchpad .folder-tile,
+html[data-reduce-motion="on"] .launchpad .page-dots,
+html[data-reduce-motion="on"] .launchpad .page-dot {
+    transition: none !important;
+}
+/* 按下回弹这类「纯装饰 transform」也一并取消：只挑没有布局作用的 :active，
+   绝不碰 .cc-slider-thumb 那种靠 transform 定位的元素。 */
+html[data-reduce-motion="on"] .cc-card:active,
+html[data-reduce-motion="on"] .cc-np-btn:active {
+    animation: none !important;
+    transform: none !important;
+}
+/* 系统弹窗的 Pop 关键帧（scale .1 → 1）写在 webswift.js 的 shadow :host 里，
+   文档样式表对外宿元素的 !important 声明优先级更高，可以就地按住。 */
+html[data-reduce-motion="on"] swift-messagebox {
+    animation: none !important;
+}
+/* 壁纸切换的淡入淡出：今天 .wallpaper 在样式表里还没有过渡，
+   这条是给 wallpaper.js 侧的交叉淡入兜底的（该元素恒存在，规则不会落空）。 */
+html[data-reduce-motion="on"] body > div.wallpaper,
+html[data-reduce-motion="on"] body > div.wallpaper::after {
+    transition: none !important;
+    animation: none !important;
+}
+
+/* ===== 降低透明度（appearance.transparency -> html[data-transparency="off"]） =====
+   on（默认）保持毛玻璃；off 时所有 acrylic 面换成同色调不透明底。
+   硬约束：本节只动 backdrop-filter 与 background / color，绝不给这些元素加
+   transform / translateZ / will-change，也不改 overflow 与 isolation ——
+   现存的「isolation:isolate + overflow:hidden」亚克力配方一旦被碰坏，
+   毛玻璃会退化成矩形光斑（见 dock.css / window.css 顶部的禁忌说明）。
+   内核自带的界面就近改在各自文件里：ui.css（.menu）、contextMenu.css、
+   dock.css（.tip / .dock::before / .dock-stack）、controlcenter.css（面板与圆形按钮）、
+   datetime-popover.css（日历）、finderbar.css（菜单栏）。本节管三类够不着或必须集中管的：
+   1) 所有窗口及其内部 —— 窗口外壳样式表在插件目录里且注入更晚，只能由内核
+      !important 接管；ui/window.css 的 legacy 侧栏（.window > .left）也在这一条里压实，
+      所以 window.css 自身不再重复写 data-transparency 规则；
+   2) 写在内联样式里的浮层（通知、锁屏）；
+   3) 全屏遮罩。 */
+html[data-transparency="off"] .window,
+html[data-transparency="off"] .window * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+html[data-transparency="off"] .window {
+    background: var(--surface-content) !important;
+}
+/* 侧栏与内容区之间要留住层次差，否则整窗变成一块白板 */
+html[data-transparency="off"] .window > .left {
+    background: var(--surface-sidebar) !important;
+}
+/* 着色与不透明可以共存：不透明底用 color-mix 掺墙纸主色，而不是叠半透明层 */
+html[data-wallpaper-tint="on"][data-transparency="off"] .window {
+    background: color-mix(in srgb, var(--tint-color) calc(12% * var(--tint-strength)), var(--surface-content)) !important;
+}
+html[data-wallpaper-tint="on"][data-transparency="off"] .window > .left {
+    background: color-mix(in srgb, var(--tint-color) calc(45% * var(--tint-strength)), var(--surface-sidebar)) !important;
+}
+/* 通知横幅（内联样式，必须 !important） */
+html[data-transparency="off"] .os-notification {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--surface-panel) !important;
+    color: var(--text-primary) !important;
+}
+/* 锁屏 / 会话遮罩：文字恒为白色，所以不透明底取深色档，两个主题都读得清 */
+html[data-transparency="off"] .lock-overlay,
+html[data-transparency="off"] .session-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--surface-scrim) !important;
+}
+/* 启动台：整屏毛玻璃是它唯一的背景（元素自身没有 background），
+   关掉模糊必须同时补一块实色底衬，否则图标直接骑在桌面上。 */
+html[data-transparency="off"] .launchpad,
+html[data-transparency="off"] .launchpad .folder-layer .folder-panel,
+html[data-transparency="off"] .launchpad .searchbar .search-input {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--surface-scrim) !important;
+}
+/* 不兼容提示遮罩（client.js 建的 body > div.overlay） */
+html[data-transparency="off"] body > div.overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--surface-scrim);
+}
+
+/* ===== 通知横幅的暗色档（原本只有浅色） =====
+   横幅的颜色写在 notification.js 的 cssText 内联样式里，普通权重赢不了，
+   这里同样只能用 !important；除 .os-notification 之外没有别的宿主可误伤。 */
+html[data-theme="dark"] .os-notification {
+    background: rgba(46, 46, 50, 0.62) !important;
+    color: var(--text-primary) !important;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 3px rgba(0, 0, 0, 0.6) !important;
+}
+

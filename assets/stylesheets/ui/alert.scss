@@ -1,0 +1,123 @@
+// alert.scss — 本文件由 alert.css 逐行收编而来，是 alert.css 的唯一样式源。
+// 纯 CSS 同时是合法 SCSS，故本文件与编译产物一一对应；改样式请只改这里，
+// 再执行：npx sass --no-source-map --style expanded assets/stylesheets/ui/alert.scss assets/stylesheets/ui/alert.css
+/* ============================================================
+   错误弹窗（swift-messagebox）样式覆盖与优化
+   ------------------------------------------------------------
+   1. 优化弹窗整体外观：尺寸、圆角、阴影、毛玻璃背景、间距。
+   2. 修复底部按钮问题：使用自定义 .alert-btn 按钮，
+      确保水平居中显示、背景色正常显示（不再被遮挡）、文字为白色。
+   ============================================================ */
+
+/* 弹窗整体 */
+swift-messagebox {
+  width: 260px;
+  border-radius: 14px;
+  background: rgba(250, 250, 250, 0.72);
+  /* 弹窗宿主（webswift.js 的 :host）自带 backdrop-filter，是一块亚克力面：
+     正文走系统强制的黑/白档，由 surface.js 按「墙纸主色 → 着色 → 主题 → 亮度」推导。 */
+  color: var(--surface-text);
+  box-shadow:
+    inset 0 0 1px rgba(255, 255, 255, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.12),
+    0 24px 60px rgba(0, 0, 0, 0.28);
+  padding: 24px 20px 20px;
+}
+
+/* 图标 */
+swift-messagebox img[icon] {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 16px;
+}
+
+/* 标题（shadow 内 ::slotted 样式优先级更高，此处补充微调） */
+swift-messagebox p[slot="title"] {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+/* 正文 */
+swift-messagebox p[slot="text"] {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+/* 底部按钮：水平居中 + 完整背景显示 + 白色文字 */
+swift-messagebox .alert-btn {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  height: 26px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 6px;
+  background: #007aff;
+  color: #fff;
+  font-family: "SFPro-Regular", "PingFangSC-Regular", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow:
+    0 0.5px 3px rgba(0, 122, 255, 0.12),
+    0 1px 2px rgba(0, 122, 255, 0.12),
+    0 0.5px 1px rgba(0, 122, 255, 0.24);
+  transition: filter 0.15s ease;
+}
+
+swift-messagebox .alert-btn:hover {
+  filter: brightness(1.05);
+}
+
+swift-messagebox .alert-btn:active {
+  filter: brightness(0.9);
+}
+
+/* ============================================================
+   通用系统弹窗（showMessageBox / window.__dialog）补充样式
+   ------------------------------------------------------------
+   1. 无图标时隐藏 <img icon src="">（swift-messagebox 模板恒含 img）
+   2. 按钮变体：secondary（灰底黑字）/ destructive（红底白字）
+   3. 多按钮容器 .msgbox-btns：横排等宽；
+      !important 覆盖 shadow 内 ::slotted([slot=button]) 的
+      height:23px / align-self:normal 固定样式
+   ============================================================ */
+
+swift-messagebox.system-dialog {
+  width: 280px;
+}
+
+swift-messagebox img[icon][src=""] {
+  display: none;
+}
+
+swift-messagebox .alert-btn.secondary {
+  background: rgba(0, 0, 0, 0.08);
+  /* 次按钮只有 8% 的黑底，文字实际仍骑在弹窗那块亚克力面上 → 走强制黑白档 */
+  color: var(--surface-text);
+  box-shadow: none;
+}
+
+swift-messagebox .alert-btn.destructive {
+  background: #ff3b30;
+  box-shadow:
+    0 0.5px 3px rgba(255, 59, 48, 0.12),
+    0 1px 2px rgba(255, 59, 48, 0.12),
+    0 0.5px 1px rgba(255, 59, 48, 0.24);
+}
+
+swift-messagebox .msgbox-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+  height: auto !important;
+  align-self: auto !important;
+}
+
+swift-messagebox .msgbox-btns .alert-btn {
+  flex: 1;
+}

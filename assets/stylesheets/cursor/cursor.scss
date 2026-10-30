@@ -1,0 +1,30 @@
+@keyframes rotate {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    50% {
+        transform: rotate(360deg);
+    }
+
+    100% {
+        transform: rotate(720deg);
+    }
+}
+
+body {
+    // 默认光标引用 cursor.js 注入的 --deskly-cursor（自定义 macOS 箭头）。
+    // 不再用 `body * { url(default.cur) !important }`：.cur 是 128px 多帧光标，
+    // Chrome 取最大帧渲染 → 加载期极大；且 !important 会压掉元素级语义光标。
+    &.cursor-default, & {
+        cursor: var(--deskly-cursor, default);
+    }
+
+    &.cursor-beachball {
+        cursor: url(../../cursors/beachball.ani), default !important;
+    }
+
+    &.cursor-none {
+        cursor: none !important;
+    }
+}

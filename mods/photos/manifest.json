@@ -1,0 +1,15 @@
+{
+  "id": "photos",
+  "name": "照片",
+  "version": "1.2.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "统一的图片与视频图库：网格/列表浏览、缩放旋转、幻灯片、全屏与视频播放",
+  "permissions": ["files:read", "files:write"],
+  "formats": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".heic", ".bmp", ".avif", ".mp4", ".webm", ".mov", ".m4v", ".ogv"],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "./Photos.png"
+}

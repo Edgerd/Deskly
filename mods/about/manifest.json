@@ -1,0 +1,14 @@
+{
+  "id": "about",
+  "name": "关于本机",
+  "version": "1.0.1",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "查看本机信息",
+  "permissions": [],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Informations système.png"
+}

@@ -1,0 +1,828 @@
+/*
+ * style.css — App Store 界面（外壳 + 卡片 + 详情页）
+ *
+ * 命名：全部收在 as-* 前缀下，避开 window.css 里同名的遗留三栏规则
+ * （.left / .right / .main / .page / .row / .selection 归系统设置与旧外壳所有，
+ * 撞上去只靠引入顺序侥幸胜出，是历史 bug 的来源）。
+ *
+ * 颜色：--accent / --accent-rgb / --surface-* / --window-tint 由内核写在 <html> 上，
+ * 这里只消费不自造；本文件自己的令牌一律 --as-*，定义在 .appstore 作用域内，
+ * 浅色一份、html[data-theme="dark"] 一份。文字不再出现散落的 #333/#888。
+ *
+ * 亚克力禁忌：带 backdrop-filter 的元素（侧栏、标题条）绝不加 transform /
+ * will-change:transform —— Chrome 会把它提为 3D 合成层，毛玻璃退化成一块半透明白色矩形。
+ * 悬停反馈一律走 background / box-shadow / border-color。
+ * 尺寸：窗口宽高由 manifest.window(900×600) 经加载器写成内联样式，这里只给缩放下界，
+ * 也不写 top/left —— 居中是 window.js centerWindow() 的职责。
+ */
+
+/* ===== 设计令牌（浅色） ===== */
+.appstore.window {
+    /* 内容区是不透明表面 → 用主题色；侧栏是亚克力表面 → 下面改指向系统强制黑白 */
+    --as-text-solid: #1d1d1f;
+    --as-text-solid-secondary: rgba(29, 29, 31, 0.62);
+    --as-text-solid-tertiary: rgba(29, 29, 31, 0.42);
+    --as-text: var(--as-text-solid);
+    --as-text-secondary: var(--as-text-solid-secondary);
+    --as-text-tertiary: var(--as-text-solid-tertiary);
+    --as-on-accent: #fff;
+    --as-content-bg: #fff;
+    /* 边栏两档浓度，与访达侧栏取平（--finder-sidebar-bg 0.62 / 深色 0.57）：
+       glass 用在毛玻璃开启时，窗口根透明后它才真的糊到壁纸；solid 只在
+       appearance.transparency 关掉、毛玻璃被摘掉后当实色底。 */
+    --as-sidebar-glass: rgba(246, 246, 246, 0.62);
+    --as-sidebar-solid: rgba(246, 246, 246, 0.94);
+    --as-card-bg: #f5f5f7;
+    --as-card-hover: #ebebef;
+    --as-card-border: rgba(0, 0, 0, 0.06);
+    --as-row-divider: rgba(0, 0, 0, 0.07);
+    --as-hover: rgba(0, 0, 0, 0.05);
+    --as-pressed: rgba(0, 0, 0, 0.09);
+    --as-control-bg: #fff;
+    --as-control-border: rgba(0, 0, 0, 0.16);
+    --as-chip-bg: rgba(0, 0, 0, 0.06);
+    --as-danger: #d93d33;
+    --as-danger-bg: rgba(217, 61, 51, 0.1);
+    --as-ok: #1c9e2d;
+    --as-warn: #b86a00;
+    --as-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --as-shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.12);
+    --as-scrim: rgba(255, 255, 255, 0.86);
+}
+
+/* ===== 设计令牌（深色） ===== */
+html[data-theme="dark"] .appstore.window {
+    --as-text-solid: #f2f2f4;
+    --as-text-solid-secondary: rgba(242, 242, 244, 0.66);
+    --as-text-solid-tertiary: rgba(242, 242, 244, 0.42);
+    --as-text: var(--as-text-solid);
+    --as-text-secondary: var(--as-text-solid-secondary);
+    --as-text-tertiary: var(--as-text-solid-tertiary);
+    --as-content-bg: #1e1e1e;
+    --as-sidebar-glass: rgba(40, 40, 40, 0.57);
+    --as-sidebar-solid: rgba(46, 46, 48, 0.94);
+    --as-card-bg: #2a2a2c;
+    --as-card-hover: #343437;
+    --as-card-border: rgba(255, 255, 255, 0.08);
+    --as-row-divider: rgba(255, 255, 255, 0.09);
+    --as-hover: rgba(255, 255, 255, 0.08);
+    --as-pressed: rgba(255, 255, 255, 0.13);
+    --as-control-bg: #2a2a2c;
+    --as-control-border: rgba(255, 255, 255, 0.2);
+    --as-chip-bg: rgba(255, 255, 255, 0.12);
+    --as-danger: #ff6961;
+    --as-danger-bg: rgba(255, 105, 97, 0.16);
+    --as-ok: #4cd964;
+    --as-warn: #f0a441;
+    --as-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --as-shadow-card-hover: 0 6px 18px rgba(0, 0, 0, 0.5);
+    --as-scrim: rgba(30, 30, 32, 0.86);
+}
+
+/* ===== 外壳 ===== */
+.appstore.window {
+    min-width: 680px;
+    min-height: 440px;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    border-radius: 12px;
+    /* 访达同款：窗口根透明，让壁纸从半透明侧栏透出（实底由 .as-content 自己铺）。
+       同时刻意**不写 isolation: isolate** —— isolation 会把本元素变成 backdrop root，
+       侧栏的采样范围就被截进窗口内部，糊到的还是自家底板而不是壁纸
+       （内核那侧的同一件事见 assets/stylesheets/main/main.css 的降低透明度一节，
+       它给 .window 补的是实色底，不是 isolation）。 */
+    background: transparent;
+    color: var(--as-text);
+    font-family: "SFPro-Regular", "PingFangSC-Regular";
+    font-size: 13px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.appstore.window *,
+.appstore.window *::before,
+.appstore.window *::after {
+    box-sizing: border-box;
+}
+
+/* 视图切换靠 hidden 属性：下面的布局规则给了这些节点 display:flex，不写这条遮不住 */
+.appstore.window [hidden] {
+    display: none !important;
+}
+
+/* 商店里的图片一律不许原生拖：按住拖会变成浏览器在拖一个文件，留下半透明拖影。
+   draggable=false 在脚本里逐张设置，这里再兜一层（含将来动态加的图）。 */
+.appstore img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+/* 标题条：只有红绿灯，宽度等于侧栏；自身不吃鼠标事件，否则挡住搜索框 */
+.appstore .as-titlebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 214px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    padding-left: var(--traffic-inset, 20px);
+    pointer-events: none;
+    z-index: 4;
+}
+.appstore .as-titlebar .wintools {
+    pointer-events: auto;
+}
+
+/* 侧栏：毛玻璃 + 墙纸着色，浓度与 window.css 的 .window > .left 一致 */
+.appstore > .as-sidebar {
+    flex: 0 0 214px;
+    width: 214px;
+    min-width: 214px;
+    max-width: 214px;
+    height: 100%;
+    padding-top: 38px;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.06)), var(--as-sidebar-glass);
+    backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+    -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+    isolation: isolate;
+    overflow: hidden;
+    /* 亚克力表面上的文字：只在这里把本界面的文字令牌改指向系统黑白一次，
+       下面的条目 / 计数 / 状态行继续引用 --as-text*，不散落替换。 */
+    --as-text: var(--surface-text);
+    --as-text-secondary: var(--surface-text-secondary);
+    --as-text-tertiary: var(--surface-text-tertiary);
+}
+html[data-theme="dark"] .appstore > .as-sidebar {
+    background: linear-gradient(rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.28)), var(--as-sidebar-glass);
+}
+html[data-wallpaper-tint="on"] .appstore > .as-sidebar {
+    background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1)), rgba(var(--tint-rgb), calc(0.72 * var(--tint-strength)));
+}
+html[data-theme="dark"][data-wallpaper-tint="on"] .appstore > .as-sidebar {
+    background: linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), rgba(var(--tint-rgb), calc(0.6 * var(--tint-strength)));
+}
+/* 侧栏被墙纸染深后文字改读墙纸档（与 mods/system-settings/style.css 给 .ss-sidebar 的同款取舍）；
+   关掉毛玻璃的那条规则排在后面且同特殊度，实色表面仍然退回主题色。 */
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .appstore > .as-sidebar {
+    --as-text: var(--surface-text-wallpaper);
+    --as-text-secondary: var(--surface-text-wallpaper-secondary);
+    --as-text-tertiary: var(--surface-text-wallpaper-tertiary);
+}
+/* 关掉毛玻璃：换不透明底，文字也从亚克力令牌退回主题色 */
+html[data-transparency="off"] .appstore > .as-sidebar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--as-sidebar-solid);
+    --as-text: var(--as-text-solid);
+    --as-text-secondary: var(--as-text-solid-secondary);
+    --as-text-tertiary: var(--as-text-solid-tertiary);
+}
+
+.appstore > .as-edge {
+    flex: 0 0 1px;
+    width: 1px;
+    min-width: 1px;
+    max-width: 1px;
+    height: 100%;
+    /* 同 .settings > .ss-edge：根透明后这条缝要「实色打底 + 分隔色叠一层」，
+       别写成 color-mix（它会连 alpha 一起插值，实测 0.58，等于留一条露壁纸的发丝缝）。 */
+    background: linear-gradient(var(--as-row-divider), var(--as-row-divider)), var(--as-content-bg);
+}
+
+.appstore > .as-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: var(--as-content-bg);
+}
+
+/* ===== 侧栏内容 ===== */
+.as-search__wrap {
+    padding: 0 12px 8px;
+}
+.as-search {
+    width: 100%;
+    height: 26px;
+    padding: 0 10px;
+    font-size: 12.5px;
+    color: var(--as-text-solid);
+    background: var(--as-control-bg);
+    border: 1px solid var(--as-control-border);
+    border-radius: 7px;
+    outline: none;
+    /* 搜索框是不透明控件，文字用主题色而不是亚克力推导色 */
+}
+.as-search:focus {
+    border-color: var(--accent, #0a82ff);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 10, 130, 255), 0.22);
+}
+.as-search::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+}
+
+.as-cats {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.as-cats .cat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 9px;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    color: var(--as-text);
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    cursor: var(--deskly-cursor, default);
+}
+.as-cats .cat:hover { background: var(--as-hover); }
+.as-cats .cat:active { background: var(--as-pressed); }
+.as-cats .cat.active {
+    /* 强调色实底 + 白字：按规则不吃 --surface-text */
+    background: var(--accent, #0a82ff);
+    color: var(--as-on-accent);
+}
+.as-cats .cat .n {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--as-text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+.as-cats .cat.active .n { color: rgba(255, 255, 255, 0.8); }
+
+.as-sidebtn {
+    margin: 0 8px 8px;
+    padding: 6px 9px;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    color: var(--as-text);
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    cursor: var(--deskly-cursor, default);
+}
+.as-sidebtn:hover { background: var(--as-hover); }
+.as-sidebtn.active { background: var(--accent, #0a82ff); color: var(--as-on-accent); }
+
+.as-sw {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 8px 12px 10px;
+    border-top: 1px solid var(--as-row-divider);
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--as-text-tertiary);
+}
+.as-sw .dot {
+    flex: 0 0 7px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--as-warn);
+}
+.as-sw .dot.on { background: var(--as-ok); }
+
+/* ===== 顶部工具条 ===== */
+.as-toolbar {
+    flex: 0 0 auto;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--as-row-divider);
+}
+.as-heading {
+    margin: 0;
+    font-family: "SFPro-Medium", "PingFangSC-Medium";
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--as-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.as-count {
+    font-size: 12px;
+    color: var(--as-text-tertiary);
+    white-space: nowrap;
+}
+.as-spacer { flex: 1 1 auto; }
+
+.as-back,
+.as-pick,
+.appstore .ghost,
+.appstore .danger,
+.appstore .cta {
+    height: 26px;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 12.5px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    cursor: var(--deskly-cursor, pointer);
+    white-space: nowrap;
+}
+.as-back {
+    color: var(--accent, #0a82ff);
+    background: transparent;
+    padding-left: 4px;
+}
+.as-back::before { content: "‹ "; }
+.as-back:hover { background: var(--as-hover); }
+.as-pick {
+    color: var(--as-text);
+    background: var(--as-control-bg);
+    border-color: var(--as-control-border);
+}
+.as-pick:hover { background: var(--as-card-hover); }
+
+/* ===== 面板（列表 / 详情共用一块滚动区） ===== */
+.as-pane {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.as-pane::-webkit-scrollbar { width: 8px; }
+.as-pane::-webkit-scrollbar-thumb {
+    border-radius: 100px;
+    background: var(--scrollbar-thumb, #a8a9a9);
+}
+
+/* ===== 卡片网格 ===== */
+.as-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 14px;
+    align-content: start;
+    padding: 16px;
+}
+.as-grid .empty {
+    grid-column: 1 / -1;
+    padding: 48px 0;
+    text-align: center;
+    font-size: 13px;
+    color: var(--as-text-tertiary);
+}
+
+.card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 14px;
+    background: var(--as-card-bg);
+    border: 1px solid var(--as-card-border);
+    border-radius: 12px;
+    box-shadow: var(--as-shadow-card);
+    cursor: var(--deskly-cursor, pointer);
+    outline: none;
+    transition: background 0.16s, box-shadow 0.16s, border-color 0.16s;
+}
+.card:hover {
+    background: var(--as-card-hover);
+    box-shadow: var(--as-shadow-card-hover);
+}
+.card:focus-visible {
+    border-color: var(--accent, #0a82ff);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 10, 130, 255), 0.28);
+}
+.card .icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    object-fit: contain;
+    margin-bottom: 8px;
+}
+.card .name {
+    margin: 0;
+    font-family: "SFPro-Medium", "PingFangSC-Medium";
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--as-text);
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.card .tag {
+    margin: 0 0 8px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--as-text-secondary);
+    /* 说明只给两行：长描述交给详情页。不给 min-height 撑等高 —— 一行文案时
+       会在下面留出一截空白，多余的空间交给 .cta 的 margin-top:auto 吸收。 */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.card .meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    font-size: 11px;
+    color: var(--as-text-tertiary);
+}
+.card .ver { font-variant-numeric: tabular-nums; }
+.card .src {
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: var(--as-chip-bg);
+    color: var(--as-text-secondary);
+}
+.card .cta {
+    width: 100%;
+    height: 28px;
+    margin-top: auto;
+    color: var(--as-on-accent);
+    background: var(--accent, #0a82ff);
+}
+.card .cta:hover { filter: brightness(1.08); }
+.card .cta:active { filter: brightness(0.92); }
+.card.off .icon { opacity: 0.45; }
+.card.off .name { color: var(--as-text-secondary); }
+
+.chip {
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 11px;
+    background: var(--as-chip-bg);
+    color: var(--as-text-secondary);
+}
+.chip.disabled { background: var(--as-danger-bg); color: var(--as-danger); }
+.chip.sensitive { background: rgba(var(--accent-rgb, 10, 130, 255), 0.14); color: var(--accent, #0a82ff); }
+
+/* ===== 详情页 ===== */
+.as-detail { padding: 18px 20px 24px; }
+.as-detail .empty {
+    font-size: 13px;
+    color: var(--as-text-tertiary);
+}
+
+.hero {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--as-row-divider);
+}
+.hero .heroicon {
+    width: 88px;
+    height: 88px;
+    border-radius: 18px;
+    object-fit: contain;
+    flex: 0 0 auto;
+    background: var(--as-card-bg);
+}
+.hero .hero-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-top: 2px;
+}
+.hero .hero-info h2 {
+    margin: 0 0 3px;
+    font-family: "SFPro-Medium", "PingFangSC-Medium";
+    font-size: 21px;
+    font-weight: 500;
+    color: var(--as-text);
+}
+.hero .tagline {
+    margin: 0 0 6px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--as-text-secondary);
+}
+.hero .byline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--as-text-tertiary);
+}
+.hero .byline .sep { opacity: 0.5; }
+.hero .hero-acts {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+.hero .hero-acts .cta {
+    min-width: 84px;
+    height: 30px;
+    color: var(--as-on-accent);
+    background: var(--accent, #0a82ff);
+}
+.hero .hero-acts .cta:hover { filter: brightness(1.08); }
+.appstore .ghost {
+    color: var(--as-text);
+    background: var(--as-control-bg);
+    border-color: var(--as-control-border);
+}
+.appstore .ghost:hover { background: var(--as-card-hover); }
+.appstore .danger {
+    color: var(--as-danger);
+    background: var(--as-danger-bg);
+    border-color: transparent;
+}
+.appstore .danger:hover { filter: brightness(1.06); }
+
+.dblock {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--as-row-divider);
+}
+.dblock:last-child { border-bottom: none; }
+.dblock h3 {
+    margin: 0 0 8px;
+    font-family: "SFPro-Medium", "PingFangSC-Medium";
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--as-text);
+}
+.dblock .para {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--as-text-secondary);
+    white-space: pre-line;
+}
+.dblock .feats {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: var(--as-text-secondary);
+}
+
+/* 截图：横向一条，超出滚动，尺寸固定不会被长图撑坏 */
+.shots-wrap {
+    position: relative;
+}
+.shots {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 0 4px 6px;
+}
+.shots .shot {
+    flex: 0 0 auto;
+    margin: 0;
+    height: 230px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--as-card-bg);
+    border: 1px solid var(--as-card-border);
+    cursor: zoom-in;
+}
+.shots .shot img {
+    display: block;
+    height: 100%;
+    width: auto;
+    object-fit: contain;
+    /* 点击一律落在 figure 上：图片自身不接指针事件，就无从触发原生拖拽 */
+    pointer-events: none;
+}
+
+/* 翻页箭头：只有真的溢出时才出现，到头的那个方向变淡 */
+.shots-nav {
+    position: absolute;
+    top: 50%;
+    margin-top: -16px;
+    z-index: 2;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0 0 2px;
+    border: 1px solid var(--as-card-border);
+    border-radius: 50%;
+    background: var(--as-card-bg);
+    color: var(--as-text);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+}
+.shots-wrap.has-nav .shots-nav { display: flex; }
+.shots-nav--prev { left: -8px; }
+.shots-nav--next { right: -8px; }
+.shots-nav:hover { background: var(--as-card-bg-hover, var(--as-card-bg)); }
+.shots-nav:disabled { opacity: .28; cursor: default; }
+
+/* 大图：窗口内模态，底色压暗、图像 contain 到可视区 */
+.lightbox {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    background: rgba(10, 10, 12, .95);
+    backdrop-filter: blur(var(--surface-blur-1)) saturate(var(--surface-saturate));
+    -webkit-backdrop-filter: blur(var(--surface-blur-1)) saturate(var(--surface-saturate));
+}
+.lightbox__stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 42px 66px 44px;
+}
+.lightbox__img {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 10px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .62);
+}
+.lightbox__btn {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .14);
+    color: #fff;
+    font-size: 21px;
+    line-height: 1;
+    cursor: pointer;
+}
+.lightbox__btn:hover { background: rgba(255, 255, 255, .28); }
+.lightbox__close { top: 14px; right: 14px; font-size: 15px; }
+.lightbox__nav { top: 50%; margin-top: -18px; }
+.lightbox__nav--prev { left: 14px; }
+.lightbox__nav--next { right: 14px; }
+.lightbox__count {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: rgba(255, 255, 255, .74);
+}
+
+/* 套件里的子应用：一颗图标一个名字，点了直接开那个应用 */
+.apps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.appchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 12px 5px 6px;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--as-text);
+    background: var(--as-card-bg);
+    border: 1px solid var(--as-card-border);
+    border-radius: 999px;
+    cursor: var(--deskly-cursor, pointer);
+}
+.appchip:hover { background: var(--as-card-hover); }
+.appchip img {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    object-fit: contain;
+}
+
+.perms {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.perms li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12.5px;
+}
+.perms li b {
+    font-family: "SFPro-Medium", "PingFangSC-Medium";
+    font-weight: 500;
+    color: var(--as-text);
+    white-space: nowrap;
+}
+.perms .hint { color: var(--as-text-secondary); }
+.perms .none { color: var(--as-text-tertiary); }
+
+.kv {
+    display: grid;
+    grid-template-columns: 88px 1fr;
+    gap: 6px 12px;
+    margin: 0;
+    font-size: 12.5px;
+}
+.kv dt { color: var(--as-text-tertiary); }
+.kv dd {
+    margin: 0;
+    color: var(--as-text-secondary);
+    word-break: break-all;
+}
+.homepage {
+    color: var(--accent, #0a82ff);
+    font-size: 12.5px;
+    word-break: break-all;
+}
+
+/* ===== 安装记录 ===== */
+.hist {
+    display: flex;
+    flex-direction: column;
+}
+.hrow {
+    display: grid;
+    grid-template-columns: 150px 1fr 64px 72px;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 2px;
+    border-bottom: 1px solid var(--as-row-divider);
+    font-size: 12px;
+}
+.hrow:last-child { border-bottom: none; }
+.hwhen { color: var(--as-text-tertiary); font-variant-numeric: tabular-nums; }
+.hwhat { color: var(--as-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hkind { color: var(--as-text-secondary); text-align: right; }
+.hsiz { color: var(--as-text-tertiary); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ===== 状态条 ===== */
+.as-status {
+    flex: 0 0 auto;
+    padding: 7px 16px;
+    border-top: 1px solid var(--as-row-divider);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--as-text-secondary);
+    background: var(--as-card-bg);
+    white-space: pre-line;
+    max-height: 96px;
+    overflow-y: auto;
+}
+
+/* ===== 拖放遮罩 ===== */
+.as-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: var(--as-scrim);
+    outline: 2px dashed var(--accent, #0a82ff);
+    outline-offset: -8px;
+    pointer-events: none;
+}
+.as-veil .as-veil__text {
+    margin: 0;
+    font-size: 15px;
+    color: var(--as-text);
+}
+.as-veil .as-veil__sub {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--as-text-tertiary);
+}
+
+/* 动效可关：系统「减弱动态效果」下不 transitions（毛玻璃不受影响，本来就没 transform） */
+@media (prefers-reduced-motion: reduce) {
+    .appstore.window *,
+    .appstore.window *::before,
+    .appstore.window *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "vs_code",
+  "name": "VS Code",
+  "version": "1.0.1",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "在线 VS Code 代码编辑器（嵌入 github1s.com）",
+  "permissions": [],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "icon.png"
+}

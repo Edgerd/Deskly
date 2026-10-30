@@ -1,0 +1,527 @@
+/* 启动台样式 — 实时模糊背景（backdrop-filter）+ 居中自适应网格 */
+
+/* 全站没有 border-box 重置（只有 .desktop 自己声明了一条），本插件里凡是
+   "定宽 + padding" 的元素都会超尺寸：文件夹预览块因此比应用图标宽出两份内边距。
+   在插件作用域内补一次 border-box，不动全局、不影响其它插件。 */
+.launchpad,
+.launchpad *,
+.launchpad *::before,
+.launchpad *::after {
+  box-sizing: border-box;
+}
+
+/* ── 动画 ── */
+/* 打开：整体淡入（仅 opacity，禁止 transform —— 根元素带 transform 会把
+   .search-input / .folder-panel 的 backdrop-filter 退化为不透明色块） */
+@keyframes launchpad-fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+/* 网格缩放入场（grid 无 backdrop-filter 子元素，可用 transform） */
+@keyframes grid-in {
+  0% { opacity: 0; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* 关闭动画必须是独立 keyframes：复用进入动画名 + reverse 不会重启动画，
+   fill-forwards 会直接翻到 0% 关键帧（瞬间消失） */
+@keyframes launchpad-out {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.06); }
+}
+@keyframes launchpad-fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes folder-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+/* 关闭动画必须是独立 keyframes 名（复用进入动画名不会重启播放） */
+@keyframes folder-pop-out {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
+}
+@keyframes cell-pop {
+  0% { transform: scale(0.5); }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+/* 编辑模式摇晃：仅 transform 动画（合成器友好，不触发重排）；
+   duration/delay 由 JS 内联随机化（负延迟错开相位），避免所有图标整齐划一。
+   选择器不加 .container 限定：拖拽幽灵（.drag-ghost 克隆自带 .jiggle）同样生效 */
+@keyframes jiggle {
+  0% { transform: rotate(-2deg) translate(0, 0); }
+  25% { transform: rotate(2deg) translate(1px, -1px); }
+  50% { transform: rotate(-2deg) translate(-1px, 1px); }
+  75% { transform: rotate(2deg) translate(1px, 1px); }
+  100% { transform: rotate(-2deg) translate(0, 0); }
+}
+.launchpad .jiggle img {
+  animation: jiggle 0.3s ease-in-out infinite;
+}
+
+.launchpad {
+  width: 100%;
+  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  /* 9600：全屏界面盖住 Dock（9500），但被模态弹窗（9610）盖住 */
+  z-index: 9600;
+  /* 尺寸单一来源：图标/文字由设置项写入（script.js 的 applySizes），
+     格子宽度与文件夹预览都由 --lp-icon 推导，保证任意档位下比例一致 */
+  --lp-icon: 84px;
+  --lp-font: 13px;
+  --lp-cell: calc(var(--lp-icon) + 44px);
+  /* 文字色：全屏底衬取样的是墙纸本身，而 --surface-text 的推导在「墙纸着色关闭」时
+     只看主题中性色，读不到墙纸明暗 —— 直接沿用全局令牌会在浅色主题下推出黑字，
+     压在深色墙纸上就是隐形。所以这里按本表面自身的暗场把局部三档钉成白（含
+     secondary/tertiary，保证层级同宗），与锁屏遮罩 src/javascripts/lock.js 同一处理。
+     表面内的文字一律只引用 var(--surface-text*)，不再各写各的 #fff。
+     禁忌照旧：本元素带 backdrop-filter，永远不要加 transform。 */
+  --surface-text: #fff;
+  --surface-text-secondary: rgba(255, 255, 255, 0.62);
+  --surface-text-tertiary: rgba(255, 255, 255, 0.42);
+  /* 实时模糊：直接对底下的桌面/窗口取样，而不是复制壁纸再糊一遍。
+     原版启动台是对壁纸做很重的模糊（不是「半透明面板盖在清楚壁纸上」），
+     所以常态就取 4 档，展开文件夹时再抬到 5 档；用户的模糊等级仍等比驱动。 */
+  --surface-blur: var(--surface-blur-4);
+  backdrop-filter: blur(var(--surface-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.4);
+  background: rgba(0, 0, 0, 0.24);
+  animation: launchpad-fade-in 0.25s ease-out forwards;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: var(--deskly-cursor, default);
+  transition: backdrop-filter 0.22s ease, background 0.22s ease;
+}
+/* 文件夹展开时：底衬更糊更暗，浮层的磨砂才读得出层次。
+   常态 4 档、展开态 5 档，保住「展开比常态更糊」这一步。 */
+.launchpad.folder-open {
+  --surface-blur: var(--surface-blur-5);
+  backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+  background: rgba(0, 0, 0, 0.28);
+}
+
+/* ── 光标：常态/悬浮两档；拖拽全程锁定为手指，不随指针落点变化 ──
+   引用内核的 --deskly-cursor* 而不是直接贴 assets/cursors/*.cur：.cur 是 128px
+   多帧文件，Chrome 按原生尺寸渲染，在这层铺满全屏的磨砂上会显得巨大，且不吃
+   用户设定的光标大小与阴影。 */
+.launchpad .container,
+.launchpad .ctx-item {
+  cursor: var(--deskly-cursor-pointer, pointer);
+}
+.launchpad.drag-cursor,
+.launchpad.drag-cursor * {
+  cursor: var(--deskly-cursor-pointer, pointer) !important;
+}
+.launchpad input {
+  cursor: text;
+}
+
+/* ── 应用网格（横向分页） ── */
+.launchpad .grid-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  transition: opacity 0.2s ease;
+}
+.launchpad .grid-scroll::-webkit-scrollbar {
+  display: none;
+}
+/* 文件夹展开时，根网格与搜索条让位：原版只留下被压暗模糊的桌面，
+   不会让背后的 App 图标和文件夹面板抢注意力。 */
+.launchpad.folder-open .grid-scroll,
+.launchpad.folder-open .searchbar {
+  opacity: 0;
+  pointer-events: none;
+}
+.launchpad .grid {
+  /* 页容器：每一页正好一屏宽；所有页横向排开，由 .grid-scroll 负责滚动/吸附。 */
+  display: flex;
+  width: 100%;
+  height: 100%;
+  animation: grid-in 0.3s ease-out forwards;
+}
+.launchpad .grid-page {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  padding: 17vh 4vw 8vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+  scroll-snap-align: start;
+}
+.launchpad .page-grid {
+  display: grid;
+  /* 列数由 script.js 按「图标尺寸 + 视口宽度」算好写进 --lp-cols，最多 7 列。
+     页内行数由同一套尺寸计算切页容量，所以每个 .page-grid 不会被撑出屏幕。 */
+  grid-template-columns: repeat(var(--lp-cols, 7), var(--lp-cell));
+  align-content: start;
+  gap: clamp(18px, 2.6vh, 30px) clamp(12px, 3vw, 48px);
+}
+.launchpad .container {
+  width: var(--lp-cell);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  border-radius: 14px;
+  /* 让位位移走 --dx/--dy，合并提示走 --s，合成一条 transform 避免互相覆盖 */
+  transform: translate3d(var(--dx, 0px), var(--dy, 0px), 0) scale(var(--s, 1));
+  transition: transform 0.18s ease;
+}
+/* 拖拽中才挂过渡与 will-change：静止时零合成层开销。
+   曲线带轻微过冲（落定时弹一下），--dd 是由近及远的错峰延迟 → 让位像涟漪而非齐步走 */
+.launchpad .page-grid.dodging .container,
+.launchpad .folder-grid.dodging .container {
+  transition: transform 0.34s cubic-bezier(0.22, 1.12, 0.32, 1) var(--dd, 0ms);
+  will-change: transform;
+}
+/* FLIP 回位：重建后由 JS 打上该类，图标从让开的位置滑入新秩序 */
+.launchpad .container.flip {
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.launchpad .container img {
+  width: var(--lp-icon);
+  height: var(--lp-icon);
+  object-fit: contain;
+  pointer-events: none;
+  /* 悬浮动画：仅图标轻微放大，一处过渡 */
+  transition: transform 0.15s ease;
+}
+.launchpad .container:hover > img {
+  transform: scale(1.07);
+}
+/* 文件夹磁贴整体放大；3×3 迷你图标不单独放大，否则会像在格子里乱跳 */
+.launchpad .container:hover .folder-tile {
+  transform: scale(1.07);
+}
+.launchpad .container p {
+  margin: 8px 0 0;
+  font-size: var(--lp-font);
+  line-height: 1.3;
+  color: var(--surface-text);
+  max-width: calc(var(--lp-cell) - 8px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+.launchpad .container.dragging {
+  opacity: 0.35;
+}
+.launchpad .container.merge-hint {
+  --s: 1.12;
+}
+.launchpad .container.pop-in {
+  animation: cell-pop 0.25s ease-out;
+}
+
+/* 文件夹预览块：原版是一枚与 App 图标同尺寸的「磨砂玻璃方格」，
+   里面按 3×3 放最多九枚迷你图标。不用 backdrop-filter：每个格子一层会明显拖慢渲染，
+   半透明底 + 渐变高光已经能读到背后的模糊壁纸，视觉上等价。 */
+.launchpad .folder-tile {
+  width: var(--lp-icon);
+  height: var(--lp-icon);
+  border-radius: calc(var(--lp-icon) * 0.225);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08) 46%, rgba(255, 255, 255, 0.03)),
+    rgba(104, 104, 112, 0.58);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 6px 16px rgba(0, 0, 0, 0.18);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  place-items: center;
+  padding: calc(var(--lp-icon) * 0.1);
+  gap: calc(var(--lp-icon) * 0.04);
+  pointer-events: none;
+  overflow: hidden;
+  transition: transform 0.15s ease;
+}
+.launchpad .folder-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: none;
+}
+
+/* ── 搜索栏 ── */
+.launchpad .searchbar {
+  position: absolute;
+  top: 6.5vh;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  /* 原版是顶部居中的小搜索条（约 280×32），不是占满半屏的大输入框 */
+  width: min(280px, 36vw);
+  min-width: 210px;
+  display: flex;
+  justify-content: center;
+  /* 亚克力禁忌：子元素 .search-input 带 backdrop-filter，祖先禁止 transform
+     （会提升祖先合成层导致毛玻璃失效退化为白色矩形），居中用 left/right + margin auto */
+  transition: opacity 0.2s ease;
+}
+.launchpad .searchbar .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.82;
+}
+.launchpad .searchbar .search-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 14px 0 36px;
+  font-size: 14px;
+  color: var(--surface-text);
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 9px;
+  outline: none;
+  backdrop-filter: blur(var(--surface-blur-3));
+  -webkit-backdrop-filter: blur(var(--surface-blur-3));
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.launchpad .searchbar .search-input::placeholder {
+  color: var(--surface-text-secondary);
+}
+.launchpad .searchbar .search-input:focus {
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+/* ── 空结果提示 ── */
+.launchpad .empty-tip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30vh;
+  text-align: center;
+  padding: 0;
+  color: var(--surface-text-secondary);
+  font-size: 16px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* ── 页码点 ──
+   原版启动台底部的分页指示：只显示总页数与当前页，点击可跳页。
+   位置在程序坞上方；文件夹展开时随根网格一起淡出。 */
+.launchpad .page-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+  padding: 4px 6px;
+  transition: opacity 0.2s ease;
+}
+.launchpad .page-dots[hidden] {
+  display: none;
+}
+.launchpad .page-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.launchpad .page-dot:hover {
+  transform: scale(1.25);
+}
+.launchpad .page-dot.active {
+  background: rgba(255, 255, 255, 0.92);
+}
+.launchpad.folder-open .page-dots {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── 文件夹浮层 ── */
+.launchpad .folder-layer {
+  position: absolute;
+  inset: 0;
+  display: none;
+  z-index: 10;
+}
+.launchpad .folder-layer.open {
+  display: block;
+}
+.launchpad .folder-layer.closing {
+  display: block;
+  pointer-events: none; /* 关闭动画期间不再吃点击，避免二次触发 */
+}
+.launchpad .folder-layer .folder-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, 86vw);
+  min-height: 260px;
+  max-height: 74vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  border-radius: 32px;
+  padding: 28px 32px 34px;
+  /* 原版展开文件夹是一整块更浓的磨砂玻璃：壁纸颜色透进来、边缘有柔和高光，
+     不是一块实心灰。底色压到 0.30，再叠一层自上而下的白色薄膜高光；
+     模糊仍走系统 4 档，由 .launchpad.folder-open 在外层再加一档。 */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05) 38%, rgba(255, 255, 255, 0) 100%),
+    rgba(86, 86, 94, 0.30);
+  backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+  -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 34px 90px rgba(0, 0, 0, 0.48);
+  animation: folder-pop 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.launchpad .folder-layer.closing .folder-panel {
+  animation: folder-pop-out 0.2s ease-in forwards;
+}
+.launchpad .folder-layer .folder-panel::-webkit-scrollbar {
+  display: none;
+}
+.launchpad .folder-title {
+  display: block;
+  width: 70%;
+  margin: 0 auto 24px;
+  background: transparent;
+  border: none;
+  outline: none;
+  border-radius: 7px;
+  text-align: center;
+  font-size: calc(var(--lp-font) + 6px);
+  font-weight: 600;
+  color: var(--surface-text);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+  padding: 3px 12px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.launchpad .folder-title:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.launchpad .folder-title:focus {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.3);
+}
+.launchpad .folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--lp-cell));
+  justify-content: center;
+  gap: 24px 14px;
+  padding: 2px 4px 4px;
+}
+
+/* ── 右键菜单 ── */
+.launchpad .ctx-menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 160px;
+  padding: 5px;
+  border-radius: 10px;
+  background: rgba(50, 50, 55, 0.72);
+  backdrop-filter: blur(var(--surface-blur-3));
+  -webkit-backdrop-filter: blur(var(--surface-blur-3));
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.launchpad .ctx-menu .ctx-item {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--surface-text);
+}
+.launchpad .ctx-menu .ctx-item:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ── 行内重命名输入框 ── */
+.launchpad .rename-input {
+  width: calc(var(--lp-cell) - 12px);
+  margin-top: 8px;
+  font-size: var(--lp-font);
+  color: var(--surface-text);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  outline: none;
+  padding: 1px 4px;
+}
+
+/* ── 拖拽跟随幽灵 ── */
+.launchpad .drag-ghost {
+  position: fixed;
+  z-index: 9700;
+  width: var(--lp-cell);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  opacity: 0.92;
+  transform: translate(-50%, -58%) scale(1.12);
+  filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.4));
+}
+.launchpad .drag-ghost > img {
+  width: var(--lp-icon);
+  height: var(--lp-icon);
+  object-fit: contain;
+}
+.launchpad .drag-ghost .folder-tile {
+  width: var(--lp-icon);
+  height: var(--lp-icon);
+}
+.launchpad .drag-ghost .folder-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.launchpad .drag-ghost p {
+  margin: 8px 0 0;
+  font-size: var(--lp-font);
+  color: var(--surface-text);
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* 原版启动台是「隐藏菜单栏、保留程序坞」的全屏空间。
+   启动期间给 <html> 挂 deskly-launchpad-open：
+   - 菜单栏（z 9999）不能靠抬层级盖住，改为淡出；
+   - 程序坞抬到启动台（9600）之上 1 层，保持可见、可点击。
+   层级数值仍以 src/javascripts/zindex.js 的语义为准，这里只是启动台打开时的临时覆盖。
+   根类留到 unload 才摘，因此关闭动画期间程序坞仍在启动台之上。 */
+html.deskly-launchpad-open .finderbar {
+  opacity: 0;
+  pointer-events: none;
+}
+html.deskly-launchpad-open .dockcontainer {
+  z-index: 9601;
+}
+/* 从程序坞打开的文件夹堆栈直接挂在 body 上，层级也要一并越过启动台 */
+html.deskly-launchpad-open .dock-stack {
+  z-index: 9602;
+}

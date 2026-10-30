@@ -1,0 +1,79 @@
+# iMac 使用手册（2024 年款 · macOS Sequoia 15）目录索引
+
+抓取时间：2026-10-25 · 页面 63 · 图片 209
+
+- [欢迎使用](pages/01-欢迎使用.md) · [原文](https://support.apple.com/zh-cn/guide/imac/welcome/mac)
+- **iMac 概述**
+  - [浏览 iMac](pages/02-浏览_iMac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd2e7352054/2024/mac/15)
+  - [包装清单](pages/03-包装清单.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd768124354/2024/mac/15)
+  - **使用配件**
+    - [将配件连接到 iMac](pages/04-将配件连接到_iMac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd376797067/2024/mac/15)
+    - [妙控键盘](pages/05-妙控键盘.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd0e7983e19/2024/mac/15)
+    - [妙控鼠标](pages/06-妙控鼠标.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd292c14df0/2024/mac/15)
+    - [妙控板](pages/07-妙控板.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdea23385dd/2024/mac/15)
+    - [给配件充电](pages/08-给无线配件的电池充电.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd813202ae7/2024/mac/15)
+  - [转换器](pages/09-配合_iMac_使用转换器.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdaf6085524/2024/mac/15)
+  - [连接显示器](pages/10-将外接显示器连接到_iMac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd271f29cb9/2024/mac/15)
+- **开始使用 macOS**
+  - **设置 Mac**
+    - [设置 Mac](pages/11-设置_iMac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd831707cb3/2024/mac/15)
+    - [针对新 Mac 用户设置 Mac](pages/12-针对新_Mac_用户设置_iMac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd3a3bbed27/2024/mac/15)
+    - [针对当前 Mac 用户设置 Mac](pages/13-针对当前_Mac_用户设置_iMac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdead65a6b3/2024/mac/15)
+    - [Mac 设置完成后](pages/14-iMac_设置完成后.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdc23d572ce/2024/mac/15)
+  - **Apple 账户和 iCloud**
+    - [Apple 账户](pages/15-Mac_上的_Apple_账户.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd1c52f9d30/2024/mac/15)
+    - [搭配 Mac 使用 iCloud](pages/16-搭配_iMac_使用_iCloud.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdc44eb8957/2024/mac/15)
+    - [访问 iCloud 内容](pages/17-在_Mac_上访问_iCloud_内容.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd785390d2e/2024/mac/15)
+  - **了解基本操作**
+    - [桌面和菜单栏](pages/18-Mac_上的桌面和菜单栏.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd65991c417/2024/mac/15)
+    - [访达](pages/19-Mac_上的访达.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apddf030866a/2024/mac/15)
+    - [程序坞](pages/20-Mac_上的程序坞.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd4b7fb731f/2024/mac/15)
+    - [通知中心](pages/21-Mac_上的“通知中心”.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd6d7eb47b9/2024/mac/15)
+    - [控制中心](pages/22-Mac_上的“控制中心”.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdc362a41b2/2024/mac/15)
+    - [聚焦](pages/23-Mac_上的“聚焦”.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd10f8d1038/2024/mac/15)
+    - [Siri](pages/24-Mac_上的_Siri.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdf7bb2fad4/2024/mac/15)
+  - **自定义 Mac**
+    - [增添个人风格](pages/25-增添个人风格.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd2add7474b/2024/mac/15)
+    - [系统设置](pages/26-Mac_上的“系统设置”.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apda966cb8af/2024/mac/15)
+    - [显示屏设置](pages/27-Mac_的显示器设置.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdab93667af/2024/mac/15)
+    - [屏幕使用时间](pages/28-Mac_上的屏幕使用时间.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd35460a9f3/2024/mac/15)
+    - [辅助功能](pages/29-Mac_上的辅助功能.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd4c143b3c5/2024/mac/15)
+  - [在 Mac 上管理窗口](pages/30-在_Mac_上管理窗口.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd2345fc25d/2024/mac/15)
+  - [截屏](pages/31-在_Mac_上截屏.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdbc4019fdf/2024/mac/15)
+  - **备份、恢复和传输数据**
+    - [传输数据](pages/32-将你的数据传输到新_iMac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apda75cd668e/2024/mac/15)
+    - [备份和恢复](pages/33-备份和恢复_Mac.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdc6980d3be/2024/mac/15)
+- **配合其他设备使用 iMac**
+  - [在设备间共享内容](pages/34-在设备间共享内容.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdb6816a22d/2024/mac/15)
+  - [在更大的屏幕上流播放内容](pages/35-通过“隔空播放”在更大的屏幕上流播放内容.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdf1417128d/2024/mac/15)
+  - [多设备协同工作](pages/36-多设备协同工作.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd9f9bfbdad/2024/mac/15)
+- **App**
+  - [使用 App](pages/37-在_iMac_上使用_App.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd83cde9f0c/2024/mac/15)
+  - [保持联络](pages/38-使用_FaceTime_通话、“邮件”和“信息”保持联络.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd828c43bd3/2024/mac/15)
+  - [高效工作](pages/39-使用“日历”、“备忘录”、“提醒事项”和“快捷指令”高效工作.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd99814260c/2024/mac/15)
+  - [发挥创意](pages/40-在_Mac_上通过“照片”、“无边记”和_iMovie_剪辑发挥创意.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdb8cbb896b/2024/mac/15)
+  - [观看和聆听](pages/41-在“音乐”、“播客”和“视频”中观看和聆听.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdd481dd775/2024/mac/15)
+  - [搜索网页](pages/42-通过_Safari_浏览器搜索网页.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd8c78b9596/2024/mac/15)
+  - [通过 iWork 设计](pages/43-在_Mac_上通过_iWork_设计.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd8b783ddd6/2024/mac/15)
+  - [获取更多 App](pages/44-获取更多_App.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd787343df7/2024/mac/15)
+- **获得答案**
+  - [Mac 使用手册](pages/45-使用《Mac_使用手册》.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdfdad69354/2024/mac/15)
+  - [Mac 新手？](pages/46-Mac_新手？.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd1f14ec646/2024/mac/15)
+  - [常见问题](pages/47-关于_Mac_的常见问题.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd89ed5b70e/2024/mac/15)
+  - [键盘快捷键](pages/48-Mac_上的键盘快捷键.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd194062a6d/2024/mac/15)
+  - [安全性功能](pages/49-iMac_的安全性功能.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdcf567823b/2024/mac/15)
+  - [节省空间](pages/50-节省_iMac_的空间.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdb468896e0/2024/mac/15)
+  - [Mac 资源、服务和支持](pages/51-Mac_资源、服务和支持.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd7bd1310b3/2024/mac/15)
+- **安全、操作与监管信息**
+  - [重要安全性信息](pages/52-Mac_的重要安全性信息.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd9b8f7aa11/2024/mac/15)
+  - [重要操作信息](pages/53-Mac_的重要操作信息.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd876e1a2ea/2024/mac/15)
+  - [人体工程学](pages/54-Mac_人体工程学.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd8a47fddd1/2024/mac/15)
+  - [监管信息](pages/55-监管信息.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd20340ed97/2024/mac/15)
+  - [FCC 合规声明](pages/56-FCC_合规声明.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd0a6c2b3db/2024/mac/15)
+  - [加拿大 ISED 合规声明](pages/57-加拿大_ISED_合规声明.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd8199924f0/2024/mac/15)
+  - [微功率短距离设备声明](pages/58-微功率短距离设备声明.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd7684c2545/2024/mac/15)
+  - [ENERGY STAR® 合规声明](pages/59-ENERGY_STAR®_合规声明.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd061664745/2024/mac/15)
+  - [Apple 和环境](pages/60-Apple_和环境.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apdeb369448c/2024/mac/15)
+  - [处理和回收信息](pages/61-处理和回收信息.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd91eb694f4/2024/mac/15)
+  - [软件许可协议](pages/62-软件许可协议.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd6e208e1f7/2024/mac/15)
+- [版权](pages/63-版权.md) · [原文](https://support.apple.com/zh-cn/guide/imac/apd7721c83d4/2024/mac/15)

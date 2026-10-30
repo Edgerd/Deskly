@@ -1,0 +1,10 @@
+> 来源：https://support.apple.com/zh-cn/guide/imac/apdc23d572ce/2024/mac/15
+> 章节：Mac 设置完成后
+
+# iMac 设置完成后
+
+完成设置 iMac 后，你现在可以开始进行个性化设置。通过[设置电子邮件](https://support.apple.com/zh-cn/guide/mail/mail35803)和[日历账户](https://support.apple.com/zh-cn/guide/calendar/icl4308d6701)，[使屏幕上的文本和其他项目变大](https://support.apple.com/zh-cn/guide/mac-help/mchld786f2cd)来调整文本显示，或[在 Mac 上自定义桌面图片](https://support.apple.com/zh-cn/guide/mac-help/mchlp3013)，以开始个性化你的 Mac。通过[多设备协同工作](https://support.apple.com/zh-cn/guide/imac/apd9f9bfbdad/2024/mac/15)以及[在设备间共享内容](https://support.apple.com/zh-cn/guide/imac/apdb6816a22d/2024/mac/15)来了解如何无缝使用 iMac 与其他 Apple 设备。如果对 App 有兴趣，你可在 Mac 上通过 [App Store](https://support.apple.com/zh-cn/guide/imac/apd787343df7/2024/mac/15) 进一步了解如何[使用 App](https://support.apple.com/zh-cn/guide/imac/apd83cde9f0c/2024/mac/15) 或安装新 App，包括之前已购买的 iPhone 和 iPad App。（请注意，大部分 iPhone 和 iPad App 适用于 Mac。）
+
+如果你是 Mac 新手，请参阅“[Mac 新手？](https://support.apple.com/zh-cn/guide/imac/apd1f14ec646/2024/mac/15)”以了解一些有用的技巧。[Mac 上常用的术语](https://support.apple.com/zh-cn/guide/mac-help/cpmh0038)和 Apple 支持文章：[适用于从 Windows 转而使用 Mac 的用户的 Mac 提示](https://support.apple.com/102323)也同样有帮助。不管你是 Mac 新手，还是想巩固 macOS 用法，均可进一步了解如何开始使用 Mac，并探索[桌面和菜单栏](https://support.apple.com/zh-cn/guide/imac/apd65991c417/2024/mac/15)、[访达](https://support.apple.com/zh-cn/guide/imac/apddf030866a/2024/mac/15)、[程序坞](https://support.apple.com/zh-cn/guide/imac/apd4b7fb731f/2024/mac/15)和[控制中心](https://support.apple.com/zh-cn/guide/imac/apdc362a41b2/2024/mac/15)等。
+
+最后，了解新 iMac。若要进一步了解 USB-C 端口和内建摄像头等硬件，请参阅[浏览 iMac](https://support.apple.com/zh-cn/guide/imac/apd2e7352054/2024/mac/15)。探索[妙控键盘](https://support.apple.com/zh-cn/guide/imac/apd0e7983e19/2024/mac/15)的键盘功能，以及了解和调整[妙控板](https://support.apple.com/zh-cn/guide/imac/apdea23385dd/2024/mac/15)或[妙控鼠标](https://support.apple.com/zh-cn/guide/imac/apd292c14df0/2024/mac/15)的手势。你也可以[连接外接显示器](https://support.apple.com/zh-cn/guide/imac/apd271f29cb9/2024/mac/15)或[连接配件](https://support.apple.com/zh-cn/guide/imac/apd376797067/2024/mac/15)。

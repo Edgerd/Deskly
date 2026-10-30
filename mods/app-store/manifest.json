@@ -1,0 +1,46 @@
+{
+  "id": "app-store",
+  "name": "App Store",
+  "version": "1.2.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "浏览、启用与卸载本机应用，从 ZIP 包安装第三方插件",
+  "permissions": ["apps:launch"],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "App Store.png",
+  "menus": {
+    "显示": [
+      { "label": "全部应用", "cmd": "storeShowCategory('all')" },
+      { "label": "仅内置", "cmd": "storeShowCategory('builtin')" },
+      { "label": "仅已安装", "cmd": "storeShowCategory('installed')" },
+      { "label": "仅已禁用", "cmd": "storeShowCategory('disabled')" },
+      { "separator": true },
+      { "label": "安装记录", "cmd": "storeShowHistory()" },
+      { "label": "安装 ZIP…", "shortcut": "⇧⌘I", "cmd": "storePickZip()" },
+      { "separator": true },
+      { "label": "校验当前应用资源", "cmd": "storeVerifyCurrent()" },
+      { "separator": true },
+      { "label": "进入全屏", "shortcut": "⌃⌘F", "cmd": "toggleActiveWindowFullscreen()" }
+    ]
+  },
+  "store": {
+    "category": "系统",
+    "tagline": "本机应用的管理入口：浏览、启用 / 禁用、卸载与 ZIP 安装",
+    "summary": "商店只认本机注册表：内置应用与通过 ZIP 安装的插件列在一起，按分类、来源与启用状态筛选，搜索覆盖名称、说明与分类。\n详情页展示插件清单里自己声明的简介、能力、使用方法与截图，权限一栏读的是 manifest.permissions，与授权账本同源，不是文案。",
+    "features": [
+      "侧栏分类 + 卡片列表 + 详情页三段式浏览",
+      "拖入或选择 ZIP 安装：解包 → 权限确认 → 落库 → 逐个回读校验，失败自动回滚",
+      "安装后可单独「校验资源」，确认包内文件真能取到",
+      "内置插件可禁用（不可卸载），禁用后启动台、程序坞与搜索都不再出现它",
+      "安装记录保留最近 50 条",
+      "同 id 覆盖安装前给出版本差异"
+    ],
+    "usage": "把插件目录用 dev/package-plugin.mjs 打成 ZIP 后，拖进商店窗口或点右上角「安装 ZIP…」。安装全程在本地完成，不联网、不写磁盘，文件存在浏览器本地库里。",
+    "updated": "2026-10-07",
+    "author": "Edgerd",
+    "screenshots": []
+  }
+}

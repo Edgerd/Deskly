@@ -1,0 +1,322 @@
+/*
+ * datetime-popover.css — 菜单栏时间/日期点击弹出的日历面板样式
+ *
+ * 设计语言：macOS 毛玻璃材质（unified/vibrancy）
+ *   - backdrop-filter blur + 半透明 rgba 背景
+ *   - 大圆角、柔和阴影、1px 高光边框
+ *   - 今日蓝色圆形高亮 (#0066cc / light, #0A84FF / dark)
+ *   - 浅色 / 深色主题自适应（跟随 html[data-theme]）
+ *   - 淡入 + 轻微缩放动画（cubic-bezier 缓动）
+ */
+
+.datetime-popover {
+    position: fixed;
+    /* 顶栏弹层（层级表 PANEL=9630）：999999 会让它盖过锁屏 / 关机会话遮罩 */
+    z-index: 9630;
+    width: 320px;
+    padding: 14px 14px 12px;
+    box-sizing: border-box;
+    border-radius: 14px;
+    /* 毛玻璃材质：模糊等级由系统分配（曾是 blur(40px)，取最浓的第 4 档），
+       saturate(180%) 落在 --surface-saturate 的替换区间内，一并交还给令牌 */
+    backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+    -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+    /* 亚克力稳定层（0.2.74 固化）：顶栏下拉的日历面板，菜单栏内的派生面板，
+       不隔离会被 finderbar 自身的 backdrop-filter 父链特性截断 → 退化为白色矩形 */
+    isolation: isolate;
+    overflow: hidden;
+    background: rgba(245, 245, 247, 0.78);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow:
+        0 10px 40px rgba(0, 0, 0, 0.18),
+        0 2px 6px rgba(0, 0, 0, 0.08),
+        0 0 0 0.5px rgba(255, 255, 255, 0.6) inset;
+    /* 日历面板是亚克力面：正文走系统强制的黑/白档，
+       下面的各层级（标题/星期/本月/非本月）都从同一支黑或白里取，不再各抄一份灰 */
+    color: var(--surface-text);
+    font-family: "SFPro-Regular", "SF Pro Text", "PingFang SC",
+        -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+    user-select: none;
+    -webkit-user-select: none;
+    /* 亚克力禁忌（0.2.50 固化）：backdrop-filter 元素自身禁止 transform / will-change:transform，
+       否则 Chrome 提升 3D 合成层，打开动画期间毛玻璃退化为半透明白色矩形（光斑）。
+       显隐只走 opacity，不缩放、不上移。
+       visibility 必须与 opacity 同步：面板在 init 时就常驻 DOM，只写 opacity 的话
+       收起状态下 42 个日期按钮 + 导航/今天按钮仍留在 Tab 序与无障碍树里，
+       从桌面按一下 Tab 就会掉进一屏看不见的日历格里。 */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.18s;
+}
+
+.datetime-popover.open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* ---------- 头部：月份标题 + 导航 ---------- */
+.dtp-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    padding: 0 2px;
+}
+
+.dtp-nav {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: var(--deskly-cursor, default);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.14s ease, color 0.14s ease;
+    padding: 0;
+}
+.dtp-nav:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+.dtp-nav:active {
+    background: rgba(0, 0, 0, 0.14);
+}
+
+.dtp-title {
+    flex: 1 1 auto;
+    text-align: center;
+    font-family: "SFPro-Semibold", "PingFang-Semibold",
+        -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.1px;
+    color: var(--surface-text);
+    /* 避免标题换行挤压导航 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dtp-today-btn {
+    flex: 0 0 auto;
+    height: 22px;
+    padding: 0 9px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    /* 强调色驱动：「今天」按钮此前写死 #0066cc，换强调色后不跟随 */
+    color: var(--accent, #0066cc);
+    font-size: 12px;
+    font-family: "SFPro-Medium", "PingFangSC-Medium", sans-serif;
+    font-weight: 500;
+    cursor: var(--deskly-cursor, default);
+    transition: background 0.14s ease;
+}
+.dtp-today-btn:hover {
+    background: rgba(var(--accent-rgb, 0, 102, 204), 0.1);
+}
+.dtp-today-btn:active {
+    background: rgba(var(--accent-rgb, 0, 102, 204), 0.18);
+}
+
+/* ---------- 星期表头 ---------- */
+.dtp-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0;
+    margin: 0 2px 4px;
+}
+.dtp-weekday {
+    text-align: center;
+    font-size: 11px;
+    font-family: "SFPro-Semibold", "PingFang-Semibold", sans-serif;
+    font-weight: 600;
+    /* 星期表头取次级档：令牌只有正文/弱化/说明三层，它比「非本月日期」强、比日期弱，
+       放三级会和 out-month 撞成同一支颜色（原先两者分别是 #86868b 与 #c7c7cc） */
+    color: var(--surface-text-secondary);
+    padding: 4px 0;
+    line-height: 1;
+}
+
+/* ---------- 日期网格 ---------- */
+.dtp-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-auto-rows: 30px;
+    gap: 0;
+    margin: 0 2px 4px;
+}
+.dtp-cell {
+    position: relative;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 1px;
+    width: calc(100% - 2px);
+    height: calc(100% - 2px);
+    border-radius: 50%;
+    font-size: 12.5px;
+    font-family: "SFPro-Regular", "PingFangSC-Regular", sans-serif;
+    color: var(--surface-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: var(--deskly-cursor, default);
+    line-height: 1;
+    transition:
+        background 0.14s ease,
+        color 0.14s ease;
+}
+
+.dtp-cell.in-month {
+    color: var(--surface-text);
+}
+.dtp-cell.out-month {
+    /* 跨月日期是「不可用」档 → 第三级；原先暗色档写死 #48484a，压在 rgba(40,40,42,.78)
+       上对比度不到 1.5:1，基本看不见，改令牌后明暗两档都是同一支黑/白的 42% */
+    color: var(--surface-text-tertiary);
+}
+.dtp-cell.weekend.in-month {
+    color: var(--surface-text);
+}
+.dtp-cell.weekend.out-month {
+    color: var(--surface-text-tertiary);
+}
+.dtp-cell:hover:not(.today):not(.selected) {
+    background: rgba(0, 0, 0, 0.08);
+}
+.dtp-cell:active:not(.today):not(.selected) {
+    background: rgba(0, 0, 0, 0.14);
+}
+
+/* 选中态（非今日） */
+.dtp-cell.selected {
+    background: rgba(var(--accent-rgb, 0, 102, 204), 0.15);
+    color: var(--accent, #0066cc);
+}
+
+/* 今日：蓝色圆形高亮，白字 */
+.dtp-cell.today {
+    background: var(--accent, #0066cc);
+    color: #ffffff;
+    font-family: "SFPro-Semibold", "PingFang-Semibold", sans-serif;
+    font-weight: 600;
+    box-shadow: 0 0 0 1px rgba(var(--accent-rgb, 0, 102, 204), 0.35);
+}
+.dtp-cell.today:hover {
+    background: color-mix(in srgb, var(--accent, #0066cc) 88%, #ffffff);
+}
+.dtp-cell.today:active {
+    background: color-mix(in srgb, var(--accent, #0066cc) 82%, #000000);
+}
+
+/* ---------- 分隔线 ---------- */
+.dtp-sep {
+    height: 1px;
+    background: var(--separator, rgba(0, 0, 0, 0.1));
+    margin: 8px 4px 8px;
+}
+
+/* ---------- 底部 ---------- */
+.dtp-footer {
+    padding: 2px 6px 0;
+    font-size: 12.5px;
+    color: var(--surface-text);
+    text-align: left;
+    line-height: 1.35;
+}
+.dtp-footer strong {
+    font-family: "SFPro-Semibold", "PingFang-Semibold", sans-serif;
+    font-weight: 600;
+    color: var(--surface-text);
+}
+
+/* ============================================================
+ * 深色主题（html[data-theme="dark"] 下自动切换）
+ * 本节只留「表面」的深色档（底、边框、阴影、按下态）；文字色不在这里翻 ——
+ * 面板是亚克力面，各级文字一律走 --surface-text / -secondary / -tertiary，
+ * 由 surface.js 按表面真实底色推导，明暗两档共用同一条声明。
+ * 原先这里成对抄了 #f5f5f7 / #8e8e93 / #48484a，属于第二个定义点，已删。
+ * ============================================================ */
+html[data-theme="dark"] .datetime-popover {
+    background: rgba(40, 40, 42, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+        0 12px 48px rgba(0, 0, 0, 0.5),
+        0 2px 8px rgba(0, 0, 0, 0.35),
+        0 0 0 0.5px rgba(255, 255, 255, 0.08) inset;
+}
+
+html[data-theme="dark"] .dtp-nav:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+html[data-theme="dark"] .dtp-nav:active {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+/* 强调色驱动：「今天」按钮与选中/今日日期格都是蓝，不参与文字令牌迁移 */
+html[data-theme="dark"] .dtp-today-btn {
+    color: #0A84FF;
+}
+html[data-theme="dark"] .dtp-today-btn:hover {
+    background: rgba(10, 132, 255, 0.16);
+}
+html[data-theme="dark"] .dtp-today-btn:active {
+    background: rgba(10, 132, 255, 0.26);
+}
+
+html[data-theme="dark"] .dtp-cell:hover:not(.today):not(.selected) {
+    background: rgba(255, 255, 255, 0.1);
+}
+html[data-theme="dark"] .dtp-cell:active:not(.today):not(.selected) {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+html[data-theme="dark"] .dtp-cell.selected {
+    background: rgba(10, 132, 255, 0.22);
+    color: #0A84FF;
+}
+
+html[data-theme="dark"] .dtp-cell.today {
+    background: var(--accent, #0A84FF);
+    color: #ffffff;
+    box-shadow: 0 0 0 1px rgba(var(--accent-rgb, 10, 132, 255), 0.5);
+}
+html[data-theme="dark"] .dtp-cell.today:hover {
+    background: color-mix(in srgb, var(--accent, #0A84FF) 88%, #ffffff);
+}
+html[data-theme="dark"] .dtp-cell.today:active {
+    background: color-mix(in srgb, var(--accent, #0A84FF) 82%, #000000);
+}
+
+html[data-theme="dark"] .dtp-sep {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================================
+ * 降低透明度（html[data-transparency="off"]）
+ * 放在文件末尾是有原因的：本文件的暗色档（html[data-theme="dark"] .datetime-popover）
+ * 与这条特殊度相同（0,2,1），写在它前面会被它反过来盖掉、面板继续半透明。
+ * 只改 backdrop-filter / background / border / box-shadow：isolation:isolate 与
+ * overflow:hidden 原样保留，也不引入 transform（亚克力禁忌，见文件头）。
+ * ============================================================ */
+html[data-transparency="off"] .datetime-popover {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--surface-panel);
+    border: 1px solid var(--separator);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+html[data-theme="dark"][data-transparency="off"] .datetime-popover {
+    background: var(--surface-panel);
+    border: 1px solid var(--separator);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+

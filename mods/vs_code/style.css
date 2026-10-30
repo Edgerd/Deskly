@@ -1,0 +1,74 @@
+/* style.css — VS Code 嵌入式插件样式
+ * 标题栏默认 VSCode 深灰 #3c3c3c，由 script.js 根据 iframe 内网页主色调动态改写
+ * （background 走 inline，仅保留过渡动画与浅色主题下的文字配色）。
+ */
+
+.vscode.window {
+    background: #1e1e1e;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 20px 60px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+}
+
+/* 标题栏：默认深灰，随网页颜色平滑过渡 */
+.vscode.window .vscode-titlebar {
+    height: 38px;
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    background: #3c3c3c;
+    border-bottom: 1px solid #000000;
+    user-select: none;
+    transition: background-color 0.35s ease, color 0.35s ease;
+}
+
+/* 红绿灯：容器与圆点几何来自 trafficlights.css；标题栏无左内边距，直接用统一内缩。 */
+.vscode.window .vscode-titlebar .wintools {
+    margin-left: var(--traffic-inset);
+}
+
+/* 标题文字：深色背景下的浅色文字（默认） */
+.vscode.window .vscode-titlebar .title {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #cccccc;
+    font-size: 12px;
+    padding-right: 64px;
+}
+
+.vscode.window .vscode-titlebar .title .title-icon {
+    color: #007acc;
+    font-weight: 600;
+}
+
+.vscode.window .vscode-titlebar .title .title-path {
+    color: #9d9d9d;
+}
+
+/* 浅色主题（网页主色偏亮时由 JS 加 .light）：深色文字 + 浅分隔线 */
+.vscode.window .vscode-titlebar.light {
+    border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+
+.vscode.window .vscode-titlebar.light .title {
+    color: #1f1f1f;
+}
+
+.vscode.window .vscode-titlebar.light .title .title-path {
+    color: #555555;
+}
+
+/* 编辑器区域：跟随 VSCode 编辑器背景 */
+.vscode.window .vscode-frame {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: #1e1e1e;
+}

@@ -1,0 +1,59 @@
+{
+  "id": "calculator",
+  "name": "计算器",
+  "version": "2.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "基础 / 科学 / 程序员 / 转换 / RPN 计算器",
+  "permissions": [],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Calculatrice.png",
+  "menus": {
+    "显示": [
+      { "label": "基础型", "shortcut": "⌘1", "cmd": "calcSetMode('basic')" },
+      { "label": "科学型", "shortcut": "⌘2", "cmd": "calcSetMode('scientific')" },
+      { "label": "程序员", "shortcut": "⌘3", "cmd": "calcSetMode('programmer')" },
+      { "separator": true },
+      { "label": "转换", "shortcut": "⌥⌘C", "cmd": "calcToggleConvert()" },
+      { "label": "RPN 模式", "shortcut": "⌘R", "cmd": "calcToggleRpn()" },
+      { "label": "历史记录", "shortcut": "⌘H", "cmd": "calcToggleHistory()" },
+      { "separator": true },
+      { "label": "千位分隔符", "cmd": "calcToggleThousands()" },
+      { "separator": true },
+      { "label": "进入全屏", "shortcut": "⌃F", "cmd": "toggleActiveWindowFullscreen()" }
+    ],
+    "编辑": [
+      { "label": "拷贝结果", "shortcut": "⌘C", "cmd": "calcCopyResult()" },
+      { "label": "全部清除", "shortcut": "Esc", "cmd": "calcClearEntry()" }
+    ]
+  },
+  "store": {
+    "category": "效率",
+    "tagline": "基础 / 科学 / 程序员 / 单位换算 / RPN，界面恒为深色",
+    "summary": "照 macOS 计算器重写的多模式计算器：基础模式立即执行、科学模式先攒表达式再按标准运算次序求值、程序员模式做 64 位按位与位移运算、转换模式换算 13 类单位与 17 种货币，RPN 是叠在基础与科学之上的堆栈输入。\n求值内核完全不碰 DOM，在 Node 里逐条断言；历史记录、千位分隔符、小数位数与背景样式都能在设置里改。",
+    "features": [
+      "四种模式：基础 ⌘1、科学 ⌘2、程序员 ⌘3、转换 ⌥C",
+      "科学模式：括号、2nd 反函数层、记忆 mc/m+/m−/mr、Deg/Rad、EE 科学记数法、阶乘",
+      "程序员模式：八/十/十六进制、64 位按位与或非、位移与循环移位、字节反转、可点改的二进制位网格、ASCII 与 Unicode 转译",
+      "转换模式：长度、重量、容量、面积、温度、速度、时间、数据、能量、压力、功率、角度、货币",
+      "RPN 堆栈：Enter、交换寄存器、向上/向下滚动、丢弃",
+      "历史记录纸带：按天分组、点按回填结果、单条删除或清除全部",
+      "全键盘输入与快捷键，键帽悬停有帮助标签",
+      "背景只有深色毛玻璃与深色不透明两档，不随浅色主题翻转"
+    ],
+    "usage": "点左下角的计算器模式键切换模式；数字与运算符可直接用键盘敲（Enter 求值、Esc 全部清除、Delete 退格）。转换模式下点单位名选类别与单位，中间的 ⇅ 交换上下。设置 › 插件 › 计算器可改背景、千位分隔符、小数位数与是否保留历史。",
+    "updated": "2026-10-25",
+    "author": "Edgerd",
+    "screenshots": [
+      "screenshots/01-basic.jpg",
+      "screenshots/02-scientific.jpg",
+      "screenshots/03-programmer.jpg",
+      "screenshots/04-convert.jpg",
+      "screenshots/05-rpn-history.jpg",
+      "screenshots/06-two-backgrounds.jpg"
+    ]
+  }
+}

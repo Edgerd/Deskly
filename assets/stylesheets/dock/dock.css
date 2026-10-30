@@ -1,0 +1,432 @@
+@keyframes parabola {
+  0% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  50% {
+    transform: translateY(-20px);
+    animation-timing-function: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+  }
+  90% {
+    transform: translateY(-4px);
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes scale {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes fade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes come {
+  0% {
+    transform: translateY(80px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+.tip {
+  /* display: inline-block; */
+  width: auto;
+  height: auto;
+  background: var(--panel-bg, rgba(255, 255, 255, 0.6));
+  backdrop-filter: blur(var(--surface-blur-2)) brightness(90%);
+  -webkit-backdrop-filter: blur(var(--surface-blur-2)) brightness(90%);
+  /* 亚克力稳定层（0.2.74 固化）：
+     isolation: isolate 强制将本元素作为 backdrop-root，避免祖先 stacking context（含 z-index 的定位元素、含 backdrop-filter 的兄弟等）
+     误把本元素的 backdrop-filter 采样范围截断到自身——回退为白色矩形。
+     同时 overflow:hidden 防止采样跨界导致边缘出现白色光斑 */
+  isolation: isolate;
+  overflow: hidden;
+  padding: 2px 12px;
+  border-radius: 5px;
+  border: solid 1px var(--hairline, rgba(0, 0, 0, 0.2));
+  border-bottom: none;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3333333333);
+  font-size: 12px;
+  /* 悬浮提示是亚克力面，文字色走系统强制的黑/白档（随壁纸着色与主题重算），
+     不再抄 --text-primary 那支「只看主题、不看表面底色」的共享令牌 */
+  color: var(--surface-text);
+  -moz-user-select: none;
+       user-select: none;
+  -webkit-user-select: none;
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  /* Origin block */
+}
+.tip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%) rotate(180deg);
+  border-style: solid;
+  border-width: 0 5px 5px 5px;
+  border-color: transparent transparent var(--panel-bg, rgba(255, 255, 255, 0.6)) transparent;
+}
+/* 暗色：悬浮提示此前恒为半透明白，深色桌面上等于一块亮斑 */
+html[data-theme="dark"] .tip {
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+}
+html[data-theme="dark"] .tip::after {
+  border-bottom-color: var(--panel-bg);
+}
+/* 降低透明度：提示条换成实色底（只关模糊与 alpha，isolation/overflow 不动）。
+   小箭头是 0x0 盒子用 border 画的，所以只改 border-bottom-color，
+   不能给它写 background —— 那会在三角形底下垫出一块方角实色。 */
+html[data-transparency="off"] .tip {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--surface-panel);
+}
+html[data-transparency="off"] .tip::after {
+  border-bottom-color: var(--surface-panel);
+}
+
+.dockcontainer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 原为 width:75%：那只是「视觉留白」的宽度，可图标一旦超出这条带，
+     body/html 的 overflow:hidden（main.css:37）会把超出部分直接裁掉，
+     连滚动条都不出现 —— 而被切掉的恰好是 DOCK_PROTECTED 里移不掉的
+     访达与启动台，用户就此打不开访达。
+     现在容器按内容收缩、以视口为硬上限，图标侧由 dock.js 的
+     effectiveDockSize() 按数量回缩，溢出根本不发生。
+     （不能改成 overflow-x:auto：overflow-x 非 visible 会把 overflow-y 计算成
+     auto，放大时向上溢出的图标会被一起裁掉 —— 面板下沉到 .dock::before
+     就是为了不裁它。） */
+  width: auto;
+  max-width: 100vw;
+  height: auto;
+  padding-bottom: 5px;
+}
+
+.dock {
+  /* 玻璃面板下沉到 ::before，本元素不再裁剪，放大图标才能超出底栏上沿 */
+  position: relative;
+  width: auto;
+  /* 固定高度 = 基准图标 + 间距(约10px含运行灯与内边距)；放大时图标向上溢出悬浮 */
+  height: calc(var(--dock-size, 50px) + 10px);
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 5px;
+  padding-bottom: 2.5px;
+  margin-bottom: 5px;
+  -moz-user-select: none;
+       user-select: none;
+  -webkit-user-select: none;
+  /* 固定高位：Dock 永远置顶，窗口 z-index 封顶 9000（window.js），
+     层级表见 src/javascripts/zindex.js（Dock 9500 / 堆栈 9510 / 启动台 9600 /
+     弹窗 9610 / 右键菜单 9620 / 面板 9630 / 菜单栏 9999） */
+  z-index: 9500;
+  /* 亚克力稳定层（0.2.74 固化）：isolation: isolate 让本元素独立成 stacking context，
+     ::before 的 backdrop-filter 采样边界由 ::before 自身的圆角盒子收住，
+     因此 .dock 可以放开裁剪而不会出现矩形光斑。
+     亚克力禁忌（0.2.50 固化）：本元素及其 ::before 均带 backdrop-filter，
+     严禁 transform / translateZ / will-change:transform / 含 transform 的动画，
+     否则 Chrome 提升 3D 合成层，毛玻璃退化为半透明白色矩形（光斑）。
+     进入动画与显隐全部只走 opacity（JS 侧同步只写 opacity，不再写 transform）。 */
+  isolation: isolate;
+  overflow: visible;
+  opacity: 1;
+  transition: opacity 0.4s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.4s ease;
+  animation: fade 0.35s ease;
+}
+/* 底栏毛玻璃面板：只铺满底栏自身的盒子，图标在其上方自由溢出 */
+.dock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 16px;
+  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.3333333333), inset 0 0 2px rgba(26, 26, 26, 0.7333333333);
+  backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+  -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+  background: rgba(246, 246, 246, 0.46);
+}
+/* 暗色：底栏玻璃此前恒为浅白 rgba(246,246,246,.46)，深色桌面下是一块亮斑；
+   阴影同样要从「白内高光」换成深色描边。 */
+html[data-theme="dark"] .dock::before {
+  background: rgba(38, 38, 42, 0.52);
+  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.55), inset 0 0 2px rgba(0, 0, 0, 0.6);
+}
+/* 降低透明度：只摘 backdrop-filter 并把面板底色压成实色，
+   isolation / overflow / 不叠加 transform 的既有约束一律不动。 */
+html[data-transparency="off"] .dock::before {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--surface-panel);
+}
+/* 自动隐藏态：透明 + 失活，位置不变（不滑动），保住 backdrop-filter 稳定 */
+.dock.hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+.dock.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.dock .container {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+/* 键盘焦点环：dock.js 现在给容器挂了 role="button" tabindex="0"，
+   没有可见焦点就是「能 Tab 到却不知道在哪」。用 outline 而非 box-shadow：
+   .dock / .container 这条链上有 backdrop-filter，任何会提升合成层的属性
+   （transform / will-change）都会把亚克力打成一块死白。 */
+.dock .container:focus {
+  outline: none;
+}
+.dock .container:focus-visible {
+  outline: 3px solid var(--highlight, #0a82ff);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.dock .container img {
+  width: var(--dock-size, 50px);
+  height: var(--dock-size, 50px);
+  transition: filter 0.05s;
+  /* 亚克力禁忌（0.2.50 固化）：移除非必要的 will-change:width 和 transform-origin，
+     避免子元素被提升为 GPU 合成层后干扰 .dock 父元素 backdrop-filter 渲染。
+     hover 放大通过 width/height 过渡即可，transform 全部交给父链承担。 */
+}
+/* 程序坞分段容器：收藏 / 运行 / 最近使用 / 废纸篓 */
+.dock .dock-section {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+/* 分段之间的分隔线 */
+.dock .dock-sep {
+  width: 1px;
+  height: 42.5px;
+  background: rgba(232, 232, 232, 0.4);
+  margin: 0 8px;
+  align-self: center;
+  border-radius: 1px;
+}
+/* 暗色：浅灰分隔线在深色底栏上几乎看不见，改成中性亮灰（与运行指示灯同一档） */
+html[data-theme="dark"] .dock .dock-sep {
+  background: rgba(255, 255, 255, 0.22);
+}
+/* 红色标记（Badge） */
+.dock .container .badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(246, 246, 246, 0.9);
+  pointer-events: none;
+  z-index: 2;
+}
+/* 暗色：Badge 的外圈描边是给浅底栏用的，深色底栏上要跟着换成深色档，
+   否则红点周围会有一圈发白的「光晕」。 */
+html[data-theme="dark"] .dock .container .badge {
+  box-shadow: 0 0 0 2px rgba(30, 30, 34, 0.9);
+}
+.dock .container {
+  position: relative;
+}
+/* 隐藏运行指示灯 */
+.dock .container.no-indicator .light {
+  display: none;
+}
+/* 键盘导航高亮：#007aff 是写死的系统蓝，强调色改掉后高亮环不跟着变 */
+.dock .container.dock-focused {
+  outline: 2px solid var(--accent, #007aff);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+/* 拖放打开文件时的目标高亮（同上，改为强调色的透明档） */
+.dock .container.drop-target {
+  background: rgba(var(--accent-rgb, 0, 122, 255), 0.18);
+  border-radius: 12px;
+}
+/* 程序坞位置：左侧 / 右侧（垂直布局，固定定位贴边） */
+.dockcontainer.pos-left,
+.dockcontainer.pos-right {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 64px;
+  height: auto;
+  max-height: 100%;
+  /* 侧边 Dock 与底部 Dock 同级：永远置顶 */
+  z-index: 9500;
+}
+.dock.pos-left,
+.dock.pos-right {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: auto;
+  width: auto;
+  min-width: 64px;
+  margin-bottom: 0;
+  margin-left: 5px;
+}
+.dockcontainer.pos-left {
+  left: 0;
+  right: auto;
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+.dockcontainer.pos-right {
+  right: 0;
+  left: auto;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+.dock.pos-left .dock-section,
+.dock.pos-right .dock-section {
+  flex-direction: column;
+  align-items: center;
+}
+.dock.pos-left .dock-sep,
+.dock.pos-right .dock-sep {
+  width: 42.5px;
+  height: 1px;
+  margin: 8px 0;
+}
+/* 文件夹栈（Stacks）弹层 */
+.dock-stack {
+  position: fixed;
+  width: 280px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(246, 246, 246, 0.82);
+  backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+  -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+  /* 亚克力稳定层（0.2.74 固化）：isolation: isolate + overflow:auto 兼得：
+     isolation 把 backdrop-root 强制为本元素，overflow 让滚动边缘平滑
+     （auto 内部是 hidden，外层是 scrollbar；backdrop 仍作用在元素盒子内） */
+  isolation: isolate;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  /* 堆栈直接挂在 body 上（见 dock.js），因此用的是根层叠上下文的层级：
+     曾经的 3000 落在窗口层级带（2050-9000）内，任何一个被点过的前台窗口都会
+     把「下载」堆栈整个盖住。取 Dock 之上的固定层 9510。 */
+  z-index: 9510;
+}
+.dock-stack-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--surface-text-secondary);
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+/* 暗色：栈弹层的玻璃底要整体翻过来；文字色不在这儿翻 —— 它走 --surface-text*，
+   由 surface.js 按表面底色推导，明暗两档共用同一条声明。 */
+html[data-theme="dark"] .dock-stack {
+  background: rgba(38, 38, 42, 0.82);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.dock-stack-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.dock-stack-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+}
+.dock-stack-item:hover {
+  background: rgba(var(--accent-rgb, 0, 122, 255), 0.15);
+}
+.dock-stack-item span {
+  font-size: 11px;
+  color: var(--surface-text);
+  word-break: break-all;
+}
+/* 降低透明度：栈弹层是 body 级浮层（不在 .window 里），要单独摘模糊并压实色 */
+html[data-transparency="off"] .dock-stack {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--surface-panel);
+}
+.dock-stack-item.disabled {
+  cursor: var(--deskly-cursor, default);
+  opacity: 0.6;
+}
+.dock-stack-item.disabled:hover {
+  background: none;
+}
+.dock .container img.opening {
+  /* 单次弹跳：旧值是 1s infinite，靠 setTimeout 摘类；主线程被应用冷加载占住时
+     会连续弹很多轮，看起来像「程序在程序坞不停跳动」。收敛为一次，类由
+     animationend + 超时双兜底摘除（dock.js），窗口出现时也会提前停。 */
+  animation: parabola 0.9s 1;
+}
+.dock .container img.openingwithscale {
+  animation: parabola 0.9s 1, scale 0.9s ease forwards;
+}
+.dock .container img:active {
+  filter: brightness(0.5);
+}
+/* Removed dead rule: `.dock .container hr` — the dock never renders an <hr>
+   inside `.container`; section dividers are `.dock-sep` divs (see dock.js). */
+.dock .container .light {
+  width: 4px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0);
+  margin-top: 2.5px;
+}
+.dock .container .light.on {
+  background: rgba(0, 0, 0, 0.5333333333);
+}
+/* 暗色：运行指示灯原本是黑灰点，压在深色底栏上等于没有——「显示正在使用的应用
+   程序指示灯」这个开关在暗色下看不出效果，这里补亮一档。 */
+html[data-theme="dark"] .dock .container .light.on {
+  background: rgba(255, 255, 255, 0.62);
+}
+/* 拖拽排序：被拖拽图标半透明，其余图标轻微让位预览 */
+.dock .container.sortable-dragging {
+  opacity: 0.45;
+}
+.dock .container.sortable-dragging img {
+  filter: brightness(0.85);
+}
+.dock .container img {
+  cursor: grab;
+}
+.dock .container.sortable-dragging img {
+  cursor: grabbing;
+}/*# sourceMappingURL=dock.css.map */

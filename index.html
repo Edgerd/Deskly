@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deskly</title>
+
+    <!-- 首帧壁纸：必须是同步经典脚本，且排在所有样式表之前。
+         模块脚本是 deferred，等它执行时默认壁纸已经画上屏；MV3 CSP 又禁止内联脚本。
+         该文件只读 localStorage 的壁纸配置并写一个 CSS 变量，见文件头说明。 -->
+    <script src="./src/javascripts/wallpaper-boot.js"></script>
+
+    <link rel="stylesheet" href="./assets/stylesheets/main/main.css?v=0.3.0" />
+    <link rel="stylesheet" href="./assets/stylesheets/finderbar/finderbar.css?v=0.3.0" />
+    <link rel="stylesheet" href="./assets/stylesheets/dock/dock.css?v=0.3.0" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/desktop.css?v=0.3.0" />
+    <link rel="stylesheet" href="./assets/stylesheets/cursor/cursor.css?v=0.3.0" />
+    <link rel="stylesheet" href="./assets/stylesheets/ui/ui.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/contextMenu.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/window.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/windowframe.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/trafficlights.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/windowtraffic.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/datetime-popover.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/controlcenter.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/alert.css?v=0.3.0">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/popover.css?v=0.3.0">
+</head>
+
+<body class="cursor-default">
+    <div class="wallpaper"></div>
+    <header class="finderbar" id="finderbar"></header>
+
+    <div class="desktop" id="desktop">
+        <div class="container"></div>
+    </div>
+    <!-- Dock 悬停提示：文本由 dock.js 按当前悬停项写入，这里只给出语言回退 -->
+    <div class="tip" id="tip" data-i18n="dock.finder" data-i18n-fallback="访达">访达</div>
+    <div class="dockcontainer">
+        <footer class="dock" id="dock"></footer>
+    </div>
+
+    <!-- Menus：MV3 CSP 禁止内联事件处理器，命令统一由 bootstrap.js 绑定、
+         ui/menuCommands.js 按注册表分发（cmd 即注册表键名，可带一个字符串实参）。 -->
+    <div class="menu" menu="logo" nomatchapp="yes">
+        <p cmd="openAppByName('关于本机')" data-i18n="menu.about" data-i18n-fallback="关于本机">
+            关于本机</p>
+        <hr />
+        <p cmd="openAppByName('系统设置')" data-i18n="menu.systemPreferences" data-i18n-fallback="系统设置...">
+            系统设置...</p>
+        <p cmd="openAppByName('App Store')" data-i18n="menu.appStore" data-i18n-fallback="App Store...">
+            App Store...</p>
+        <hr />
+        <p data-action="recent-items" data-i18n="menu.recentItems" data-i18n-fallback="最近使用的项目">最近使用的项目</p>
+        <hr />
+        <p cmd="forceQuit" data-i18n="menu.forceQuit" data-i18n-fallback="强制退出...">强制退出...</p>
+        <hr />
+        <p cmd="sleep" data-i18n="menu.sleep" data-i18n-fallback="睡眠">睡眠</p>
+        <p cmd="restart" data-i18n="menu.restart" data-i18n-fallback="重新启动...">重新启动...</p>
+        <p cmd="shutdown" data-i18n="menu.shutdown" data-i18n-fallback="关机...">关机...</p>
+        <hr />
+        <p cmd="lockScreen" data-i18n="menu.lockScreen" data-i18n-fallback="锁定屏幕">锁定屏幕</p>
+        <p cmd="logOut" data-i18n="menu.logOut" data-i18n-fallback="退出登录...">退出登录...</p>
+    </div>
+    <div class="menu" menu="appname" nomatchapp="yes">
+        <p cmd="aboutActiveApp" data-i18n="menu.app.about" data-i18n-fallback="关于访达">关于访达</p>
+        <hr />
+        <p cmd="openAppByName('系统设置')" data-i18n="menu.app.settings" data-i18n-fallback="设置...">设置...</p>
+        <hr />
+        <p cmd="emptyTrash" data-i18n="menu.app.emptyTrash" data-i18n-fallback="清倒废纸篓">清倒废纸篓</p>
+        <hr />
+        <p cmd="hideActiveApp" data-i18n="menu.app.hide" data-i18n-fallback="隐藏访达">隐藏访达</p>
+        <p cmd="hideOthers" data-i18n="menu.app.hideOthers" data-i18n-fallback="隐藏其他">隐藏其他</p>
+        <p cmd="showAll" data-i18n="menu.app.showAll" data-i18n-fallback="全部显示">全部显示</p>
+    </div>
+
+    <script type="module" src="./src/javascripts/main.js"></script>
+    <script type="module" src="./src/javascripts/plugin-manager.js"></script>
+    <script type="module" src="./src/javascripts/finderbar.js"></script>
+    <script type="module" src="./src/javascripts/dock.js"></script>
+    <script type="module" src="./src/javascripts/desktop.js"></script>
+    <script type="module" src="./src/javascripts/window.js"></script>
+    <script type="module" src="./src/javascripts/ui/alert.js"></script>
+    <script type="module" src="./src/javascripts/ui/popover.js"></script>
+    <script type="module" src="./src/javascripts/ui/menu.js"></script>
+    <script type="module" src="./src/javascripts/client.js"></script>
+    <script type="module" src="./assets/vendor/webswift.js"></script>
+    <script type="module" src="./src/javascripts/bootstrap.js"></script>
+</body>
+
+</html>

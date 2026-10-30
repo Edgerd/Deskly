@@ -1,0 +1,182 @@
+.finderbar {
+  width: 100vw;
+  height: 24px !important;
+  /* 启动台打开时整条菜单栏淡出（html.deskly-launchpad-open），
+     过渡放在基础规则上，关闭并卸载启动台样式后仍能淡回来。 */
+  transition: opacity 0.18s ease;
+  /* M2+ MacBook 35px, normal Mac 24px */
+  /* 最高固定层级：菜单栏永远在最上层，防止桌面窗口（z-index 最高 9000）遮挡顶栏 */
+  z-index: 9999;
+  /* 曾是 blur(20px)：弱机渲染性能优化（原 50px 每帧采样开销大，20px 视觉差异极小）。
+     现在糊到什么程度由系统按「模糊等级」分配，菜单栏固定取第 3 档；等级为 0 时自动归零。
+     saturate(0.8) 是「降饱和」，不在 --surface-saturate 的替换区间内，照旧保留。 */
+  backdrop-filter: blur(var(--surface-blur-3)) saturate(0.8);
+  -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(0.8);
+  /* 亚克力稳定层（0.2.74 固化）：菜单栏固定吸顶，下方有桌面图标、launchpad 背景、controlcenter 弹出元素。
+     隔离后 backdrop-root 强制为本元素，毛玻璃不会受其他 stacking context 影响；
+     overflow:hidden 保证边缘采样不跨界（出现矩形光斑） */
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+/* Removed dead rule: `.finderbar.macbook` — no HTML/JS ever adds a `macbook`
+   class to `.finderbar` (grep found the name only in these stylesheets). */
+/* 降低透明度：菜单栏从毛玻璃换成实色条。
+   实色条不是亚克力表面，文字退回主题令牌 --menubar-text；但右侧图标（images/*.svg，
+   例如 wifi.svg）是 fill="white" 的单色图，浅底上会直接看不见 —— 所以浅色档把图标
+   invert，深色档保持白图只去掉投影。
+   毛玻璃档（默认）则整套走系统墙纸档：文字读 --surface-text-wallpaper，图标由
+   <html data-wallpaper-ink="black|white"> 这条判定决定要不要 invert（见本文件下方）。 */
+html[data-transparency="off"] .finderbar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--surface-menubar);
+}
+html[data-transparency="off"] .finderbar .left,
+html[data-transparency="off"] .finderbar .right {
+  color: var(--menubar-text);
+  text-shadow: none;
+}
+html[data-transparency="off"] .finderbar .left p.active {
+  background: var(--hover-bg);
+}
+html[data-transparency="off"] .finderbar .right img,
+html[data-transparency="off"] .finderbar .right .plugin-icon-img {
+  filter: invert(1) drop-shadow(1px 2px 4px rgba(0, 0, 0, 0.12));
+}
+html[data-theme="dark"][data-transparency="off"] .finderbar .left,
+html[data-theme="dark"][data-transparency="off"] .finderbar .right {
+  color: var(--menubar-text);
+}
+html[data-theme="dark"][data-transparency="off"] .finderbar .right img,
+html[data-theme="dark"][data-transparency="off"] .finderbar .right .plugin-icon-img {
+  filter: drop-shadow(1px 2px 4px rgba(0, 0, 0, 0.45));
+}
+/* 菜单栏是「背后就是墙纸」的那类表面：文字色取系统墙纸档（只有黑与白，由 surface.js
+   按壁纸主色 → 着色 → 亮度 → 夜间护眼实时推导），不再恒为白色靠投影硬撑。
+   旧写法留下一组 .finderbar.black-text 规则准备给浅壁纸用，但全仓库没有任何 JS 写过
+   这个 class —— 等于不存在，浅色壁纸下顶栏一直是白字压浅底，这里由墙纸档令牌接管。 */
+.finderbar .left {
+  display: inline-flex;
+  align-items: center;
+  color: var(--surface-text-wallpaper);
+  text-shadow: 1px 2px 10px rgba(0, 0, 0, 0.3333333333);
+}
+.finderbar .left .logo {
+  font-size: 16.3px;
+  margin-left: 10px;
+}
+.finderbar .left .appname {
+  font-family: "SFPro-Semibold", "PingFang-Semibold", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-weight: bold;
+  font-size: 13px;
+  /* margin-top: 0.75px; */
+  letter-spacing: normal;
+  margin-left: 0;
+}
+.finderbar .left p {
+  font-size: 13.5px;
+  letter-spacing: -0.2px;
+  padding: 0 10.5px;
+  border-radius: 4px;
+  height: 100%;
+  text-align: center;
+  line-height: 20px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.finderbar .left p.active {
+  background: rgba(250, 250, 250, 0.337254902);
+}
+.finderbar .right {
+  display: inline-flex;
+  flex-direction: row-reverse;
+  color: var(--surface-text-wallpaper);
+  text-shadow: 1px 2px 10px rgba(0, 0, 0, 0.3333333333);
+  align-items: center;
+  /* justify-content: center; */
+}
+/* 毛玻璃档推出手黑墨时（浅色壁纸），白色文字变黑色文字，配套两件事必须一起翻：
+   1) 去掉那道为白字准备的深色投影；2) 把 fill="white" 的单色 SVG 图标 invert 成黑。
+   :not([data-transparency="off"])：关掉毛玻璃时上面那组实色条规则自己管图标，
+   这里的特殊度与它相同（0,3,1）且排在后面，不收口就会把实色条的图标翻回错误的一边。 */
+html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .left,
+html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .right {
+  text-shadow: none;
+}
+html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .right img,
+html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .right .plugin-icon-img {
+  filter: invert(1);
+}
+.finderbar .right img {
+  transform: scale(0.5);
+  /* transform: scale(0.1); */
+  filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.3333333333));
+  margin: 0 4px;
+  width: auto;
+  height: 18px;
+}
+.finderbar .right .date {
+  margin-left: 7px;
+  margin-right: 7px;
+  font-size: 13.5px;
+  letter-spacing: -0.2px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 16px;
+}
+.finderbar .right .time {
+  margin-right: 17px;
+  font-size: 13.5px;
+  letter-spacing: -0.2px;
+  line-height: 16px;
+  font-family: "SFPro-Medium", "PingFangSC-Medium", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 插件图标容器：位于系统内置图标与时间控件之间 */
+.finderbar .right .plugin-icons {
+  display: inline-flex;
+  flex-direction: row-reverse;
+  align-items: center;
+}
+
+/* 插件图标：复用顶栏内置图标的尺寸与阴影风格 */
+.finderbar .right .plugin-icon {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.finderbar .right .plugin-icon:hover {
+  opacity: 0.7;
+}
+.finderbar .right .plugin-icon-img {
+  transform: scale(0.5);
+  filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.333));
+  margin: 0 4px;
+  width: auto;
+  height: 18px;
+}
+.finderbar .right .plugin-icon-html {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 4px;
+  width: 18px;
+  height: 18px;
+}
+.finderbar .right .plugin-icon-html svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.333));
+}/*# sourceMappingURL=finderbar.css.map */

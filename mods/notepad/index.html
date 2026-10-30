@@ -1,0 +1,167 @@
+<div class="notepad window" data-view="wysiwyg" data-format="md" data-md="on" data-window="size:900x620 centered">
+    <deskly-traffic-lights class="wintools" overlay></deskly-traffic-lights>
+
+    <!-- 第一行：菜单（最左侧下拉）+ 标题 —— 它同时是标题栏，从空白处可拖动窗口 -->
+    <div class="toolbar toolbar-primary" data-titlebar>
+        <div class="menu-dropdown">
+            <button class="btn-menu" data-i18n-title="notepad.menu" title="菜单" aria-haspopup="true" aria-expanded="false">
+                <svg viewBox="0 0 16 16" width="16" height="16"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+            <div class="menu-popup" role="menu" hidden>
+                <button class="menu-item" data-action="new" role="menuitem">
+                    <span class="menu-item-label" data-i18n="notepad.menuNew">新建笔记</span>
+                    <span class="menu-item-keys">⌘N</span>
+                </button>
+                <button class="menu-item" data-action="open" role="menuitem">
+                    <span class="menu-item-label" data-i18n="notepad.menuOpen">打开文件…</span>
+                    <span class="menu-item-keys">⇧⌘O</span>
+                </button>
+                <button class="menu-item" data-action="search" role="menuitem">
+                    <span class="menu-item-label" data-i18n="notepad.menuSearch">查找与替换…</span>
+                    <span class="menu-item-keys">⌘F</span>
+                </button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-action="save" role="menuitem">
+                    <span class="menu-item-label" data-i18n="notepad.menuSave">保存到文件系统</span>
+                    <span class="menu-item-keys">⌘S</span>
+                </button>
+                <button class="menu-item" data-action="download" role="menuitem">
+                    <span class="menu-item-label" data-i18n="notepad.menuDownload">下载文件</span>
+                    <span class="menu-item-keys">⇧⌘S</span>
+                </button>
+                <div class="menu-sep"></div>
+                <button class="menu-item" data-action="clear" role="menuitem">
+                    <span class="menu-item-label" data-i18n="notepad.menuClear">清空内容</span>
+                </button>
+                <button class="menu-item menu-toggle" data-action="toggle-md" role="menuitemcheckbox" aria-checked="true">
+                    <span class="menu-item-label" data-i18n="notepad.menuMarkdown">Markdown 模式</span>
+                    <span class="menu-toggle-state" data-i18n="notepad.on">开</span>
+                </button>
+            </div>
+        </div>
+        <div class="heading-group">
+            <button class="btn-heading" data-level="1" data-i18n-title="notepad.heading1" title="标题 1">H1</button>
+            <button class="btn-heading" data-level="2" data-i18n-title="notepad.heading2" title="标题 2">H2</button>
+            <button class="btn-heading" data-level="3" data-i18n-title="notepad.heading3" title="标题 3">H3</button>
+        </div>
+    </div>
+
+    <!-- 第二行：视图切换 -->
+    <div class="toolbar toolbar-view">
+        <div class="view-switch" role="group">
+            <button class="btn-view active" data-view="wysiwyg" aria-pressed="true" data-i18n-title="notepad.viewWysiwyg" title="所见即所得">
+                <svg viewBox="0 0 16 16" width="14" height="14"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+                <span data-i18n="notepad.viewWysiwyg">所见即所得</span>
+            </button>
+            <button class="btn-view" data-view="split" aria-pressed="false" data-i18n-title="notepad.viewSplit" title="分屏">
+                <svg viewBox="0 0 16 16" width="14" height="14"><rect x="1.5" y="3" width="5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="9.5" y="3" width="5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+                <span data-i18n="notepad.viewSplit">分屏</span>
+            </button>
+            <button class="btn-view" data-view="source" aria-pressed="false" data-i18n-title="notepad.viewSource" title="源码">
+                <svg viewBox="0 0 16 16" width="14" height="14"><path d="M5.5 4.5L2.5 8l3 3.5M10.5 4.5L13.5 8l-3 3.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span data-i18n="notepad.viewSource">源码</span>
+            </button>
+        </div>
+        <div class="file-name" title="未命名">未命名</div>
+    </div>
+
+    <!-- 第三行：格式化工具栏（仅 MD 模式显示） -->
+    <div class="toolbar toolbar-format">
+        <div class="fmt-group">
+            <button class="btn-heading" data-level="1" data-i18n-title="notepad.heading1" title="标题 1">H1</button>
+            <button class="btn-heading" data-level="2" data-i18n-title="notepad.heading2" title="标题 2">H2</button>
+            <button class="btn-heading" data-level="3" data-i18n-title="notepad.heading3" title="标题 3">H3</button>
+        </div>
+        <span class="fmt-divider"></span>
+        <div class="fmt-group">
+            <button class="btn-bold" data-i18n-title="notepad.bold" title="粗体 (⌘B)"><b>B</b></button>
+            <button class="btn-italic" data-i18n-title="notepad.italic" title="斜体 (⌘I)"><i>I</i></button>
+            <button class="btn-strike" data-i18n-title="notepad.strike" title="删除线"><s>S</s></button>
+        </div>
+        <span class="fmt-divider"></span>
+        <div class="fmt-group">
+            <button class="btn-code" data-i18n-title="notepad.codeBlock" title="代码块">&lt;/&gt;</button>
+            <button class="btn-quote" data-i18n-title="notepad.quote" title="引用">❝</button>
+        </div>
+        <span class="fmt-divider"></span>
+        <div class="fmt-group">
+            <button class="btn-ul" data-i18n-title="notepad.ul" title="无序列表">•≡</button>
+            <button class="btn-ol" data-i18n-title="notepad.ol" title="有序列表">1≡</button>
+            <button class="btn-link" data-i18n-title="notepad.link" title="链接">🔗</button>
+            <button class="btn-image" data-i18n-title="notepad.image" title="图片">🖼</button>
+        </div>
+        <span class="fmt-divider"></span>
+        <div class="fmt-group">
+            <button class="btn-hr" data-i18n-title="notepad.hr" title="分割线">—</button>
+            <button class="btn-table" data-i18n-title="notepad.table" title="表格">▦</button>
+        </div>
+    </div>
+
+    <!-- 主体：侧边栏 + 标签条 + 编辑区 -->
+    <div class="body">
+        <aside class="sidebar">
+            <div class="sidebar-title" data-i18n="notepad.savedNotes">已保存的笔记</div>
+            <div class="note-list"></div>
+            <div class="note-empty" data-i18n="notepad.noSavedNotes">暂无保存的笔记</div>
+        </aside>
+
+        <div class="editor-column">
+            <!-- 多标签条（≥2 个标签时出现，规划 §9） -->
+            <div class="tabbar" hidden>
+                <div class="tab-list" role="tablist"></div>
+                <button class="tab-new" type="button" data-i18n-title="notepad.newTab" title="新建标签">＋</button>
+            </div>
+
+            <!-- 查找 / 替换 -->
+            <div class="search-bar" hidden>
+                <input class="search-input" type="text" data-i18n-placeholder="notepad.findPlaceholder" placeholder="查找" aria-label="查找" />
+                <span class="search-count"></span>
+                <button class="btn-search-prev" type="button" data-i18n-title="notepad.prevMatch" title="上一个">↑</button>
+                <button class="btn-search-next" type="button" data-i18n-title="notepad.nextMatch" title="下一个">↓</button>
+                <input class="replace-input" type="text" data-i18n-placeholder="notepad.replacePlaceholder" placeholder="替换为" aria-label="替换为" />
+                <button class="btn-replace" type="button" data-i18n="notepad.replace">替换</button>
+                <button class="btn-replace-all" type="button" data-i18n="notepad.replaceAll">全部替换</button>
+                <button class="btn-search-close" type="button" data-i18n-title="common.close" title="关闭">×</button>
+            </div>
+
+            <div class="editor-area">
+                <!-- 所见即所得 -->
+                <div class="editor-wysiwyg" contenteditable="true"
+                     data-i18n-placeholder="notepad.wysiwygPlaceholder"
+                     data-placeholder="开始输入 Markdown，所见即所得..."></div>
+
+                <!-- 源码模式 -->
+                <div class="editor-source-wrap">
+                    <div class="line-numbers"></div>
+                    <textarea class="editor-source" spellcheck="false"
+                              data-i18n-placeholder="notepad.sourcePlaceholder"
+                              placeholder="开始输入 Markdown 源码..."></textarea>
+                </div>
+
+                <!-- 分屏模式 -->
+                <div class="editor-split">
+                    <div class="split-pane split-source-pane">
+                        <div class="line-numbers"></div>
+                        <textarea class="editor-source-split" spellcheck="false"
+                                  data-i18n-placeholder="notepad.sourcePlaceholder"
+                                  placeholder="开始输入 Markdown 源码..."></textarea>
+                    </div>
+                    <div class="split-divider"></div>
+                    <div class="split-pane split-preview-pane">
+                        <div class="editor-wysiwyg split-preview" contenteditable="false"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 状态栏：文件名 · 行数 · 字数 · 光标 · 保存状态 · 编码 · 格式 -->
+    <div class="statusbar">
+        <span class="file-info">未命名.md</span>
+        <span class="stats"><span class="line-count">行数 1</span> · <span class="word-count">字数 0</span></span>
+        <span class="cursor-info">行 1, 列 1</span>
+        <span class="save-state" data-state="saved">已保存</span>
+        <span class="encoding">UTF-8</span>
+        <span class="format-badge">MD</span>
+    </div>
+</div>

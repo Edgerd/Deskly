@@ -50,6 +50,11 @@ import { initCursor } from "./cursor.js";
 import { initGrants } from "./api-grants.js";
 import "./os-api.js";
 import { initDefaultApps } from "./default-apps.js";
+import { initOfficeBrand } from "./office-brand.js";
+import { initKeyboard } from "./keyboard.js";
+// 菜单栏状态项（P0-5）：模块求值期就把电池 / 音量 / 蓝牙挂到 .finderbar .right，
+// 依赖上方 finderbar.js 已静态求值（.right 与 .time 已建好）。
+import "./menubar-status.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -63,6 +68,7 @@ const OPTIONAL_KERNEL_MODULES = [
     { specifier: "./lock.js", label: "锁屏" },
     { specifier: "./permissions.js", label: "权限" },
     { specifier: "./spotlight.js", label: "聚焦搜索" },
+    { specifier: "./pointer-shake.js", label: "晃动查找指针" },
     { specifier: "./debug.js", label: "调试" },
     { specifier: "./scrollWatch.js", label: "滚动条活动监听" },
 ];
@@ -165,6 +171,10 @@ function ensureServiceWorker() {
     // 插件清单一经 registerPlugin 就广播 plugin-registered，api-grants 靠它记授权。
     await initGrants();
     initDefaultApps();
+    // 办公套件品牌包：探测 MS 图标是否已补齐，并订阅切换（Dock 图标/名称随之刷新）
+    initOfficeBrand();
+    // 全局快捷键分发：键位表的唯一真源，必须在任何应用开始监听之前就位
+    initKeyboard();
     initPlugins();
     await pluginsReady();
     i18n.init(i18n.getLanguage());

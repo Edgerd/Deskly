@@ -66,6 +66,7 @@
   -webkit-user-select: none;
   display: none;
   position: fixed;
+  /* = Z.DOCK_TIP（src/javascripts/zindex.js），与菜单栏同档；勿再写裸数字 */
   z-index: 9999;
   /* Origin block */
 }

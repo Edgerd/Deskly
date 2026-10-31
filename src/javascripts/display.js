@@ -3,7 +3,7 @@
  *
  * 两块能力的分工写在这里，免得后来者以为「亮度也归本模块画」：
  *
- * - **亮度**：压暗层 `#webstartos-brightness-overlay` 由控制中心（controlcenter.js）持有，
+ * - **亮度**：压暗层 `#deskly-brightness-overlay`（旧 id 仍兼容读取） 由控制中心（controlcenter.js）持有，
  *   本模块只负责把 `display.brightness` 注册进设置中枢、校验取值、和控制中心共用
  *   `webstartos_controlcenter` 这同一个 JSON 槽的 `displayBrightness` 字段。
  *   生效函数按约定派发 window 事件 `display-brightness-change`（detail 为音量比），

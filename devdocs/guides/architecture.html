@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>架构总览 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="architecture" data-base="../" data-version="0.2.95">
+<main>
+<h1>架构总览</h1>
+<p class="lede">执行模型、数据流与「版本与更新」规则。写任何代码之前先读这页。</p>
+
+<h2>执行模型（最重要的两条）</h2>
+<ol>
+<li><b>没有 iframe。</b> mod 由 <code>plugin-manager.js</code> fetch 三件资源后注入<b>宿主主文档</b>：
+HTML 片段 <code>insertAdjacentHTML</code> 进 body，脚本是全新 URL 的 <code>&lt;script type="module"&gt;</code>。
+所以 mod 共享整个桌面 DOM，也共享全部 <code>window.__*</code> 钩子。</li>
+<li><b>冷加载。</b> 启动只 fetch 14 份 <code>manifest.json</code>（带 <code>?v=VERSION</code>）建立注册表，
+派发 <code>plugins-ready</code>；点击应用时才拉 style/html/script。详见 <a href="cold-load.html">冷加载机制</a>。</li>
+</ol>
+
+<h2>模块图（内核 → 消费方）</h2>
+<pre><code>settings.js（最底，不 import 任何内核模块）
+   ▲
+osfs.js（单一根 + virtual/disk 双后端，同样不 import）   i18n.js / zindex.js / log.js（叶子）
+   ▲
+app-registry.js（应用注册表 + broadcast 事件总线）
+   ▲
+plugin-manager.js（装载 / 卸载 / 图标解析 / ZIP 安装）   api-grants.js（权限账本）
+   ▲
+finderbar.js（顶栏 + 菜单 + cmd 分发）· dock.js · window-manager.js · controlcenter.js
+   ▲
+mods/*（13 个内置插件，含多应用套件 office = 文稿/表格/演示）</code></pre>
+
+<h2>数据流三主路</h2>
+<table>
+<tr><th>路</th><th>入口</th><th>广播</th><th>消费方</th></tr>
+<tr><td>设置</td><td><code>window.__settings.set(key, v)</code>（唯一写入方）</td><td><code>settings-changed</code>（document，detail = 对象）+ <code>__settings.on/subscribe</code></td><td>owner 模块（dock / controlcenter / surface / sound / display…）+ 任意订阅者</td></tr>
+<tr><td>日志</td><td><code>window.__log.info/warn/error/debug</code>（console.* 也被自动归档）</td><td>—（内核缓冲，跨窗口跨刷新留存）</td><td>系统设置 › 调试面板查询 / 导出 / 复制</td></tr>
+<tr><td>事件总线</td><td><code>Deskly.bus.emit(topic, data)</code>（形状 = <code>app-registry.broadcast</code>：document + bubbles + CustomEvent.detail）</td><td>同名 CustomEvent</td><td>跨插件 / 跨内核模块通知</td></tr>
+</table>
+
+<h2>版本与更新（?v= 三处规则）</h2>
+<table>
+<tr><th>位置</th><th>写法</th><th>原因</th></tr>
+<tr><td><code>manifest.json</code> fetch（冷加载注册）</td><td><code>?v=VERSION</code></td><td>随发布自动失效缓存</td></tr>
+<tr><td><code>index.html</code> 里宿主资源（script/css）</td><td><code>?v=VERSION</code></td><td>同上；版本升级时<b>整站</b>资源一起失效</td></tr>
+<tr><td>mod 的 style.css / index.html / 插件 manifest</td><td>内置 <code>?v=VERSION</code>；ZIP 安装 <code>Date.now()</code></td><td>ZIP 可被同 id 覆盖安装，必须每次取新</td></tr>
+</table>
+<div class="warn"><b>红线</b> ES module 的 <code>import</code> 说明符<b>永远不带</b> <code>?v=</code>：带与不带是两个模块，
+核心模块被求值两次 → 两份状态互相覆盖全局钩子（settings / log / 注册表都会分裂）。
+宿主资源升级 = 改 <code>version.js</code> 的 <code>VERSION</code> + 全仓 <code>index.html</code> 的 <code>?v=</code> 串（当前 15 处），见 <a href="../reference/changelog.html">版本与更新</a>。</div>
+
+<h2>「没有 iframe」的两条推论</h2>
+<ul>
+<li>mod 里的 <code>document</code>、<code>window</code> 就是宿主桌面本身：别假设自己独占 DOM（选择器要带 mod 的作用域前缀）；
+   也别假设 <code>window.location.reload()</code> 有语义——扩展新标签页里它只会重载整个桌面。</li>
+<li><code>window.Deskly</code> 是<b>能力</b>门面不是沙箱：mod 直接 import 内核模块（<code>../../src/javascripts/xxx.js</code>）
+   是允许的（内置 mod 都这么做），第三方 ZIP 插件靠 <code>sw.js</code> 拦截 <code>./mods/&lt;id&gt;/</code> 路径拿到同等待遇；
+   能力边界由 <code>manifest.permissions</code> + <code>api-grants.js</code> 账本约束，见 <a href="../api/deskly.html">Deskly</a>。</li>
+</ul>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -195,6 +195,30 @@ function injectStyle(css) {
     _styleEl.textContent = css;
 }
 
+/** 临时放大指针的定时器（同一时刻只允许一次，避免连续晃动把计时器叠起来）。 */
+let _pulseTimer = null;
+
+/**
+ * 短暂放大指针（macOS「晃动以查找指针」的视觉反馈）。
+ *
+ * 只改注入样式里的 CSS 变量，不写用户设置：放大结束后立刻按当前设置重建，
+ * 因此拖动滑块改过尺寸也不会被覆盖。自定义 .cur / .ani 本身无法缩放，
+ * buildCursor 会原样返回，此时该函数等于空操作。
+ * @param {number} [ms=1200] 放大的持续时间
+ * @returns {void}
+ */
+export function pulseCursor(ms = 1200) {
+    if (_pulseTimer) return;
+    const base = getCursorSize();
+    const boosted = clampSize(Math.round(base * 1.8));
+    if (boosted <= base) return;
+    injectStyle(buildCSS(boosted, getCursorShadow()));
+    _pulseTimer = setTimeout(() => {
+        _pulseTimer = null;
+        injectStyle(buildCSS(getCursorSize(), getCursorShadow()));
+    }, ms);
+}
+
 /**
  * 样式补丁：把「任何来源声明的语义光标关键字」就地改写成引用上面三个变量的声明。
  *

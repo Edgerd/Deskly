@@ -22,6 +22,7 @@ import { dispatchMenuCommand } from "./ui/menuCommands.js";
 import { SESSION_ACTIONS } from "./session.js";
 import { listApps, displayNameFor } from "./app-registry.js";
 import { initDebug, isDeveloperMode, DEBUG_MENU_ITEMS } from "./debug.js";
+import { getKeyboardEntries, statusForShortcut, tierText } from "./keyboard.js";
 
 /** 可选日志出口（来源固定 kernel/finderbar），log.js 未求值时退回 console。 */
 function writeLog(level, message, data) {
@@ -114,6 +115,8 @@ const SUB_MENUS = {
             { label: "应用程序", shortcut: "⌘⇧A", cmd: "finderNavigate('/')" },
             { label: "实用工具", shortcut: "⌘⇧U", disabled: true },
             { separator: true },
+            { label: "废纸篓", i18nKey: "finderbar.goTrash", cmd: "finderNavigate('/废纸篓')" },
+            { separator: true },
             { label: "前往文件夹...", shortcut: "⌘⇧G", cmd: "finderGoToFolder" },
         ],
         "窗口": [
@@ -126,7 +129,7 @@ const SUB_MENUS = {
             { label: "前置全部窗口", cmd: "bringAllWindowsToFront()" },
         ],
         "帮助": [
-            { label: "访达帮助", disabled: true },
+            { label: "访达帮助", cmd: "openManual('finder')" },
         ],
     },
     "系统设置": {
@@ -151,7 +154,7 @@ const SUB_MENUS = {
             { label: "前置全部窗口", cmd: "bringAllWindowsToFront()" },
         ],
         "帮助": [
-            { label: "系统设置帮助", disabled: true },
+            { label: "系统设置帮助", cmd: "openManual('settings')" },
         ],
     },
     "计算器": {
@@ -173,7 +176,7 @@ const SUB_MENUS = {
             { label: "前置全部窗口", cmd: "bringAllWindowsToFront()" },
         ],
         "帮助": [
-            { label: "计算器帮助", disabled: true },
+            { label: "计算器帮助", cmd: "openManual('calculator')" },
         ],
     },
     "App Store": {
@@ -196,7 +199,7 @@ const SUB_MENUS = {
             { label: "前置全部窗口", cmd: "bringAllWindowsToFront()" },
         ],
         "帮助": [
-            { label: "App Store 帮助", disabled: true },
+            { label: "App Store 帮助", cmd: "openManual('appstore')" },
         ],
     },
     "Safari浏览器": {
@@ -261,7 +264,7 @@ const SUB_MENUS = {
             { label: "前置全部窗口", cmd: "bringAllWindowsToFront()" },
         ],
         "帮助": [
-            { label: "macOS 帮助", disabled: true },
+            { label: "macOS 帮助", cmd: "openManual('home')" },
         ],
     },
 };
@@ -326,7 +329,7 @@ const DEFAULT_SUB_MENU = {
     // 实现留在命令后端，顶栏不必知道任何一条命令怎么做。
     [DEBUG_MENU_TITLE]: DEBUG_MENU_ITEMS,
     "帮助": [
-        { label: "帮助", i18nKey: "finderbar.helpItem", disabled: true },
+        { label: "帮助", i18nKey: "finderbar.helpItem", cmd: "openManual('home')" },
     ],
 };
 
@@ -405,8 +408,17 @@ function applyDeveloperMenu(order, defs) {
  *          app 为所属应用名；null 表示通用默认菜单（未单独声明菜单的应用都用它）
  */
 export function getShortcutMap() {
-    const rows = [];
-    const seen = new Set();
+    // 先放全局键位表：这一段的 status 是「已绑定 / 等价键 / 浏览器保留」的唯一来源；
+    // 菜单扫描出的条目只补充应用级快捷键，状态按同一张表反查。
+    const rows = getKeyboardEntries().map((entry) => ({
+        app: entry.app,
+        menu: "键盘",
+        label: entry.label,
+        shortcut: entry.shortcut,
+        status: entry.status,
+    }));
+    const seen = new Set(rows.map((row) => `${row.app}|${row.menu}|${row.label}|${row.shortcut}`));
+    const seenKey = new Set(rows.map((row) => `${row.label}|${row.shortcut}`));
     const collect = (app, menuTitle, items) => {
         (items || []).forEach((item) => {
             if (!item || item.separator || typeof item.shortcut !== "string" || !item.shortcut) return;
@@ -414,12 +426,15 @@ export function getShortcutMap() {
             if (!label) return;
             const id = `${app || "*"}|${menuTitle}|${label}|${item.shortcut}`;
             if (seen.has(id)) return;
+            // 全局表里已有同名同键的，不重复列（保留全局表里的真实状态）
+            if (seenKey.has(`${label}|${item.shortcut}`)) return;
             seen.add(id);
             rows.push({
                 app,
                 menu: MENU_KEYS[menuTitle] ? i18n.t(MENU_KEYS[menuTitle], menuTitle) : menuTitle,
                 label,
                 shortcut: item.shortcut,
+                status: statusForShortcut(item.shortcut) || (item.disabled ? "planned" : "menu"),
             });
         });
     };
@@ -458,7 +473,8 @@ function getMenusForApp(app) {
     return applyDeveloperMenu(order, defs);
 }
 
-let appControl = ["switch.2", "magnifyingglass", "wifi"];
+// P0-5：wifi 装饰图已移除（无监听的死图），真实 Wi-Fi 状态在控制中心面板
+let appControl = ["switch.2", "magnifyingglass"];
 // 临时元素：由 updateMenu 动态创建的顶栏菜单项与下拉子菜单 DOM
 let tempMenuElements = [];
 
@@ -599,6 +615,92 @@ function shortcutHintsEnabled() {
  * @param {object} item 菜单项定义
  * @returns {HTMLElement} 菜单项段落
  */
+/**
+ * 置灰菜单项的归类说明（F-05）。
+ *
+ * 为什么按文案归类而不是逐项写 reason：同一条文案在多个应用菜单里语义完全一致
+ * （「撤销」在访达/计算器/商店都是"编辑命令未接入"），逐项标注只会制造 48 份重复。
+ * type 决定首句（尚未实现 / 浏览器限制 / 当前不可用），noteKey 给出具体原因；
+ * 帮助类菜单统一走「帮助手册正在接入」。
+ */
+const DISABLED_REASONS = {
+    "打开": { type: "planned", noteKey: "menu.note.fileOps" },
+    "新建": { type: "planned", noteKey: "menu.note.fileOps" },
+    "保存": { type: "planned", noteKey: "menu.note.fileOps" },
+    "打印": { type: "browser", noteKey: "menu.note.print" },
+    "撤销": { type: "planned", noteKey: "menu.note.editOps" },
+    "重做": { type: "planned", noteKey: "menu.note.editOps" },
+    "剪切": { type: "planned", noteKey: "menu.note.editOps" },
+    "拷贝": { type: "planned", noteKey: "menu.note.editOps" },
+    "粘贴": { type: "planned", noteKey: "menu.note.editOps" },
+    "全选": { type: "planned", noteKey: "menu.note.editOps" },
+    "显示简介": { type: "planned", noteKey: "menu.note.getInfo" },
+    "隐藏工具栏": { type: "planned", noteKey: "menu.note.toolbar" },
+    "工具栏": { type: "planned", noteKey: "menu.note.toolbar" },
+    "自定义工具栏...": { type: "planned", noteKey: "menu.note.toolbar" },
+    "实用工具": { type: "context", noteKey: "menu.note.utilities" },
+};
+
+/** 三类原因的首句（键 + 中文兜底）。 */
+const REASON_LABEL = {
+    planned: ["menu.reason.planned", "尚未实现"],
+    browser: ["menu.reason.browser", "浏览器限制"],
+    context: ["menu.reason.context", "当前不可用"],
+};
+
+/** 按菜单项文案取原因；帮助类统一归到「帮助手册正在接入」。 */
+function reasonFor(item) {
+    if (item.reason) return item.reason;
+    const label = String(item.label || "");
+    if (label.includes("帮助")) return { type: "planned", noteKey: "menu.note.help" };
+    return DISABLED_REASONS[label] || { type: "planned", noteKey: "menu.note.fileOps" };
+}
+
+/** 悬浮说明单例：挂在 body 上（.menu 有 overflow:hidden，放菜单里会被裁掉）。 */
+let reasonHintEl = null;
+function ensureReasonHint() {
+    if (reasonHintEl) return reasonHintEl;
+    reasonHintEl = document.createElement("div");
+    reasonHintEl.id = "deskly-menu-reason";
+    reasonHintEl.setAttribute("role", "tooltip");
+    reasonHintEl.hidden = true;
+    document.body.appendChild(reasonHintEl);
+    return reasonHintEl;
+}
+
+function hideReasonHint() {
+    if (reasonHintEl) reasonHintEl.hidden = true;
+}
+
+/**
+ * 在目标菜单项旁显示原因说明；下方放不下时翻到上方，左右不出视口。
+ * @param {HTMLElement} target 置灰菜单项
+ * @param {{type:string, noteKey:string}} reason 原因
+ */
+function showReasonHint(target, reason) {
+    const el = ensureReasonHint();
+    const [labelKey, labelFallback] = REASON_LABEL[reason.type] || REASON_LABEL.planned;
+    const head = i18n.t(labelKey, labelFallback);
+    const note = reason.noteKey ? i18n.t(reason.noteKey, "") : "";
+    el.textContent = note ? `${head} · ${note}` : head;
+    el.hidden = false;
+    const rect = target.getBoundingClientRect();
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    let top = rect.bottom + 6;
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 6);
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+}
+
+// 菜单外的点击 / Esc / 窗口失焦都要收起说明，避免它跟着菜单留在屏幕上。
+document.addEventListener("click", hideReasonHint, true);
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideReasonHint();
+}, true);
+window.addEventListener("blur", hideReasonHint);
+
 function buildMenuItem(item) {
     const p = document.createElement("p");
     p.style.cssText = "display:flex;align-items:center;";
@@ -611,10 +713,24 @@ function buildMenuItem(item) {
         hint.className = "shortcut";
         hint.textContent = item.shortcut;
         hint.style.cssText = "margin-left:auto;padding-left:18px;font-size:12px;opacity:.6;white-space:nowrap;";
+        // 浏览器保留键：菜单仍显示原键位（与 macOS 一致），但加虚线并在 title 里说明只能从菜单点。
+        if (statusForShortcut(item.shortcut) === "reserved") {
+            hint.classList.add("shortcut--reserved");
+            hint.title = `${tierText("reserved", i18n.t.bind(i18n))}：页面收不到该组合键，请从菜单执行`;
+        }
         p.appendChild(hint);
     }
     if (item.disabled) {
         p.setAttribute("disabled", "disabled");
+        p.setAttribute("aria-disabled", "true");
+        // 置灰项也要能被键盘聚焦：焦点落在它身上时同样弹出原因说明。
+        p.tabIndex = 0;
+        const reason = reasonFor(item);
+        p.dataset.reason = reason.type;
+        p.addEventListener("mouseenter", () => showReasonHint(p, reason));
+        p.addEventListener("mouseleave", hideReasonHint);
+        p.addEventListener("focus", () => showReasonHint(p, reason));
+        p.addEventListener("blur", hideReasonHint);
     }
     // 绑定点击：字符串命令通过全局 window 执行，函数直接调用
     if (!item.disabled && item.cmd) {
@@ -921,6 +1037,7 @@ export function closeAllMenus() {
     });
     document.querySelectorAll("#finderbar p.active").forEach((p) => p.classList.remove("active"));
     openingMenu = null;
+    hideReasonHint();
 }
 
 /**
@@ -1107,6 +1224,53 @@ initFinderbar();
  * -------------------------------------------------------------------------- */
 
 /**
+ * 使用手册的目标位置：帮助菜单只写一个键，章节号与小节标题集中在这里。
+ * 小节用「标题包含」匹配，索引重排也不会跳错（解析在 mods/manual/script.js）。
+ */
+const MANUAL_TARGETS = {
+    home: { chapter: "07", section: "使用《Mac 使用手册》" },
+    finder: { chapter: "03", section: "访达" },
+    settings: { chapter: "04", section: "系统设置" },
+    calculator: { chapter: "06", section: "在 iMac 上使用 App" },
+    appstore: { chapter: "06", section: "获取更多 App" },
+};
+
+/**
+ * 打开「Mac 使用手册」并跳到帮助菜单对应的章节。
+ * 手册是插件，首次打开要等外壳与脚本就位；这里轮询中栏出现条目后再派发，
+ * 固定延时在慢机器上会赶在监听注册之前（设置面板深链踩过同一个坑）。
+ * @param {string} target MANUAL_TARGETS 的键
+ * @returns {void}
+ */
+function openManual(target = "home") {
+    const dest = MANUAL_TARGETS[target] || MANUAL_TARGETS.home;
+    openAppByName("Mac 使用手册");
+    const jump = () => document.dispatchEvent(new CustomEvent("manual-open", { detail: dest, bubbles: true }));
+    let tries = 0;
+    const tick = () => {
+        if (document.querySelector(".manual__chapters .manual__row")) { setTimeout(jump, 60); return; }
+        if (tries++ < 50) setTimeout(tick, 100);
+    };
+    tick();
+}
+
+/**
+ * 开关启动台。模块未加载时先按应用打开（首次按键也能用），
+ * 已加载时直接驱动插件暴露的开关状态机。
+ * @returns {void}
+ */
+function toggleLaunchpad() {
+    const lp = window.__launchpad;
+    if (lp && typeof lp.isOpen === "function") {
+        if (lp.isOpen()) { lp.close(); return; }
+        const light = document.querySelector('#dock .container[data-app="启动台"] .light');
+        lp.open(light);
+        return;
+    }
+    openAppByName("启动台");
+}
+
+/**
  * 根据应用显示名启动该应用（用于「文件 → 新建访达窗口」等）。
  */
 function openAppByName(name) {
@@ -1235,14 +1399,34 @@ function bringAllWindowsToFront() {
 }
 
 /**
- * 清倒废纸篓（占位：后续结合虚拟文件系统）。
+ * 清倒废纸篓（P0-4）：真实删除 /废纸篓 内的全部条目，带确认；权限未批时如实提示。
  */
-function emptyTrash() {
+async function emptyTrash() {
+    const dialog = window.__dialog;
+    if (dialog && typeof dialog.confirm === "function") {
+        const ok = await dialog.confirm(
+            i18n.t("finder.emptyTrash", "清倒废纸篓..."),
+            i18n.t("finder.emptyTrashConfirm", "要永久删除废纸篓里的所有项目吗？此操作无法撤销。"));
+        if (!ok) return;
+    }
+    const { emptyTrash: emptyAll } = await import("./trash.js");
+    const r = await emptyAll().catch((err) => {
+        // 权限没批：弹重新授权说明，不装作清掉了
+        if (err && err.name === "NeedsReauthError") {
+            window.__dialog?.error?.(
+                i18n.t("finder.title", "访达"),
+                i18n.t("finder.auth.needsReauth", "根目录的读写权限需要重新授权，在此之前访达动不了里面的文件。"));
+            return { ok: false };
+        }
+        throw err;
+    });
+    if (!r || !r.ok) return;
     const tip = document.querySelector(".tip");
-    if (!tip) return;
-    tip.textContent = i18n.t("finderbar.trashEmptied", "废纸篓已清倒（演示）");
-    tip.style.opacity = 1;
-    setTimeout(() => { tip.style.opacity = 0; }, 1200);
+    if (tip) {
+        tip.textContent = i18n.t("finderbar.trashEmptied", "废纸篓已清倒");
+        tip.style.opacity = 1;
+        setTimeout(() => { tip.style.opacity = 0; }, 1200);
+    }
 }
 
 /**
@@ -1303,6 +1487,8 @@ window.__menuActions = {
     ...(window.__menuActions || {}),
     ...SESSION_ACTIONS,
     openAppByName,
+    openManual,
+    toggleLaunchpad,
     closeActiveWindow,
     toggleActiveWindowFullscreen,
     toggleActiveWindowStretch,

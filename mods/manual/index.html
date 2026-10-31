@@ -1,0 +1,28 @@
+<!-- 窗口尺寸由应用自己声明（data-window），manifest.window 只是缺省。
+     三栏结构：章 / 节 / 正文；搜索命中时中栏切换成结果列表。 -->
+<div class="manual window" data-window="size:980x640 resizable:true centered">
+    <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
+
+    <div class="manual__bar">
+        <span class="manual__badge" data-i18n="manual.badge" data-i18n-fallback="使用手册">使用手册</span>
+        <label class="manual__searchbox">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <input class="manual__search" type="search" autocomplete="off"
+                   data-i18n-placeholder="manual.searchPlaceholder" data-i18n-placeholder-fallback="搜索手册" />
+        </label>
+        <span class="manual__meta"></span>
+    </div>
+
+    <div class="manual__body">
+        <aside class="manual__chapters" role="navigation"
+               data-i18n-aria-label="manual.chapters" data-i18n-aria-label-fallback="章节"></aside>
+        <nav class="manual__sections" role="navigation"
+             data-i18n-aria-label="manual.sections" data-i18n-aria-label-fallback="小节"></nav>
+        <article class="manual__content" tabindex="0"></article>
+    </div>
+
+    <div class="manual__footer">
+        <span class="manual__source"></span>
+        <span class="manual__note" data-i18n="manual.imageNote" data-i18n-fallback="图片以图注形式呈现，原图见 docs/iMac-2024-macOS15-知识库">图片以图注形式呈现，原图见 docs/iMac-2024-macOS15-知识库</span>
+    </div>
+</div>

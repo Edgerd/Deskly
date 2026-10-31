@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>应用商店与分发 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="app-store" data-base="../" data-version="0.2.95">
+<main>
+<h1>应用商店与分发</h1>
+<p class="lede">商店界面语义、ZIP 三级安装链、禁用 / 还原、发布流程。</p>
+
+<h2>界面语义（真实数据，不造条目）</h2>
+<ul>
+<li>卡片列表 = 注册表里全部插件（内置 + 已安装 ZIP），<b>没有「推荐位」这种造数</b>；</li>
+<li>分类过滤是<b>真实语义</b>：卡片按 <code>store.category</code> 匹配，没写 store 的插件只在「全部」里出现；</li>
+<li>详情 = <code>store</code> 自声明 + 权限栏（读 <code>manifest.permissions</code>，经 <code>api-grants.describe()</code> 出人类可读文案，与授权账本同源）；</li>
+<li>「打开」调 <code>load(插件id)</code> → 多应用套件落到 <code>apps[0]</code>；</li>
+<li>「禁用」不删文件：注册表标记 <code>disabled</code>，Dock / 启动台灰显，重载扩展不会复活它。</li>
+</ul>
+
+<h2>ZIP 安装三级链（全部成功才算装上）</h2>
+<ol>
+<li><b>读包</b>：拖入（或「安装 ZIP…」）→ 解包（JSZip，<code>assets/vendor/jszip.min.js</code>）→ 校验
+    manifest 在根 / 公共根、总字节 ≤ 10MB、id 与目录名一致；</li>
+<li><b>落库</b>：文件以 Blob 存 IndexedDB <code>webstartos-plugins.installed</code>（<b>不写磁盘 mods/</b>），
+    注册表写入 <code>_installed: true</code> 标记；</li>
+<li><b>接管验证</b>：<code>sw.js</code> 拦截 <code>./mods/&lt;id&gt;/&lt;file&gt;</code> 请求从库里回源，并在响应写
+    <code>X-Deskly-Plugin</code> 标记头。安装器请求一次带标记验证——接管不了（SW 没跑起来）就<b>整段回滚</b>，不留半装状态。</li>
+</ol>
+<div class="warn"><b>覆盖安装</b>：同 id 再装一次 = 新包覆盖旧 Blob（store.meta 记账 + 安装历史记版本差异）。
+旧版文件残留不会发生（按 id 整组替换）。</div>
+
+<h2>发布一个插件（完整流程）</h2>
+<ol>
+<li>在 <code>mods/&lt;id&gt;/</code> 写完四个文件 + icon（规范见<a href="plugin-format.html">插件包格式</a>）；</li>
+<li>内置：把 id 加进 <code>BUILTIN_IDS</code>；第三方：不动 BUILTIN_IDS；</li>
+<li>跑 <code>node dev/static-check.mjs</code>（第 7 节核对 permissions 声明齐不齐、manifest 声明的文件在不在）；</li>
+<li>导出：<code>node dev/package-plugin.mjs &lt;id&gt;</code> → <code>dist/&lt;id&gt;-&lt;version&gt;.zip</code>（打包即校验，见上节）；</li>
+<li>交付：对方在应用商店拖 ZIP 或点「安装 ZIP…」；权限按 <code>api-grants</code> 账本在安装/首调时授权（敏感权限逐次弹确认，见 <a href="../api/deskly.html">Deskly</a>）。</li>
+</ol>
+
+<h2>还原内置</h2>
+<p>卸载 ZIP 插件（或「还原内置」）后，IndexedDB 里的 Blob 删除、注册表条目移除；
+内置插件文件在扩展包内（加载时整目录打进去），永不丢失——<b>不存在「删了找不回」的内置</b>。</p>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

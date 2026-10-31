@@ -1339,22 +1339,9 @@ function init() {
         }).catch(() => { /* 字体就绪 Promise 只用于重排，失败保持当前布局 */ });
     }
 
-    // F4 开关启动台：启动台关闭后本模块实例会被卸载，该监听必须常驻 window，
-    // 且只绑一次（window.__lpF4Bound 防止每次打开重复叠加）。
-    // 用捕获阶段：搜索框/重命名框的 keydown 都 stopPropagation，冒泡阶段会被拦截。
-    if (!window.__lpF4Bound) {
-        window.__lpF4Bound = true;
-        window.addEventListener("keydown", (e) => {
-            if (e.key !== "F4") return;
-            e.preventDefault();
-            if (window.__launchpad.isOpen()) {
-                window.__launchpad.close();
-            } else {
-                const light = document.querySelector('#dock .container[data-app="启动台"] .light');
-                window.__launchpad.open(light);
-            }
-        }, true);
-    }
+    // 快捷键不在这里绑：⌃↓ 归 keyboard.js 的全局键位表统一分发（F-32 单一真源）。
+    // 旧实现把 F4 绑在本模块里，导致「启动台从未打开过时按键无效」——
+    // 模块只有打开时才加载，监听根本没机会注册。toggleLaunchpad 由宿主命令负责首次加载。
 
     buildState();
     renderRoot();

@@ -8,6 +8,20 @@
     "pathLabel": "リクエストパス"
   },
   "menu": {
+    "reason": {
+      "planned": "未実装",
+      "browser": "ブラウザの制限",
+      "context": "対象がありません"
+    },
+    "note": {
+      "fileOps": "ファイル操作は未接続です",
+      "editOps": "編集コマンドは未接続です",
+      "print": "印刷はブラウザのダイアログを使います",
+      "getInfo": "情報ウインドウは未実装です",
+      "toolbar": "ツールバーのカスタマイズは未実装です",
+      "utilities": "仮想ファイルシステムに「ユーティリティ」はありません",
+      "help": "ヘルプは準備中です"
+    },
     "logo": "これはこのマシン上にあります",
     "about": "この Mac について",
     "systemPreferences": "システム設定...",
@@ -49,7 +63,7 @@
     "history": "履歴",
     "bookmarks": "ブックマーク",
     "debug": "デバッグ",
-    "trashEmptied": "ゴミ箱を空にしました（デモ）",
+    "trashEmptied": "ゴミ箱を空にしました",
     "app": "アプリ",
     "quit": "終了",
     "new": "新規",
@@ -83,7 +97,8 @@
       "dumpZLayers": "重ね順チェックを出力",
       "selfTest": "設定のセルフテストを実行",
       "toggleDeveloperMode": "デベロッパーモードを切替"
-    }
+    },
+    "goTrash": "ゴミ箱"
   },
   "finder": {
     "title": "Finder",
@@ -187,7 +202,12 @@
     "goToFolder": "フォルダーへ移動:",
     "initError": "Finder の起動に失敗しました。ウィンドウを閉じて再試行してください。",
     "showInfo": "情報を見る",
-    "unsupportedPreview": "この種類のファイルはプレビューできません"
+    "unsupportedPreview": "この種類のファイルはプレビューできません",
+    "emptyTrash": "ゴミ箱を空にする...",
+    "emptyTrashConfirm": "ゴミ箱のすべての項目を完全に削除しますか？この操作は取り消せません。",
+    "putBack": "戻す",
+    "putBackFailed": "戻せませんでした（元的位置が存在しない場合があります）。他のフォルダへ移動してください。",
+    "trashMoveFailed": "ゴミ箱への移動に失敗しました。再試行するか権限を再付与してください。"
   },
   "dock": {
     "launchpad": "Launchpad",
@@ -213,11 +233,12 @@
     "hideDock": "Dockを隠す",
     "hideRecentApps": "「最近使ったアプリ」を隠す",
     "openSettings": "システム設定を開く",
-    "openWith": "{app} で {name} を開く",
+    "openWith": "{name} を {app} で開きます（デモ：ファイルは未だアプリに渡されていません）",
     "options": "オプション",
     "quit": "終了",
     "showDock": "Dockを表示",
-    "showRecentApps": "「最近使ったアプリ」を表示"
+    "showRecentApps": "「最近使ったアプリ」を表示",
+    "trashMoved": "ゴミ箱に移動しました（{n}件）"
   },
   "common": {
     "ok": "OK",
@@ -246,7 +267,28 @@
     "on": "オン",
     "off": "オフ",
     "everyone": "全員",
-    "connected": "接続しました"
+    "connected": "接続しました",
+    "unavailable": "利用できません",
+    "notConnected": "オフライン",
+    "nowPlaying": "再生中",
+    "inPageMedia": "このページで再生中のメディア",
+    "play": "再生",
+    "pause": "一時停止",
+    "back": "戻る",
+    "openDisplay": "ディスプレイ設定を開く",
+    "openSound": "サウンド設定を開く",
+    "cameraInUse": "カメラが使用中です",
+    "micInUse": "マイクが使用中です",
+    "locationInUse": "位置情報サービスが使用中です",
+    "detail": {
+      "wifi": "ブラウザはオンラインかオフラインしか分からず、周辺のネットワーク一覧やパスワード入力はできません。",
+      "bluetooth": "拡張機能はシステムの Bluetooth にアクセスできないため、機器一覧も切り替えもありません。",
+      "airdrop": "AirDrop は macOS の無線機能が必要で、ブラウザ拡張では実現できません。",
+      "airplane": "機内モードは無線ハードウェアを直接制御するため、ブラウザでは操作できません。",
+      "mirroring": "画面ミラーリングはシステムの映像出力が必要で、ブラウザ拡張では実現できません。",
+      "display": "解像度・リフレッシュレート・画面の配置はシステム側の設定です。明るさと Night Shift はシステム設定で変更できます。",
+      "volume": "出力先はシステムが決めます。ここで調整できるのは音量とミュートだけです。"
+    }
   },
   "settings": {
     "language": "言語",
@@ -956,6 +998,39 @@
       "word": "文書",
       "excel": "表計算",
       "ppt": "プレゼン"
+    },
+    "manual": "Mac ユーザガイド"
+  },
+  "manual": {
+    "badge": "ユーザガイド",
+    "searchPlaceholder": "ガイドを検索",
+    "chapters": "章",
+    "sections": "節",
+    "imageNote": "画像は図注として表示されます。原図は docs/iMac-2024-macOS15-知识库 にあります",
+    "sectionUnit": "節",
+    "resultUnit": "件",
+    "noResults": "一致する内容がありません",
+    "loadFailed": "ガイドを読み込めませんでした。アプリを再インストールしてください。"
+  },
+  "menubar": {
+    "battery": "バッテリ",
+    "volume": "サウンド",
+    "bluetooth": "Bluetooth",
+    "batteryTip": "バッテリー {pct}%{state}",
+    "batteryCharging": "（充電中）",
+    "volumeTip": "音量 {v}%",
+    "bluetoothOff": "（オフ）",
+    "showBattery": "バッテリ",
+    "showVolume": "サウンド",
+    "showBluetooth": "Bluetooth"
+  },
+  "keyboard": {
+    "tier": {
+      "native": "バインド済み",
+      "fallback": "代替キー",
+      "reserved": "ブラウザ予約",
+      "planned": "未実装",
+      "menu": "メニューのみ"
     }
   }
 }

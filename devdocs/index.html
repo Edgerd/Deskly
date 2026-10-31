@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>总览与架构 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="index" data-base="" data-version="0.2.95">
+<main>
+<h1>总览与架构</h1>
+<p class="lede">Deskly 是一个运行在 Chrome / Edge 新标签页里的 macOS Sequoia 桌面（纯 HTML/CSS/JS，MV3，零框架零构建）。本站是<b>插件开发者</b>手册：写 mod、声明能力、接入系统接口。</p>
+
+<h2>它是什么，不是什么</h2>
+<table>
+<tr><th>是</th><th>不是</th></tr>
+<tr><td>Chrome/Edge 扩展（MV3，script-src 'self'，新标签页里启动一整套桌面）</td><td>不是 iframe 应用集合：13 个 mod 全部<b>注入到宿主文档</b>里跑（plugin-manager fetch + 注入），共享同一份 DOM</td></tr>
+<tr><td><code>window.Deskly</code> 是受权限门禁的<b>能力</b>入口（fs/apps/bus/settings/meta）</td><td>它不是沙箱边界：mod 跑在宿主主文档里，能碰全页 DOM；安全边界 = manifest.permissions 声明 + 设置/日志/层级等规约</td></tr>
+<tr><td>冷加载：启动只 fetch 14 份 manifest.json，点击才拉三件资源</td><td>没有构建链、没有 npm、没有打包器；开发自检是 Node 脚本（<a href="reference/dev-tools.html">见 dev-tools</a>）</td></tr>
+</table>
+
+<h2>四层结构（改代码前先认清自己在哪层）</h2>
+<table>
+<tr><th>层</th><th>位置</th><th>内容</th><th>改动约束</th></tr>
+<tr><td><b>ui/</b> 框架</td><td><code>src/javascripts/ui/</code> + <code>assets/stylesheets/ui/</code></td><td>菜单栏、窗口、弹窗、浮层、通知、右键菜单、桌面图标共用语义</td><td>跨 mod 复用；样式只走系统令牌</td></tr>
+<tr><td><b>mods/</b> 应用</td><td><code>mods/{id}/</code>（13 个内置插件）</td><td>每个插件 = manifest + index.html + style.css + script.js + icon.png</td><td>自包含目录，可整体打成 ZIP 分发</td></tr>
+<tr><td><b>src/</b> 内核</td><td><code>src/javascripts/</code>（52+ 模块）+ <code>assets/stylesheets/</code>（main/dock/finderbar）</td><td>程序坞、启动台、控制中心、设置中枢、日志、OSFS、层级表、i18n…</td><td>mod 通过 import 与 <code>window.__*</code> 消费，不反改</td></tr>
+<tr><td><b>assets/</b> 资源</td><td><code>assets/icons|images|svgs|locales</code></td><td>图标库、界面图、语言包（zh-CN/en/ja-JP/cat 四语）</td><td>图标一律 PNG；运行时文件名必须 ASCII</td></tr>
+</table>
+
+<h2>开发流程（最短路径）</h2>
+<ol>
+<li><a href="guides/quickstart.html">五分钟写第一个插件</a>：抄 <code>mods/about/</code> 骨架 → 改 manifest → 加进 <code>BUILTIN_IDS</code> → 自检；</li>
+<li>要系统能力时查 <a href="api/deskly.html">window.Deskly</a> 与 <a href="api/events.html">事件地图</a>，能力名写进 <code>manifest.permissions</code>；</li>
+<li>样式只写模糊令牌与文字令牌，<a href="reference/redlines.html">红线清单</a>逐条过；</li>
+<li>收尾跑 <a href="reference/dev-tools.html">static-check / deep-check / settings-fulltest</a>，全绿再提。</li>
+</ol>
+
+<div class="note"><b>扩展本站</b>
+新增一篇文档 = 在 <code>guides/</code>、<code>api/</code> 或 <code>reference/</code> 下加一个 HTML（<code>&lt;body data-page data-base&gt;</code>）+ 在 <code>assets/pages.js</code> 注册一条。侧栏 / 顶栏 / 上下页导航 / 本页目录全部自动生成。详见 <a href="README.md">README.md</a>。</div>
+
+</main>
+<script src="assets/pages.js"></script>
+<script src="assets/docs.js"></script>
+</body>
+</html>

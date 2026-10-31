@@ -28,8 +28,10 @@ export const messages = {
                 settingsLabel: "系统设置项",
                 files: "本地文件",
                 commands: "系统命令",
+                manual: "使用手册",
                 resultGroup: "结果与历史",
                 hotkey: "快捷键",
+                hotkeyCmdSpace: "Command + 空格",
                 hotkeyCtrlSpace: "Control + 空格",
                 hotkeyAltSpace: "Option + 空格",
                 hotkeyOff: "不设",
@@ -57,8 +59,10 @@ export const messages = {
                 settingsLabel: "System Settings",
                 files: "Local Files",
                 commands: "System Commands",
+                manual: "User Guide",
                 resultGroup: "Results & History",
                 hotkey: "Keyboard Shortcut",
+                hotkeyCmdSpace: "Command + Space",
                 hotkeyCtrlSpace: "Control + Space",
                 hotkeyAltSpace: "Option + Space",
                 hotkeyOff: "Off",
@@ -86,8 +90,10 @@ export const messages = {
                 settingsLabel: "システム設定",
                 files: "ローカルファイル",
                 commands: "システムコマンド",
+                manual: "ユーザガイド",
                 resultGroup: "結果と履歴",
                 hotkey: "ショートカットキー",
+                hotkeyCmdSpace: "Command + Space",
                 hotkeyCtrlSpace: "Control + Space",
                 hotkeyAltSpace: "Option + Space",
                 hotkeyOff: "なし",
@@ -115,8 +121,10 @@ export const messages = {
                 settingsLabel: "系统设置项喵",
                 files: "本地文件喵",
                 commands: "系统命令喵",
+                manual: "说明书喵",
                 resultGroup: "结果和历史喵",
                 hotkey: "召唤按键喵",
+                hotkeyCmdSpace: "Command 加空格喵",
                 hotkeyCtrlSpace: "Control 加空格喵",
                 hotkeyAltSpace: "Option 加空格喵",
                 hotkeyOff: "不按也行喵",
@@ -139,7 +147,7 @@ export const messages = {
 };
 
 /** 候选快捷键：与 spotlight.js 里 spotlight.hotkey 的 values 一致（写别的取值会被中枢按候选值拒绝）。 */
-const HOTKEY_FALLBACK = ["ctrl+space", "alt+space", "off"];
+const HOTKEY_FALLBACK = ["cmd+space", "ctrl+space", "alt+space", "off"];
 
 const CSS = `
 .ss-spotlight .ss-spotlight__status { font-variant-numeric: tabular-nums; }
@@ -172,6 +180,7 @@ export function build() {
             controlSwitch("spotlight.settings", { label: t("ss.spotlight.settingsLabel", "系统设置项") }),
             controlSwitch("spotlight.files", { label: t("ss.spotlight.files", "本地文件") }),
             controlSwitch("spotlight.commands", { label: t("ss.spotlight.commands", "系统命令") }),
+            controlSwitch("spotlight.manual", { label: t("ss.spotlight.manual", "使用手册") }),
         ], { title: t("ss.spotlight.scope", "搜索范围") }),
 
         group([
@@ -230,6 +239,7 @@ function clearHistory(stateRowWithSetter) {
  */
 function hotkeyLabelFor(value, fallback) {
     const labels = {
+        "cmd+space": t("ss.spotlight.hotkeyCmdSpace", "Command + 空格"),
         "ctrl+space": t("ss.spotlight.hotkeyCtrlSpace", "Control + 空格"),
         "alt+space": t("ss.spotlight.hotkeyAltSpace", "Option + 空格"),
         off: t("ss.spotlight.hotkeyOff", "不设"),

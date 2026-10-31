@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文件存储 OSFS · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="osfs" data-base="../" data-version="0.2.95">
+<main>
+<h1>文件存储 OSFS</h1>
+<p class="lede">单一根目录、双后端（virtual / disk）、插件作用域沙箱。import { OSFS } 或用全局 window.__osfs。</p>
+
+<h2>两个后端（插件代码不感知差别）</h2>
+<table>
+<tr><th>后端</th><th>什么时候</th><th>内容在哪</th></tr>
+<tr><td><code>virtual</code>（默认）</td><td>没挂载真实文件夹；扩展形态（chrome-extension:// 没有目录选择器）<b>恒是这个</b></td><td>应用自己的 IndexedDB（库 <code>webstartos-vfs</code>，仓库 <code>virtualfiles</code>，keyPath: path）</td></tr>
+<tr><td><code>disk</code></td><td>用户选过本地文件夹作根且读写权限在</td><td>那个真实文件夹，路径逐段映射；顶层骨架由内核 create</td></tr>
+</table>
+
+<h2>固定顶层目录（OSFS.TOP）</h2>
+<pre><code>OSFS.TOP.documents.path   // "/文档"
+OSFS.TOP.downloads.path   // "/下载"
+OSFS.TOP.pictures.path    // "/图片"
+OSFS.TOP.desktop.path     // "/桌面"
+OSFS.TOP.trash.path       // "/废纸篓"（internal: 预建骨架，内容可操作、夹本身保护）
+OSFS.TOP.appdata.path     // "/AppData"（internal === true：插件内部目录，不参与聚焦搜索）</code></pre>
+<div class="warn"><b>别在插件里写 <code>"/文档"</code> 字面量</b>——一律 <code>OSFS.TOP.xxx.path</code>；
+也别再造「虚拟目录层」：内核的树已能存目录行（OSFS.move / mkdir / 目录行都是真操作）。</div>
+
+<h2>插件私有数据（作用域）</h2>
+<pre><code>const me = OSFS.scope("notepad");       // → /AppData/notepad
+await me.ensure();                       // 预建 temp / config / data
+await me.write("temp/draft.json", text);
+await me.write("config/layout.json", json);
+await me.clearTemp();                   // 只清 temp</code></pre>
+<p><code>Deskly.fs</code> 的五条方法（read/write/list/mkdir/remove）就是 <code>scope(id)</code> 的薄壳，
+写自动补父目录，不必先 mkdir。</p>
+
+<h2>五条约定（违反任何一条都会变成 bug）</h2>
+<ol>
+<li><b>temp 不可依赖持久性</b>：可能被手删、被「清空缓存」清、被浏览器回收——读不到就当缓存未命中，
+    <b>不许当错误，也不许当数据库</b>。</li>
+<li><b>config 的真相源仍是 __settings</b>（localStorage 槽）：冷启动要同步读的东西不能搬进文件；
+    config/ 只放插件主动写出的<b>副本/导出</b>，读它必须容忍缺失。</li>
+<li><b>权限过期不静默回落</b>：挂载存在但 readwrite 没批时，disk 后端调用抛
+    <code>NeedsReauthError</code>（按 <code>err.name</code> 判别，别匹配 message）。界面要如实说「需要重新授权」，
+    绝不写「已保存」——两个互相覆盖的真相比报错严重得多。</li>
+<li><b>unmount 只忘句柄不删盘</b>：<code>OSFS.unmount()</code> 不删磁盘上任何东西；<code>remove()</code> 拒删根与顶层夹；
+    取消挂载也不会把内容搬回应用内根——它留在那个文件夹里，重新挂载才看得见。</li>
+<li><b>读路径有 1 秒元数据索引</b>（metaIndex）：本标签页写入立即生效，<b>另一个标签页最坏 1 秒后可见</b>；
+    写路径不受影响（一律回库确认）。</li>
+</ol>
+<p><code>OSFS.mount()</code> / <code>reauthorize()</code> 必须在<b>用户手势</b>里调（非手势上下文 Chrome 直接拒）。</p>
+
+<h2>顶层保护</h2>
+<p><code>/废纸篓</code> 等 TOP 夹本身不可 remove / move（用户手建在根上的普通文件夹照删不误）；
+内容操作（list / 写条目 / 删条目 / 递归删）正常。UI 侧「删东西」的收口是
+<a href="trash.html">trash.js</a> 的 <code>emptyTrash()</code>，<code>OSFS.remove</code> 不再被 UI 直接调用。</p>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

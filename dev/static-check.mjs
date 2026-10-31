@@ -519,6 +519,50 @@ if (labelSites === 0) {
     problems.push("文案 lint 自检失败：一处 label 都没扫到，判定为扫描失效");
 }
 
+// ── 术语禁用词（以 dev/devdoc/glossary.md 为准） ─────────────────────────
+// 只扫「会显示给用户」的三类来源：zh-CN 语言包值、i18n.t 的兜底文案、label/title 字面量。
+// 注释里的历史用词不参与——它们不面向用户。
+const BANNED_TERMS = [
+    ["回收站", "废纸篓"],
+    ["壁纸", "墙纸"],
+    ["侧边栏", "边栏"],
+    ["任务栏", "程序坞"],
+    ["Dock 栏", "程序坞"],
+    ["舞台管理器", "台前调度"],
+    ["小部件", "小组件"],
+    ["清空废纸篓", "清倒废纸篓"],
+];
+const bannedHits = [];
+function checkText(text, where) {
+    const s = String(text || "");
+    BANNED_TERMS.forEach(([bad, good]) => {
+        if (s.includes(bad)) bannedHits.push(`${where}：「${bad}」应为「${good}」→ ${s.slice(0, 40)}`);
+    });
+}
+try {
+    const zh = JSON.parse(readFileSync(resolvePath(localeDir, "zh-CN.json"), "utf8"));
+    const walkJson = (node, path) => {
+        if (node === null || node === undefined) return;
+        if (typeof node === "string") { checkText(node, `assets/locales/zh-CN.json#${path}`); return; }
+        if (typeof node !== "object") return;
+        Object.entries(node).forEach(([k, v]) => walkJson(v, path ? `${path}.${k}` : k));
+    };
+    walkJson(zh, "");
+} catch { /* 语言包读取失败已在上面报过 */ }
+const JS_LITERAL = /(?:i18n\.t\(|[\s{](?:label|title|placeholder|buttonText|hint|desc|description)\s*[:=]\s*)["']([^"']*[\u4e00-\u9fff][^"']*)["']/g;
+files.filter((f) => f.endsWith(".js")).forEach((file) => {
+    const rel = posix(relative(REPO, file));
+    readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return;
+        let m;
+        JS_LITERAL.lastIndex = 0;
+        while ((m = JS_LITERAL.exec(line))) checkText(m[1], `${rel}:${index + 1}`);
+    });
+});
+bannedHits.forEach((hit) => problems.push(hit));
+info.push(`术语守卫：禁用词命中 ${bannedHits.length} 处（${BANNED_TERMS.map(([bad]) => bad).join("/")}）`);
+
 // ── 输出 ─────────────────────────────────────────────────────────────────
 info.forEach((i) => console.log(`  · ${i}`));
 if (problems.length) {

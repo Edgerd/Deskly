@@ -8,6 +8,20 @@
     "pathLabel": "Requested path"
   },
   "menu": {
+    "reason": {
+      "planned": "Not available yet",
+      "browser": "Browser limitation",
+      "context": "Nothing to act on"
+    },
+    "note": {
+      "fileOps": "File actions are not wired up yet",
+      "editOps": "Edit commands are not wired up yet",
+      "print": "Printing uses the browser dialog",
+      "getInfo": "The Info window is not built yet",
+      "toolbar": "Toolbar customization is not built yet",
+      "utilities": "The virtual file system has no Utilities folder",
+      "help": "The help manual is being wired up"
+    },
     "logo": "this is on this machine",
     "about": "About This Mac",
     "systemPreferences": "System Settings...",
@@ -49,7 +63,7 @@
     "history": "History",
     "bookmarks": "Bookmarks",
     "debug": "Debug",
-    "trashEmptied": "Trash emptied (demo)",
+    "trashEmptied": "Trash emptied",
     "app": "App",
     "quit": "Quit",
     "new": "New",
@@ -83,7 +97,8 @@
       "dumpZLayers": "Dump Layer Audit",
       "selfTest": "Run Settings Self-Test",
       "toggleDeveloperMode": "Toggle Developer Mode"
-    }
+    },
+    "goTrash": "Trash"
   },
   "finder": {
     "title": "Finder",
@@ -187,7 +202,12 @@
     "goToFolder": "Go to folder:",
     "initError": "Finder failed to start. Close the window and try again.",
     "showInfo": "Get Info",
-    "unsupportedPreview": "Quick Look can’t preview this kind of file"
+    "unsupportedPreview": "Quick Look can’t preview this kind of file",
+    "emptyTrash": "Empty Trash...",
+    "emptyTrashConfirm": "Permanently delete all items in the Trash? This action cannot be undone.",
+    "putBack": "Put Back",
+    "putBackFailed": "Couldn't put back (the original location may no longer exist). Move it to another folder instead.",
+    "trashMoveFailed": "Couldn't move to Trash. Retry or re-authorize."
   },
   "dock": {
     "launchpad": "Launchpad",
@@ -213,11 +233,12 @@
     "hideDock": "Hide Dock",
     "hideRecentApps": "Hide “Recent Applications”",
     "openSettings": "Open System Settings",
-    "openWith": "Open {name} with {app}",
+    "openWith": "Open {name} with {app} (demo: the file is not yet passed to the app)",
     "options": "Options",
     "quit": "Quit",
     "showDock": "Show Dock",
-    "showRecentApps": "Show “Recent Applications”"
+    "showRecentApps": "Show “Recent Applications”",
+    "trashMoved": "Moved {n} item(s) to Trash"
   },
   "common": {
     "ok": "OK",
@@ -246,7 +267,28 @@
     "on": "On",
     "off": "Off",
     "everyone": "Everyone",
-    "connected": "Connected"
+    "connected": "Connected",
+    "unavailable": "Unavailable",
+    "notConnected": "Offline",
+    "nowPlaying": "Now playing",
+    "inPageMedia": "Playing in this page",
+    "play": "Play",
+    "pause": "Pause",
+    "back": "Back",
+    "openDisplay": "Open Displays settings",
+    "openSound": "Open Sound settings",
+    "cameraInUse": "The camera is in use",
+    "micInUse": "The microphone is in use",
+    "locationInUse": "Location services are in use",
+    "detail": {
+      "wifi": "The browser only reports online or offline; it cannot list nearby networks or ask for a password.",
+      "bluetooth": "Extensions cannot access system Bluetooth, so there is no device list and no toggle.",
+      "airdrop": "AirDrop needs macOS wireless services that a browser extension cannot reach.",
+      "airplane": "Airplane mode controls the wireless hardware directly; browsers cannot.",
+      "mirroring": "Screen mirroring needs system display output, which a browser extension cannot provide.",
+      "display": "Resolution, refresh rate and display arrangement belong to the system; brightness and Night Shift live in Settings.",
+      "volume": "The output device is chosen by the system; only volume and mute are adjustable here."
+    }
   },
   "settings": {
     "language": "Language",
@@ -956,6 +998,39 @@
       "word": "Document",
       "excel": "Spreadsheet",
       "ppt": "Presentation"
+    },
+    "manual": "Mac User Guide"
+  },
+  "manual": {
+    "badge": "User Guide",
+    "searchPlaceholder": "Search the guide",
+    "chapters": "Chapters",
+    "sections": "Sections",
+    "imageNote": "Images appear as captions; originals live in docs/iMac-2024-macOS15-知识库",
+    "sectionUnit": "sections",
+    "resultUnit": "results",
+    "noResults": "No matching content",
+    "loadFailed": "Could not load the guide. Reinstall this app."
+  },
+  "menubar": {
+    "battery": "Battery",
+    "volume": "Sound",
+    "bluetooth": "Bluetooth",
+    "batteryTip": "Battery {pct}%{state}",
+    "batteryCharging": " (charging)",
+    "volumeTip": "Volume {v}%",
+    "bluetoothOff": " (off)",
+    "showBattery": "Battery",
+    "showVolume": "Sound",
+    "showBluetooth": "Bluetooth"
+  },
+  "keyboard": {
+    "tier": {
+      "native": "Bound",
+      "fallback": "Equivalent key",
+      "reserved": "Reserved by browser",
+      "planned": "Not implemented",
+      "menu": "Menu only"
     }
   }
 }

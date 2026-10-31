@@ -273,8 +273,8 @@ const wallpaper = {
      */
     saveWallpaperConfig(config) {
         const saved = safeSetItem(WALLPAPER_CONFIG_KEY, JSON.stringify(config), {
-            title: "壁纸未能保存",
-            message: "本地存储空间不足（自定义图片过大），本次壁纸在当前页面内已生效，但刷新后会恢复为上次保存的壁纸。请改用体积更小的图片。",
+            title: "墙纸未能保存",
+            message: "本地存储空间不足（自定义图片过大），本次墙纸在当前页面内已生效，但刷新后会恢复为上次保存的壁纸。请改用体积更小的图片。",
         });
         window.dispatchEvent(new CustomEvent("wallpaper-change", { detail: config }));
         // 排在广播之后：appearance.js 也监听 wallpaper-change 并要重算同一批着色令牌，
@@ -401,7 +401,7 @@ const wallpaper = {
      */
     async fetchBingWallpaper() {
         let finalUrl = "";
-        let finalName = "Bing 每日壁纸";
+        let finalName = "Bing 每日墙纸";
         try {
             const result = await fetchBingOfficial();
             finalUrl = result.url;
@@ -467,7 +467,7 @@ async function applyDailyBing() {
     let config = null;
     try {
         const found = await fetchBingOfficial().catch(fetchBingAlt);
-        config = { type: "bing", url: found.url, name: found.title ? `Bing：${found.title}` : "Bing 每日壁纸" };
+        config = { type: "bing", url: found.url, name: found.title ? `Bing：${found.title}` : "Bing 每日墙纸" };
         await wallpaper.preloadImage(config.url);
     } catch (err) {
         // 失败绝不 blank 桌面：不碰 setWallpaper，当前壁纸原样留着

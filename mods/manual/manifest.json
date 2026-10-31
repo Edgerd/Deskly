@@ -1,0 +1,29 @@
+{
+  "id": "manual",
+  "name": "Mac 使用手册",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "《iMac 入门指南》2024 年款（macOS Sequoia 15）离线手册",
+  "permissions": [],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Manual.png",
+  "store": {
+    "category": "系统",
+    "tagline": "离线可查的 iMac 与 macOS 使用手册",
+    "summary": "按苹果《iMac 入门指南》2024 年款（macOS Sequoia 15）整理的离线手册：8 章 71 节，覆盖桌面、访达、程序坞、通知中心、控制中心、聚焦、窗口管理、系统设置、辅助功能、截屏与快捷键。全部内容随扩展打包，不联网。",
+    "features": [
+      "三栏浏览：章 → 节 → 正文",
+      "全文检索（标题 + 摘要），命中可直接跳转",
+      "帮助菜单与聚焦可直接打开对应章节",
+      "图文说明改为文字图注，避免携带 43MB 原图"
+    ],
+    "usage": "从「帮助」菜单、聚焦搜索或启动台打开。左侧选章、中间选节；顶部搜索框输入关键词。",
+    "updated": "2026-10-25",
+    "author": "Edgerd",
+    "screenshots": []
+  }
+}

@@ -75,8 +75,11 @@ body > div.overlay {
     height: 100vh;
     position: fixed;
     inset: 0;
-  z-index: 4000;
-  background: #0009;
+    /* = Z.CLIENT_NOTICE（src/javascripts/zindex.js）：移动端不兼容警示背板。
+       旧值 4000 落在窗口区间 2050–9000 内，会被动态窗口层级压制；
+       现位于启动台/程序坞之上、弹窗 Z.MODAL 之下，配套弹窗才浮得住。 */
+    z-index: 9605;
+    background: #0009;
     backdrop-filter: blur(var(--surface-blur-2));
     -webkit-backdrop-filter: blur(var(--surface-blur-2));
 }

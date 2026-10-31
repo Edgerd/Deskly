@@ -8,6 +8,8 @@ import { appendDesktopItem, makeDraggable } from './ui/desktopItems.js';
 import { isNativeContextMenuEnabled } from './contextMenuSettings.js';
 import { i18n } from './i18n.js';
 import { FOLDER_ICON, GENERIC_DOC_ICON } from './paths.js';
+import { OSFS } from './osfs.js';
+import { moveToTrash, desktopPathFor } from './trash.js';
 
 const desktop = document.getElementById("desktop");
 
@@ -22,6 +24,7 @@ document.addEventListener("mousedown", (e) => {
 function startRename(item) {
     const nameEl = item.querySelector("p");
     if (!nameEl) return;
+    const oldName = nameEl.textContent.trim();
     nameEl.contentEditable = "true";
     nameEl.focus();
     const range = document.createRange();
@@ -32,7 +35,14 @@ function startRename(item) {
 
     const commit = () => {
         nameEl.contentEditable = "false";
-        if (!nameEl.textContent.trim()) nameEl.textContent = i18n.t("desktop.untitled", "未命名");
+        const newName = nameEl.textContent.trim() || i18n.t("desktop.untitled", "未命名");
+        if (!nameEl.textContent.trim()) nameEl.textContent = newName;
+        // P0-4：改名同步 /桌面 记录（没有记录的遗留图标不动）
+        if (oldName && newName && oldName !== newName) {
+            OSFS.exists(desktopPathFor(oldName)).then((ex) => {
+                if (ex) OSFS.move(desktopPathFor(oldName), desktopPathFor(newName)).catch(() => {});
+            }).catch(() => {});
+        }
     };
     nameEl.addEventListener("blur", commit, { once: true });
     nameEl.addEventListener("keydown", function onKey(e) {
@@ -62,10 +72,16 @@ document.addEventListener("contextmenu", (e) => {
             {
                 label: i18n.t("desktop.moveToTrash", "移到废纸篓"),
                 action: () => {
-                    const icon = item.querySelector("img");
-                    // 释放缩略图 blob，否则每次删除都漏一个文件大小的内存
-                    if (icon && icon.src.startsWith("blob:")) URL.revokeObjectURL(icon.src);
-                    item.remove();
+                    const name = item.querySelector("p")?.textContent?.trim() || "";
+                    const doRemove = () => {
+                        const icon = item.querySelector("img");
+                        // 释放缩略图 blob，否则每次删除都漏一个文件大小的内存
+                        if (icon && icon.src.startsWith("blob:")) URL.revokeObjectURL(icon.src);
+                        item.remove();
+                    };
+                    // P0-4：有 /桌面 记录的条目真移进 /废纸篓（可放回原处、访达可见）；
+                    // 无记录的遗留图标保持旧行为（移除 DOM），不假装进过废纸篓。
+                    moveToTrash(desktopPathFor(name)).then(doRemove).catch(doRemove);
                 },
             },
             { type: "separator" },
@@ -211,14 +227,43 @@ function toFile(dropped) {
     return Promise.reject(new Error("无法取得文件"));
 }
 
+/** 把拖入的文件内容同步进 /桌面（P0-4）：桌面图标从此有真实落库，「移到废纸篓」是 OSFS.move 而不是删 DOM。 */
+function persistDesktopFile(file) {
+    return OSFS.mkdir(OSFS.TOP.desktop.path)
+        .then(async () => {
+            let dest = desktopPathFor(file.name);
+            if (await OSFS.exists(dest)) {
+                // 同名不覆盖：顺延 (1)(2)…，与废纸篓唯一名规则同一口径
+                const stem = String(file.name).replace(/\.[^.]+$/, "");
+                const ext = String(file.name).match(/\.[^.]+$/)?.[0] || "";
+                let i = 1;
+                while (await OSFS.exists(OSFS.joinPath(OSFS.TOP.desktop.path, stem + " (" + i + ")" + ext))) i++;
+                dest = OSFS.joinPath(OSFS.TOP.desktop.path, stem + " (" + i + ")" + ext);
+            }
+            await OSFS.write(dest, file);
+        })
+        .catch((err) => {
+            if (err && err.name === "NeedsReauthError") return; // 权限未批不静默吞：访达里会提示重新授权
+            console.warn("[desktop] 拖入文件写入 /桌面 失败：", err);
+        });
+}
+
 function addFile(dropped) {
     toFile(dropped)
-        .then((file) => addDesktopIcon(file.name, getThumb(file)))
+        .then((file) => {
+            addDesktopIcon(file.name, getThumb(file));
+            persistDesktopFile(file);
+        })
         .catch(() => addDesktopIcon((dropped && dropped.name) || "", GENERIC_DOC_ICON));
 }
 
 function addFolder(entry) {
     addDesktopIcon(entry.name, FOLDER_ICON);
+    // P0-4：文件夹也落库，右键「移到废纸篓」与访达才能看见它
+    OSFS.mkdir(desktopPathFor(entry.name)).catch((err) => {
+        if (err && err.name === "NeedsReauthError") return;
+        console.warn("[desktop] 新建文件夹写入 /桌面 失败：", err);
+    });
 }
 
 ["dragenter", "dragleave", "dragend", "dragover"].forEach((ev) =>

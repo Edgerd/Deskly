@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>z-index 层级表（Z） · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="z-layers" data-base="../" data-version="0.2.95">
+<main>
+<h1>z-index 层级表（Z）</h1>
+<p class="lede">全站唯一 z-index 来源：src/javascripts/zindex.js。浮层只走 Z 表，窗口只走焦点栈。</p>
+
+<h2>两条铁律</h2>
+<ol>
+<li><b>浮层类元素</b>（顶栏、Dock、通知、弹层、启动台、警示背板…）只取 <code>Z</code> 表键值，
+    CSS 里不出现裸 z-index 字面量（窗口内部的局部堆叠除外，且必须注释说明）；</li>
+<li><b>窗口</b>的 z 只来自 <code>window-manager</code> 焦点栈（2050-9000 动态段）：任何地方不手写
+    <code>style.zIndex</code> 定窗口层（<code>INT_MAX</code> 只用于窗口<b>内部</b>子元素相对自身的堆叠）。
+    手写 z-index 与焦点栈是两套账，窗口一动就会互相压穿。</li>
+</ol>
+
+<h2>层级表（节选，完整以 zindex.js 为准）</h2>
+<table>
+<tr><th>键</th><th>值</th><th>用途</th></tr>
+<tr><td>BAR</td><td>9500 段</td><td>菜单栏</td></tr>
+<tr><td>DOCK</td><td>9500</td><td>程序坞（含 hover 放大）</td></tr>
+<tr><td>LAUNCHPAD_DOCK / LAUNCHPAD_DOCK_STACK</td><td>9601 / 9602</td><td>启动台启动期把 Dock 抬到自身之上（v0.2.95 收编入表）</td></tr>
+<tr><td>CLIENT_NOTICE</td><td>9605</td><td>客户端/移动端警示背板（原 main.css 裸 4000，v0.2.94 收编）</td></tr>
+<tr><td>CC_OVERLAY</td><td>9628</td><td>控制中心背板（原 controlcenter.css 裸 3000）</td></tr>
+<tr><td>DOCK_TIP</td><td>9999</td><td>Dock 悬浮提示（dock.css 唯一豁免「裸 9999」的例外，已入表）</td></tr>
+<tr><td>MODAL</td><td>9610 段</td><td>模态弹窗（高于 Dock 与启动台）</td></tr>
+</table>
+<div class="note"><b>历史偏差记录</b> 仓库自曝的 3 处裸 z-index（main.css 4000 可压动态窗口、
+controlcenter.css 3000、dock.css 9999）已于 v0.2.94 全部收编入 Z 表并加 CSS 注释指向 Z 键；
+启动台 9601/9602 于 v0.2.95 收编。详见仓库 <code>dev/devdoc/z-layers.md</code> 的「历史偏差」节。</div>
+
+<h2>改层级的正确姿势</h2>
+<ol>
+<li>改 <code>zindex.js</code> 一处（加键或改值）；</li>
+<li>消费方 CSS 写 <code>z-index: Z.&lt;键&gt;</code> 的注释指向（值写死在 CSS 里、注释指键——这是站内现状，
+    改值时同步 CSS 注释与 <code>z-layers.md</code> 表）；</li>
+<li>跑「层级体检」（顶栏调试菜单 / deep-check）核对没有裸值漏网。</li>
+</ol>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

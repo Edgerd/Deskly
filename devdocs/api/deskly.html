@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>window.Deskly（能力入口） · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="deskly" data-base="../" data-version="0.2.95">
+<main>
+<h1>window.Deskly（能力入口）</h1>
+<p class="lede">唯一受权限门禁的接口组。薄壳：每个方法委托给既有 owner，不重造能力。</p>
+
+<h2>三条硬约定</h2>
+<ol>
+<li><b>受管方法一律返回信封</b> <code>{ok, value?, reason?, permission?}</code>，<b>永不抛错</b>：
+<code>const r = await Deskly.fs.read("data/a.md"); if (!r.ok) return r.reason;</code></li>
+<li><b>调用前在 <code>manifest.json</code> 的 <code>permissions</code> 里声明</b>；没声明 = 直接 <code>ok:false</code>（不弹窗）；</li>
+<li><code>fs</code> 的路径默认相对你自己的 <code>/AppData/&lt;插件id&gt;/</code>，越不出这个目录（<code>osfs.scope(id)</code> 守边界）。</li>
+</ol>
+<p>免权限的只有：<code>apps.list</code> / <code>apps.info</code> / <code>bus.*</code> / <code>fs.home</code> /
+<code>fs.temp</code> / <code>meta.*</code>（目录、事件与自省，不构成能力）。</p>
+
+<h2>权限账本（15 条，api-grants.js）</h2>
+<table>
+<tr><th>权限名</th><th>说明</th><th>敏感（首调弹确认）</th></tr>
+<tr><td><code>apps:launch</code></td><td>启动应用</td><td>安装时一次授权后静默</td></tr>
+<tr><td><code>default-apps:read</code></td><td>查扩展名/协议当前由谁打开</td><td>静默</td></tr>
+<tr><td><code>default-apps:write</code></td><td>改绑扩展名/协议（含 http:/https: 接管）</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>widgets</code></td><td>桌面小组件</td><td>静默</td></tr>
+<tr><td><code>dynamic-icons</code></td><td>动态图标（dock/启动台/商店/访达同步刷新）</td><td>静默</td></tr>
+<tr><td><code>window-style:self</code></td><td>改自己窗口样式</td><td>静默</td></tr>
+<tr><td><code>window-style:others</code></td><td>改别人窗口样式（主题包）</td><td><span class="pill sens">敏感</span> 激活一次覆盖后续</td></tr>
+<tr><td><code>theme:apply</code></td><td>整套切换配色</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>files:read</code> / <code>files:write</code></td><td>读写文件；写到 AppData 之外逐次确认</td><td>write 越沙箱 <span class="pill sens">敏感</span></td></tr>
+<tr><td><code>system-patch:dock / finderbar / desktop / wallpaper / menu</code></td><td>给对应系统组件插入/替换内容（5 条）</td><td><span class="pill sens">敏感</span></td></tr>
+</table>
+<p>判据是「会不会影响别人 / 会不会丢数据」。读文件、启动应用、小组件、动态图标、自身样式属于
+「装了就该能用」——安装时一次性授权，不再打扰（否则开机 13 个内置插件各弹一轮）。</p>
+
+<h2>Deskly.apps</h2>
+<pre><code>await Deskly.apps.launch("office.word");              // appId 或显示名都行
+const all = await Deskly.apps.list();                  // 免权限
+await Deskly.apps.default.set(".md", "notepad");        // 键：扩展名带点 / 协议带冒号
+await Deskly.apps.default.resolve("http:");             // 生效值 + 来源（user/system/manifest）
+await Deskly.apps.default.reset(".md");</code></pre>
+<p>默认应用解析是<b>三级回退</b>：用户改绑 → 出厂默认（SYSTEM_DEFAULTS）→ 插件 <code>apps[].formats</code> 声明；
+用户的手工改绑永远压过声明。</p>
+
+<h2>Deskly.fs</h2>
+<pre><code>const dir = Deskly.fs.home();                 // {path, temp, config, data}（免权限）
+await Deskly.fs.write("data/notes.md", "…");  // 自动补父目录，不必先 mkdir
+const f = await Deskly.fs.read("data/notes.md"); // File 对象
+await Deskly.fs.writeAt("/文档/导出.txt", "…"); // 越出沙箱：按敏感逐次确认
+// 硬边界：指向 /AppData/别人 的路径无论有没有权限都拒绝</code></pre>
+
+<h2>Deskly.bus</h2>
+<pre><code>const off = Deskly.bus.on("default-apps-changed", (detail) => repaint(detail));
+Deskly.bus.emit("my-topic", payload);   // 同步派发；形状 = 内核 broadcast（document + bubbles + detail）
+// plugin-unload 里 off()</code></pre>
+
+<h2>Deskly.meta</h2>
+<p>自省：<code>meta.apps()</code> / <code>meta.permissions()</code>（本插件已声明账目）/ <code>meta.version()</code> 等，全部免权限。</p>
+
+<h2>未实现占位（别照着写）</h2>
+<table>
+<tr><th>分组</th><th>状态</th></tr>
+<tr><td><code>Deskly.widgets.*</code></td><td>未实现（返回 <code>{ok:false, reason:"未实现（改造提示词 4）"}</code>）</td></tr>
+<tr><td><code>Deskly.windows.style.set / applyTheme</code></td><td>未实现（提示词 5）</td></tr>
+<tr><td><code>Deskly.icons.set</code></td><td>未实现（提示词 6）</td></tr>
+<tr><td><code>Deskly.system.patch.*</code></td><td>未实现（提示词 7）</td></tr>
+</table>
+<p>提示词 7 落地前，改顶栏与菜单仍走<b>登记式</b>接口：<code>registerFinderbarIcon()</code>
+（需在 <code>plugin-unload</code> 里 <code>unregisterFinderbarIcon()</code>，卸载不会自动摘）与
+<code>window.__menuActions</code>（你加的键必须在 <code>plugin-unload</code> 里 <code>delete</code>——那张表在
+finderbar 求值期只挂一次）。</p>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

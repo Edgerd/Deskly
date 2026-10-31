@@ -8,6 +8,20 @@
     "pathLabel": "请求路径"
   },
   "menu": {
+    "reason": {
+      "planned": "尚未实现",
+      "browser": "浏览器限制",
+      "context": "当前不可用"
+    },
+    "note": {
+      "fileOps": "文件操作尚未接入",
+      "editOps": "编辑命令尚未接入",
+      "print": "打印将使用浏览器对话框",
+      "getInfo": "简介窗口尚未实现",
+      "toolbar": "工具栏自定义尚未实现",
+      "utilities": "虚拟文件系统中没有实用工具",
+      "help": "帮助手册正在接入"
+    },
     "logo": "此是在本机",
     "about": "关于本机",
     "systemPreferences": "系统设置...",
@@ -49,7 +63,7 @@
     "history": "历史记录",
     "bookmarks": "书签",
     "debug": "调试",
-    "trashEmptied": "废纸篓已清倒（演示）",
+    "trashEmptied": "废纸篓已清倒",
     "app": "应用",
     "quit": "退出",
     "new": "新建",
@@ -83,7 +97,8 @@
       "dumpZLayers": "输出层级体检报告",
       "selfTest": "运行设置自检",
       "toggleDeveloperMode": "切换开发者模式"
-    }
+    },
+    "goTrash": "废纸篓"
   },
   "finder": {
     "title": "访达",
@@ -187,7 +202,12 @@
     "goToFolder": "前往文件夹：",
     "initError": "访达启动失败，请关闭窗口后重试。",
     "showInfo": "显示简介",
-    "unsupportedPreview": "暂不支持预览该类型文件"
+    "unsupportedPreview": "暂不支持预览该类型文件",
+    "emptyTrash": "清倒废纸篓...",
+    "emptyTrashConfirm": "要永久删除废纸篓里的所有项目吗？此操作无法撤销。",
+    "putBack": "放回原处",
+    "putBackFailed": "放回原处失败（原位置可能已不存在），请移入其他文件夹。",
+    "trashMoveFailed": "移入废纸篓失败，请重试或重新授权。"
   },
   "dock": {
     "launchpad": "启动台",
@@ -213,11 +233,12 @@
     "hideDock": "隐藏程序坞",
     "hideRecentApps": "隐藏“最近使用的应用程序”",
     "openSettings": "打开系统设置",
-    "openWith": "用 {app} 打开 {name}",
+    "openWith": "用 {app} 打开 {name}（演示：文件尚未真正交给应用）",
     "options": "选项",
     "quit": "退出",
     "showDock": "显示程序坞",
-    "showRecentApps": "显示“最近使用的应用程序”"
+    "showRecentApps": "显示“最近使用的应用程序”",
+    "trashMoved": "已移入废纸篓（{n} 项）"
   },
   "common": {
     "ok": "好",
@@ -246,14 +267,35 @@
     "on": "开启",
     "off": "关闭",
     "everyone": "所有人",
-    "connected": "已连接"
+    "connected": "已连接",
+    "unavailable": "不可用",
+    "notConnected": "未连接",
+    "nowPlaying": "正在播放",
+    "inPageMedia": "页面内正在播放的媒体",
+    "play": "播放",
+    "pause": "暂停",
+    "back": "返回",
+    "openDisplay": "打开显示器设置",
+    "openSound": "打开声音设置",
+    "cameraInUse": "摄像头正在被使用",
+    "micInUse": "麦克风正在被使用",
+    "locationInUse": "位置服务正在使用中",
+    "detail": {
+      "wifi": "浏览器只提供在线/离线状态，无法列出附近网络或输入密码。",
+      "bluetooth": "浏览器扩展无法访问系统蓝牙，这里不能切换蓝牙，也不显示设备列表。",
+      "airdrop": "隔空投送需要 macOS 的系统级无线能力，浏览器扩展无法实现。",
+      "airplane": "飞行模式需要直接控制无线硬件，浏览器不提供该能力。",
+      "mirroring": "屏幕镜像需要系统级显示输出能力，浏览器扩展无法实现。",
+      "display": "分辨率、刷新率与多显示器排列由系统决定；亮度与夜览可在系统设置中调整。",
+      "volume": "输出设备由系统决定；这里只能调整音量与静音。"
+    }
   },
   "settings": {
     "language": "语言",
     "appearance": "外观",
     "accentColor": "强调颜色",
     "highlightColor": "高亮颜色",
-    "sidebarIconSize": "侧边栏图标大小",
+    "sidebarIconSize": "边栏图标大小",
     "tintByWallpaper": "允许基于墙纸调整窗口色调",
     "showScrollBars": "显示滚动条",
     "scrollBars": {
@@ -956,6 +998,39 @@
       "word": "文稿",
       "excel": "表格",
       "ppt": "演示"
+    },
+    "manual": "Mac 使用手册"
+  },
+  "manual": {
+    "badge": "使用手册",
+    "searchPlaceholder": "搜索手册",
+    "chapters": "章节",
+    "sections": "小节",
+    "imageNote": "图片以图注形式呈现，原图见 docs/iMac-2024-macOS15-知识库",
+    "sectionUnit": "节",
+    "resultUnit": "条结果",
+    "noResults": "没有匹配的内容",
+    "loadFailed": "手册内容加载失败，请重新安装本 App。"
+  },
+  "menubar": {
+    "battery": "电池",
+    "volume": "音量",
+    "bluetooth": "蓝牙",
+    "batteryTip": "电池 {pct}%{state}",
+    "batteryCharging": "（充电中）",
+    "volumeTip": "音量 {v}%",
+    "bluetoothOff": "（关闭）",
+    "showBattery": "电池",
+    "showVolume": "音量",
+    "showBluetooth": "蓝牙"
+  },
+  "keyboard": {
+    "tier": {
+      "native": "已绑定",
+      "fallback": "等价键",
+      "reserved": "浏览器保留",
+      "planned": "尚未实现",
+      "menu": "菜单可用"
     }
   }
 }

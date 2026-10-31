@@ -18,7 +18,7 @@
 import { updateMenu } from "./finderbar.js";
 import { i18n } from "./i18n.js";
 import { create, bringToFront, closeWindow, isMinimized, isWindowElement } from "./window.js";
-import { getTrashIcon } from "./trashIcon.js";
+import { getTrashIcon, getTrashKey, getTrashIconForFullness } from "./trashIcon.js";
 import { createContextMenu } from "./ui/contextMenu.js";
 import { isNativeContextMenuEnabled } from "./contextMenuSettings.js";
 import { enableSortable } from "./sortable.js";
@@ -118,7 +118,7 @@ const iconMap = {
     "访达": "Finder",
     "启动台": "Launchpad",
     "Safari浏览器": "Safari",
-    "系统设置": "Réglages système",
+    "系统设置": "Reglages systeme",
     "下载": "folder/Download",
     "App Store": "App Store",
     "邮件": "Mail",
@@ -136,7 +136,7 @@ const iconMap = {
     "博客": "Podcasts",
     "视频": "TV",
     "语音备忘录": "Dictaphone",
-    "天气": "Météo",
+    "天气": "Meteo",
     "股市": "Bourse",
     "图书": "Livres",
     "时钟": "Horloge",
@@ -392,6 +392,29 @@ function openApp(img, light, app) {
     // 从程序坞点其它应用时，先让启动台退出，否则窗口会开在它背后、看起来点了没反应。
     if (img.alt !== "启动台" && window.__launchpad && window.__launchpad.isOpen()) {
         window.__launchpad.close();
+    }
+    // 废纸篓：不是可启动应用（P0-4）——点它打开访达的 /废纸篓 目录，
+    // 不再走进 launchApp 的「未找到该应用」分支。
+    if (img.alt === TRASH || app === TRASH) {
+        const actions = window.__menuActions || {};
+        if (typeof actions.openAppByName === "function") actions.openAppByName("访达");
+        // 冷加载时访达脚本晚于窗口出现（fetch + 注入），固定等两帧会把导航命令丢在
+        // 监听器挂上之前。这里轮询活动标签的 data-path：到达 /废纸篓 即停，最多重试 5 秒。
+        let tries = 0;
+        const sendTrashNav = () => {
+            const win = document.getElementById("访达");
+            const tab = win && win.querySelector(".tab.active");
+            if (tab && tab.dataset.path === "/废纸篓") return;
+            if (win) {
+                win.dispatchEvent(new CustomEvent("finder-command", {
+                    detail: { command: "navigate", args: { path: "/废纸篓" } },
+                    bubbles: true,
+                }));
+            }
+            if (++tries < 25) setTimeout(sendTrashNav, 200);
+        };
+        setTimeout(sendTrashNav, 0);
+        return;
     }
     if (appStatus[img.alt] == true) {
         if (!doClose.includes(img.alt)) {
@@ -696,18 +719,36 @@ function bindDropOpen(container, app) {
         }
     });
     container.addEventListener("dragleave", () => container.classList.remove("drop-target"));
-    container.addEventListener("drop", (e) => {
+    container.addEventListener("drop", async (e) => {
         container.classList.remove("drop-target");
         if (internalDnD) return;
         if (!hasFiles(e)) return;
         e.preventDefault();
+        // P0-4 废纸篓专属分支：拖 OS 文件进废纸篓 = 把内容写进 /废纸篓（真落库，
+        // 图标随内容变满，访达可见、可清倒），而不是「用废纸篓打开」。
+        if (app === TRASH) {
+            const files = Array.from(e.dataTransfer.files || []);
+            if (!files.length) return;
+            const { dropFileToTrash } = await import("./trash.js");
+            let okCount = 0;
+            for (const f of files) {
+                try { const r = await dropFileToTrash(f); if (r.ok) okCount++; } catch (err) { /* 权限未批：静默跳过，图标态刷新会如实反映 */ }
+            }
+            if (tip) {
+                tip.textContent = i18n.t("dock.trashMoved", "已移入废纸篓（{n} 项）").replace("{n}", String(okCount));
+                tip.style.display = "block";
+                tip.style.opacity = "1";
+                setTimeout(hideTip, 1400);
+            }
+            return;
+        }
         const label = e.dataTransfer.files?.[0]?.name || e.dataTransfer.getData("text/plain") || "";
         if (!label) return;
-        // 打开对应应用，并提示带入的文件（演示性）
+        // 打开对应应用，并提示带入的文件（演示性：文件未真正交给应用，P1-16 再接）
         const img = container.querySelector("img");
         if (img) openApp(img, img.parentElement.querySelector(".light"), app);
         if (tip) {
-            tip.textContent = i18n.t("dock.openWith", "用 {app} 打开 {name}")
+            tip.textContent = i18n.t("dock.openWith", "用 {app} 打开 {name}（演示：文件尚未真正交给应用）")
                 .replace("{app}", app).replace("{name}", label);
             tip.style.display = "block";
             tip.style.opacity = "1";
@@ -1262,9 +1303,23 @@ function init() {
         renderRecents();
         syncRunningApps();
     });
+    // P0-4：满/空态由 /废纸篓 内容驱动（内核 trash.js 广播 trash-changed）
+    let trashFull = false;
+    const refreshTrashFullness = async () => {
+        let full = false;
+        try {
+            const { isTrashNotEmpty } = await import("./trash.js");
+            full = await isTrashNotEmpty();
+        } catch (err) { /* 权限未批时保持现图，不谎报 */ }
+        trashFull = full;
+        if (trashImg) trashImg.src = getTrashIconForFullness(getTrashKey(), trashFull);
+    };
+    window.addEventListener("trash-changed", refreshTrashFullness);
     window.addEventListener("trash-icon-change", () => {
-        if (trashImg) trashImg.src = getTrashIcon();
+        if (trashImg) trashImg.src = getTrashIconForFullness(getTrashKey(), trashFull);
     });
+    // 首帧先按内容刷一次（图标创建后 trashImg 才有值，放渲染回调之后）
+    refreshTrashFullness();
     // 不再在这里额外 setTimeout 写一次 transition：init 末尾的
     // emitDock("dock-autohide-change") 会走 updateDockVisibility()，那里已经同步写上了，
     // 这里再排一个 1 秒的定时器只是重复同一件事。
@@ -1364,6 +1419,8 @@ function init() {
     // 404 后被 error 兜底成通用占位图。监听 plugins-ready 后重新校准图标 src，
     // 让已被占位的图标切回正确路径（仅清掉兜底标记后重设 src，失败仍兜底）。
     window.addEventListener("plugins-ready", refreshIconsFromRegistry);
+    // 办公套件切换品牌包（iWork/Office）时重取图标
+    window.addEventListener("deskly-brand-pack-changed", refreshIconsFromRegistry);
     document.addEventListener("languagechange", refreshDockLabels);
 }
 
@@ -1633,8 +1690,9 @@ let dockNavIndex = 0;
 
 function bindKeyboardNav() {
     document.addEventListener("keydown", (e) => {
-        // Control+F3（含 Fn+Control+F3 在多数浏览器即 Control+F3）进入程序坞导航
-        if (e.key === "F3" && (e.ctrlKey || e.metaKey) && !e.altKey) {
+        // ⌃⌘F3 进入程序坞键盘导航：⌃F3 与 ⌘F3 都可能被系统/浏览器占用，改成双修饰键，
+        // 与 keyboard.js 的键位表保持一致（F-22 的键位归属调整）。
+        if (e.key === "F3" && e.ctrlKey && e.metaKey && !e.altKey) {
             e.preventDefault();
             enterDockNav();
             return;
@@ -1737,26 +1795,51 @@ function getDockIconImg(app) {
     return dock.querySelector(`.container img[alt="${cssEscape(app)}"]`);
 }
 
-// 最小化窗口吸入程序坞（缩放淡出兜底过渡）
+// 最小化窗口吸入程序坞。
+// 优先走「神奇效果」（wm/genie-effect.js：快照 + 覆盖层条带形变，绝不碰窗口
+// 自身的 transform）；快照超时 / 几何不成立 / 减少动态效果开启时 resolve(false)，
+// 统一落回缩放淡出兜底 —— 兜底路径必须始终可达，绝不让窗口瞬间消失。
 function minimizeToDock(winEl, appName) {
     const iconEl = getDockIconImg(appName);
     winEl._minimized = true;
     // 运行指示灯保持点亮
     const light = iconEl ? iconEl.parentElement.querySelector(".light") : null;
     if (light) light.classList.add("on");
-    // 缩放淡出兜底：保证所有路径都有视觉过渡，绝不瞬间消失
-    fallBackFadeOut(winEl);
+    import("./wm/genie-effect.js")
+        .then((m) => m.minimizeGenie(winEl, iconEl))
+        .catch(() => false)
+        .then((played) => {
+            // 快照是异步的：期间用户可能已把窗口还原，此时不能再补淡出，
+            // 否则会把刚揭开的窗口重新按进坞里（旧版 _hideTimer 同款竞态）。
+            if (!played && winEl._minimized) fallBackFadeOut(winEl);
+        });
 }
 
-// 从程序坞还原窗口（直接显示 + 置顶）
+// 从程序坞还原窗口。
+// 有缓存快照时反向播放神奇效果（播放期间保持隐藏，播完揭开置顶）；
+// 没有快照 / 动画失败则立即显示 —— 兜底永远是「直接显示 + 置顶」。
 function restoreFromDock(winEl, appName) {
     winEl._minimized = false;
     // 取消尚未执行的隐藏定时器（见 fallBackFadeOut）
     clearTimeout(winEl._hideTimer);
     winEl._hideTimer = null;
-    winEl.style.display = "";
-    winEl.classList.remove("minimized");
-    bringToFront(winEl, appName);
+    // 先按住：genie 模块若是本次会话首次动态 import，取模块有网络延迟，
+    // 不预隐藏会在覆盖层接管前闪出一帧真窗；播不成就由 reveal() 立即揭开。
+    winEl.style.display = "none";
+    const iconEl = getDockIconImg(appName);
+    const reveal = () => {
+        // 播放期间可能又被最小化：状态翻回去了就不抢显隐权
+        if (winEl._minimized) return;
+        winEl.style.display = "";
+        winEl.classList.remove("minimized");
+        bringToFront(winEl, appName);
+    };
+    import("./wm/genie-effect.js")
+        .then((m) => m.restoreGenie(winEl, iconEl))
+        .catch(() => false)
+        .then((played) => {
+            if (!played) reveal();
+        });
 }
 
 // 兜底隐藏调度：只负责在淡出结束后补 display:none，不再自己写 transition。

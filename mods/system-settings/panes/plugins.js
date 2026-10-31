@@ -40,6 +40,9 @@ export const messages = {
         ss: {
             plugins: {
                 ownGroup: "App 设置项",
+                officeBrandGroup: "办公套件",
+                officeBrand: "名称与图标",
+                officeBrandNote: "选 Microsoft Office 需要对应图标文件；缺少时自动沿用 iWork 图标。",
                 empty: "还没有 App 注册设置项。",
                 listedGroup: "统计",
                 listed: "收录的设置项",
@@ -90,6 +93,9 @@ export const messages = {
         ss: {
             plugins: {
                 ownGroup: "App Settings",
+                officeBrandGroup: "Office suite",
+                officeBrand: "Names and icons",
+                officeBrandNote: "The Microsoft Office pack needs its icon files; missing ones fall back to iWork icons.",
                 empty: "No App has registered settings yet.",
                 listedGroup: "Statistics",
                 listed: "Collected settings",
@@ -140,6 +146,9 @@ export const messages = {
         ss: {
             plugins: {
                 ownGroup: "App の設定",
+                officeBrandGroup: "オフィススイート",
+                officeBrand: "名前とアイコン",
+                officeBrandNote: "Microsoft Office を選ぶには専用アイコンが必要です。無い場合は iWork のアイコンを使います。",
                 empty: "App はまだ設定を登録していません。",
                 listedGroup: "統計",
                 listed: "収録された設定",
@@ -190,6 +199,9 @@ export const messages = {
         ss: {
             plugins: {
                 ownGroup: "App 的设置项喵",
+                officeBrandGroup: "办公三件套喵",
+                officeBrand: "名字和图标喵",
+                officeBrandNote: "选微软那套要有对应的图标喵，缺了就先借 iWork 的用喵。",
                 empty: "还没有 App 来登记设置项喵。",
                 listedGroup: "数一数喵",
                 listed: "长出来的设置项",
@@ -364,7 +376,7 @@ export function build(context) {
     if (!keep) { trail = [""]; step = 0; }
 
     root = el("div", { class: "ss-pane ss-plugins" });
-    topWrap = el("div", { class: "ss-plugins__top" }, ...buildSettingSections());
+    topWrap = el("div", { class: "ss-plugins__top" }, ...buildOfficeBrandSection(), ...buildSettingSections());
     viewHost = el("div", { class: "ss-plugins__view" });
     root.append(topWrap, viewHost);
 
@@ -515,6 +527,22 @@ function buildSettingSections() {
     const ownersRow = statusRow({ label: t("ss.plugins.owners", "设置项来源"), value: String(byOwner.size) });
     sections.push(group([listedRow, ownersRow], { title: t("ss.plugins.listedGroup", "统计") }));
     return sections;
+}
+
+/**
+ * 办公套件的名称与图标品牌包（iWork / Microsoft Office，保真清单 F-49）。
+ * 这一项不跟随插件启停，属于全局外观选择，所以单独成组放在面板最上方。
+ * @returns {Array<HTMLElement>} 分组节点数组（定义缺失时为空）
+ */
+function buildOfficeBrandSection() {
+    const def = settings.info("office.brandPack");
+    if (!def) return [];
+    const rowNode = autoRow(def, { label: t("ss.plugins.officeBrand", "名称与图标") });
+    if (!rowNode) return [];
+    return [group([
+        rowNode,
+        note("ss.plugins.officeBrandNote", "选 Microsoft Office 需要对应图标文件；缺少时自动沿用 iWork 图标。"),
+    ], { title: t("ss.plugins.officeBrandGroup", "办公套件") })];
 }
 
 /**

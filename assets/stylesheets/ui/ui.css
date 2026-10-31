@@ -66,6 +66,33 @@ html[data-theme="dark"] .menu {
 }
 .menu p[disabled] {
   color: var(--surface-text-tertiary);
+  /* 问号光标是「这里可以查看原因」的唯一视觉提示：置灰项 hover/focus 会弹出说明浮层 */
+  cursor: help;
+}
+.menu p[disabled]:focus-visible {
+  outline: 2px solid var(--accent, #0a82ff);
+  outline-offset: -2px;
+}
+/* 置灰菜单项的原因浮层。挂在 body 上（.menu 的 overflow:hidden 会裁掉子元素），
+   z-index 与 zindex.js 的 Z.MENU_HINT 保持一致（9499：压在普通浮层之上、Dock 之下）。 */
+#deskly-menu-reason {
+  position: fixed;
+  z-index: 9499;
+  max-width: 260px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 0.5px solid var(--hairline, rgba(0, 0, 0, 0.08));
+  background: var(--panel-bg, rgba(246, 246, 246, 0.88));
+  -webkit-backdrop-filter: blur(var(--surface-blur-3));
+  backdrop-filter: blur(var(--surface-blur-3));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: var(--surface-text, #1d1d1f);
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+#deskly-menu-reason[hidden] {
+  display: none;
 }
 .menu hr {
   background: var(--separator, rgba(0, 0, 0, 0.1));
@@ -110,3 +137,8 @@ html[data-transparency="off"] .menu {
   from { opacity: 1; }
   to   { opacity: 0; }
 }/*# sourceMappingURL=ui.css.map */
+/* 浏览器保留键的快捷键提示：虚线表示"这个组合键页面收不到"，与可用的实心提示区分 */
+.menu .shortcut--reserved {
+  text-decoration: underline dashed rgba(127, 127, 127, 0.65);
+  text-underline-offset: 3px;
+}

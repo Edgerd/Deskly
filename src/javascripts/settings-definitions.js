@@ -206,12 +206,12 @@ function initSettingsSchema() {
             key: "wallpaper.config", slot: "wallpaper-config", type: "json",
             default: { type: "default", url: "", name: "Sequoia 经典" },
             control: "json", pane: "wallpaper", group: "墙纸", order: 10, hidden: true,
-            label: "当前壁纸",
+            label: "当前墙纸",
         },
         {
             key: "wallpaper.autoBing", type: "boolean", default: false,
             control: "switch", pane: "wallpaper", group: "墙纸", order: 20,
-            label: "Bing 每日壁纸",
+            label: "Bing 每日墙纸",
             apply: (value) => wallpaper.setAutoBing(value),
         },
 
@@ -226,12 +226,26 @@ function initSettingsSchema() {
             control: "switch", pane: "mouse", group: "鼠标", order: 20,
             label: "光标阴影", apply: (value) => setCursorShadow(value),
         },
+        {
+            // 晃动指针放大由 pointer-shake.js 直接读值决定是否响应，无需 apply；
+            // 放在 cursor.* 之后，与「光标」分组保持同一块设置。
+            key: "mouse.shakeToFind", type: "boolean", default: true,
+            control: "switch", pane: "mouse", group: "鼠标", order: 30,
+            label: "晃动指针以查找",
+        },
 
         // ── Siri siri.* ─────────────────────────────────────────────────
         {
             key: "siri.orb.size", slot: "siri-orb-size", type: "number", default: 150, min: 80, max: 300, step: 2,
             control: "slider", units: "px", pane: "siri", group: "Siri", order: 10,
             label: "光球大小", event: "siri-orb-size-change",
+        },
+
+        // ── 办公套件品牌包 office.* ─────────────────────────────────────
+        {
+            key: "office.brandPack", type: "string", default: "iwork",
+            values: ["iwork", "ms"], control: "radio", pane: "plugins", group: "办公套件", order: 5,
+            hidden: true, label: "名称与图标",
         },
 
         // ── 控制中心 controlcenter.*（共用一个 JSON 存储槽） ────────────
@@ -293,6 +307,12 @@ function initSettingsSchema() {
             key: "spotlight.commands", type: "boolean", default: true,
             control: "switch", pane: "spotlight", group: "搜索范围", order: 40,
             label: "系统命令",
+        },
+        {
+            // 手册 App 随扩展内置；索引在首次搜索时才加载（约 70KB），关掉即完全不参与。
+            key: "spotlight.manual", type: "boolean", default: true,
+            control: "switch", pane: "spotlight", group: "搜索范围", order: 45,
+            label: "使用手册",
         },
         {
             key: "spotlight.maxResults", type: "number", default: 12, min: 5, max: 30, step: 1,

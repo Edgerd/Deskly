@@ -90,6 +90,20 @@ export function getTrashIcon() {
 }
 
 /**
+ * 满/空自动切换（P0-4）：/废纸篓 有内容时，「常规」变体（light / dark）自动换成
+ * 同色族的「装满」版；用户显式选的黑白 / 透明变体不做自动切换（那是显式偏好）。
+ * 只影响显示，不写 localStorage —— 用户设置原样保留。
+ * @param {string} key 当前变体键（getTrashKey() 的返回值）
+ * @param {boolean} full 废纸篓是否有内容
+ * @returns {string} 实际应显示的图标路径
+ */
+const FULL_VARIANT_MAP = { light: "light_full", dark: "dark_full" };
+export function getTrashIconForFullness(key, full) {
+    const effective = full && FULL_VARIANT_MAP[key] ? FULL_VARIANT_MAP[key] : key;
+    return getTrashIconFor(effective);
+}
+
+/**
  * 设置废纸篓变体并广播变更。
  * @param {string} key 变体逻辑键
  * @returns {boolean} 校验是否通过（非法键不写入、不广播，返回 false）

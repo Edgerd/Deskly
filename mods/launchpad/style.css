@@ -519,9 +519,11 @@ html.deskly-launchpad-open .finderbar {
   pointer-events: none;
 }
 html.deskly-launchpad-open .dockcontainer {
+  /* = Z.LAUNCHPAD_DOCK（src/javascripts/zindex.js） */
   z-index: 9601;
 }
 /* 从程序坞打开的文件夹堆栈直接挂在 body 上，层级也要一并越过启动台 */
 html.deskly-launchpad-open .dock-stack {
+  /* = Z.LAUNCHPAD_DOCK_STACK（src/javascripts/zindex.js） */
   z-index: 9602;
 }

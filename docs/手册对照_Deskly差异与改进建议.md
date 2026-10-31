@@ -1,6 +1,8 @@
 # Deskly × 苹果《iMac 使用手册》对照：差异与改进建议
 
 版本基线：Deskly v0.2.93（commit 8aa417a）· 手册基线：《iMac 入门指南》2024 年款 · macOS Sequoia 15
+
+> **修复状态（2026-10-26）**：P0-6 快捷键诚实化、P0-2 假象清理已在本分支以 `keyboard.js` / F-20 实现；P0-4 废纸篓闭环、P0-5 菜单栏状态项已随 v0.2.95 增量包合并完成。本文档为审计快照，条目判定不改写，修复详情见《产品更新信息》。
 手册侧依据：[iMac-2024-macOS15-知识库](file:///E:/hello/StartOS/docs/iMac-2024-macOS15-知识库/README.md)（8 章 + 63 页原文 + 209 图）
 插件侧依据：逐条代码走查，每条给 `文件:行号`；标「未找到」的项已用中英文同义词全仓（`src/`、`mods/`、`assets/locales/`、`index.html`）复搜无命中。
 
@@ -146,7 +148,7 @@
 | 备忘录 / 文本编辑 | `mods/notepad`（由"备忘录"改名而来，见 `docs/产品更新信息.md:1443`），三视图 TXT/Markdown | 部分（对标"文本编辑"更准确） |
 | 邮件 / 信息 / FaceTime / 日历 / 提醒事项 / 快捷指令 / 音乐 / 播客 / TV / iMovie | **无对应 App**；`src/javascripts/dock.js:117-150` 的 iconMap 里只有图标 | 缺失 |
 | App Store | `mods/app-store`（启停/卸载/ZIP 安装） | 一致（本地语义） |
-| 启动台分页 | 单张滚动网格，无分页与页点（`mods/launchpad/script.js:211-217`） | 部分 |
+| 启动台分页 | **已实现**：按视口容量切页 + `.grid-page` + `.page-dots`（`mods/launchpad/script.js:223-245`） | 一致 |
 
 ### J. 帮助与手册入口（手册第 7 章 45 页）
 
@@ -243,7 +245,7 @@
 | P1-12 | 墙纸：相簿轮播 + 时段切换（昼/夜两张已存在，缺调度器）+ 随主题自动切 | 第 4 章 25 页 | `src/javascripts/wallpaper.js:182-197` | M |
 | P1-13 | 聚焦支持算术与单位换算（复用 `mods/calculator/convert.js`） | 第 3 章 23 页 | `src/javascripts/spotlight.js:376-385` | S |
 | P1-14 | 多窗口/多实例（按 App 白名单去掉 `src/javascripts/plugin-manager.js:456-463` 的 appId 去重）+ 刷新后恢复上次窗口布局 | 第 4 章 30 页 | `plugin-manager.js`、`bootstrap.js` | M |
-| P1-15 | 启动台分页与页点（现在是单张滚动网格） | 第 6 章 37 页 | `mods/launchpad/script.js:211-217` | S |
+| P1-15 | ~~启动台分页与页点~~ **已实现，撤销该项**（复核见 `mods/launchpad/script.js:223-245`） | 第 6 章 37 页 | — | — |
 | P1-16 | 拖文件到 Dock 图标真正传给应用（Safari/照片/办公/记事本先支持） | 第 3 章 20 页 | `src/javascripts/dock.js:684-717` | M |
 
 ### P2

@@ -18,6 +18,7 @@
 
 import { settings } from "./settings.js";
 import { i18n } from "./i18n.js";
+import { brandLabel } from "./office-brand.js";
 
 /**
  * 应用显示名的 i18n 解析：内核身份永远是清单里的 `name`（中文、跨语言不变，
@@ -31,6 +32,9 @@ import { i18n } from "./i18n.js";
  * @returns {string} 当前语言的显示名
  */
 function displayAppName(appId, canonical) {
+    // 办公子应用可被品牌包改名（iWork ↔ Microsoft Office）；返回 null 时沿用 i18n。
+    const branded = String(appId || "").startsWith("office.") ? brandLabel(appId) : null;
+    if (branded) return branded;
     const direct = i18n.t(`apps.${appId}`, null);
     if (typeof direct === "string" && direct) return direct;
     const named = i18n.t(`apps.${appId}.name`, null);

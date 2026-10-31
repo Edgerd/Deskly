@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置中枢 __settings · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="settings" data-base="../" data-version="0.2.95">
+<main>
+<h1>设置中枢 __settings</h1>
+<p class="lede">唯一设置读写入口：define / get / set / subscribe，系统设置面板自动渲染。</p>
+
+<h2>键名与存储槽</h2>
+<p>键形如 <code>owner.key</code>；槽名由 owner 派生（<code>webstartos_&lt;owner&gt;</code> 一类）——
+<b>不要手写第三个 localStorage 键</b>。owner 模块的既有读法（如 <code>=== "on"</code>）决定了落盘形态。</p>
+
+<h2>类型、校验与序列化（四种）</h2>
+<table>
+<tr><th>type</th><th>要点</th></tr>
+<tr><td><code>boolean</code></td><td>落盘 <code>"on"/"off"</code>（owner 读法所定）；读回 on/true/1、off/false/0 都认。
+<b>未注册的裸键</b>例外：写 <code>"true"/"false"</code> 读回还原成布尔。想让界面认出你的键就先 define。</td></tr>
+<tr><td><code>number</code></td><td><code>min/max/step</code>：超界<b>不拒绝而是钳到边界再按 step 取整</b>，返回钳后值。</td></tr>
+<tr><td><code>string</code></td><td>可配 <code>values</code> 白名单：不在候选内的写入<b>直接拒绝</b>（reason 形如「取值 neon 不在候选值 light / dark / auto 内」）。</td></tr>
+<tr><td><code>json</code></td><td>对象或 JSON 文本；坏文本被拒；对象默认值与存储值<b>浅合并</b>（新版新增字段自动带默认值）。</td></tr>
+</table>
+
+<h2>set() 返回信封：三种失败要分开处理</h2>
+<table>
+<tr><th>字段</th><th>含义</th></tr>
+<tr><td><code>ok</code></td><td>是否通过校验；<code>false</code> 时 <code>value</code> 是<b>当前值</b>（不是你传的）</td></tr>
+<tr><td><code>value</code></td><td>校验/钳制后真正生效的值</td></tr>
+<tr><td><code>persisted</code></td><td>是否写进 localStorage；<code>false</code> = 本次会话能用，刷新回退</td></tr>
+<tr><td><code>changed</code></td><td>是否与旧值不同；同值写入<b>不广播不记日志</b></td></tr>
+<tr><td><code>reason</code></td><td>仅拒绝时出现（中文说明，同时进 __log 的 error）</td></tr>
+</table>
+
+<h2>define / defineMany（插件注册自己的设置项）</h2>
+<pre><code>__settings.defineMany([
+  { key: "myPlugin.enabled", type: "boolean", default: true, owner: "myPlugin", pane: "plugins",
+    label: "启用我的插件", hint: "关闭后不再注入任何界面", control: "switch", group: "我的插件", order: 10 },
+  { key: "myPlugin.opacity", type: "number", default: 0.8, min: 0.2, max: 1, step: 0.05,
+    owner: "myPlugin", pane: "plugins", label: "浮层不透明度", control: "slider",
+    format: "fixed1", group: "我的插件", order: 20 },
+]);</code></pre>
+<ul>
+<li><code>pane: "plugins"</code> 归到系统设置「插件」面板：收录规则 = owner 不是 system、pane 缺省或 plugins、没被 hidden；
+    逐行由 <code>autoRow()</code> 按 control 生成控件（switch / slider / segmented / …）。</li>
+<li><b>三条生命周期硬约束</b>：① 在插件初始化时就 define（注册了才出现在设置里）；
+    ② define 必须可重复调用（入口脚本每次打开都重跑，同名定义做<b>字段合并</b>，天然幂等；别在 apply 闭包里捕外部状态）；
+    ③ 没有撤销接口——卸载后定义仍留表里，要「关掉即隐藏」用 <code>hidden</code> 或在 apply 里兜缺失状态。</li>
+</ul>
+
+<h2>event 与 apply：二选一</h2>
+<table>
+<tr><th>写法</th><th>行为</th></tr>
+<tr><td><code>apply: (v, {previous, persisted, source}) =&gt; {}</code></td><td>落盘后由中枢调用；抛错只记 error 不打断写入。owner 自己会把值应用到真实状态时用。</td></tr>
+<tr><td><code>event: "my-change"</code></td><td>中枢在 window 上补发旧格式 CustomEvent，detail 是<b>序列化字符串</b>（json 例外给对象）。owner 只有监听没有 setter 的历史模块用（dock 7 项 / 启动台 2 项 / Siri 1 项）。</td></tr>
+</table>
+<div class="warn"><b>同一个定义里别同时写</b>：owner 的 apply 里往往自己就 dispatchEvent，中枢再补发一次 →
+同一事件派发两遍、监听方执行两遍。新插件两者都不必写：需要即时生效就订阅 <code>settings-changed</code>。</div>
+
+<h2>订阅变更</h2>
+<pre><code>const off = __settings.on("myPlugin.opacity", (value, detail) =&gt; repaint(value));
+// 或接口级：__settings.subscribe(d =&gt; { if (d.key.startsWith("myPlugin.")) ...; })
+// 或 document 统一事件：detail = {key, value, previous, persisted, type}（对象）
+document.addEventListener("settings-changed", onChanged);</code></pre>
+<ul>
+<li>同值写入不广播（别指望它做心跳）；<code>opts.silent</code> 批量恢复也不广播；</li>
+<li><b>必须在 <code>plugin-unload</code> 里退订</b>（入口脚本每次重跑，模块表不回收旧实例，订阅连同捕获的已卸载 DOM 会永久累积）。</li>
+</ul>
+
+<h2>别把密钥放进设置</h2>
+<p><code>snapshot()</code> 会把已注册项的<b>原始存储文本</b>整份导出（备份/诊断用），
+<code>settings-changed</code> 的 detail 与 __log 的写入记录同样带值。仓库示范（锁屏口令）：
+哈希与盐存设置中枢<b>之外</b>的自有槽，<code>SHA-256(盐:口令)</code> 才落盘，日志里既无明文也无摘要（<code>lock.js</code>）。</p>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

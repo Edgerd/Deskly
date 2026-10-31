@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>版本与更新 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="changelog" data-base="../" data-version="0.2.95">
+<main>
+<h1>版本与更新</h1>
+<p class="lede">VERSION 的三处同步规则 + 最近两个版本的摘要。完整条目在仓库 docs/产品更新信息.md。</p>
+
+<h2>升版本步骤（三处必须同步）</h2>
+<ol>
+<li><code>manifest.json</code>：version 与 version_name（Chrome 只显示 version，name 只是给本地扩展 UI 的展示名）；</li>
+<li><code>src/javascripts/version.js</code>：<code>VERSION = "x.y.z"</code>（冷加载与资源戳都取它）；</li>
+<li><code>index.html</code>：全部 <code>?v=</code> 串（当前 15 处）——升版本 = 整站资源缓存一次失效。</li>
+</ol>
+<p>然后在 <code>docs/产品更新信息.md</code> 头部按既有格式补一条
+（<code>## 更新日期：YYYY-MM-DD | 版本号：X</code> + AI 总结 + 新增/修复/影响范围）。</p>
+
+<h2>v0.2.95（2026-10-26）— 废纸篓闭环 + 菜单栏状态项</h2>
+<ul>
+<li><b>P0-4 废纸篓闭环</b>：新内核 <a href="../api/trash.html">trash.js</a>（/废纸篓 唯一读写入口：
+    moveToTrash 唯一名顺延 + 溯源伴生 .deskly-origin、putBack 原目录没了落 /文档、emptyTrash 递归清倒、
+    dropFileToTrash）；桌面（内容落 /桌面 + 右键真移动 + 改名同步）、访达（删除=移入 + 补文件删除入口
+    + 「放回原处」/「清倒废纸篓...」、视图隐藏伴生）、程序坞（拖入真落库、点击打开访达 /废纸篓）三条入口接通；
+    图标满/空由内容驱动（trash-changed）。</li>
+<li><b>P0-5 菜单栏状态项</b>：新模块 <a href="../api/menubar.html">menubar-status.js</a>（电池 / 音量 / 蓝牙，
+    全真数据；无电池机器整项隐藏；menubar.show* 三个开关进系统设置；删掉无监听的 wifi 装饰图）。</li>
+<li>层级表收编启动台抬升 9601/9602（Z.LAUNCHPAD_DOCK / _STACK）；清倒文案去「（演示）」标记。</li>
+</ul>
+
+<h2>v0.2.94（2026-10-26）— 层级入表 + 资源名 ASCII 化</h2>
+<ul>
+<li><b>P0-6 快捷键诚实化</b>：本分支由 <code>keyboard.js</code> 承担五态键位表（已绑定 / 等价键 /
+    浏览器保留 / 尚未实现 / 菜单可用）与系统级绑定，不新增 shortcut-bindings.js；本次合并把
+    「状态」纳入系统设置 › 键盘总表的过滤与 TSV 导出。</li>
+<li><b>P0-2 假象清理</b>：控制中心 F-20 与置灰菜单项原因浮层在本分支已实现（<code>#deskly-menu-reason</code>），
+    未套用增量包的 demo-tag 版本；Dock <code>openWith</code> 提示补「演示：文件尚未真正交给应用」。</li>
+<li>层级表修复 3 处裸 z-index（main.css 4000 → CLIENT_NOTICE 9605、controlcenter 9628 → CC_OVERLAY、
+    dock .tip 9999 → DOCK_TIP）；27 个运行时图标文件 ASCII 化（25 个 assets/icons + 2 个 mods 图标，
+    法语重音 / emoji → 转写 / 前缀）；保真清单 G1「沙箱 iframe」表述更正（mod 注入主文档，非 iframe）。</li>
+</ul>
+
+<div class="note"><b>未修项（需拍板或成本高，勿自行开工）</b> 帮助入口（知识库进产品形态，P0-1）、
+窗口组织补齐（Mission Control / Split View / Stage Manager，P0-3）、访达拖拽（P1-7）、通知中心（P1-8）；
+about 的机型写死 Mac mini 按决定<b>不修</b>。</div>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

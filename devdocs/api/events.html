@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>事件与全局接口 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="events" data-base="../" data-version="0.2.95">
+<main>
+<h1>事件与全局接口</h1>
+<p class="lede">桌面里的 CustomEvent 地图 + window.__* 全局钩子速查 + 菜单 cmd 语法。</p>
+
+<h2>插件生命周期事件（window）</h2>
+<table>
+<tr><th>事件</th><th>detail</th><th>谁发</th></tr>
+<tr><td><code>plugins-ready</code></td><td>—</td><td>plugin-manager 注册表就绪（14 内置 + ZIP 还原）</td></tr>
+<tr><td><code>plugin-registered</code></td><td><code>{id, manifest}</code></td><td>每个插件注册时（api-grants 的 grantAll 走这里）</td></tr>
+<tr><td><code>plugin-app-load</code></td><td><code>{id, appId, windowName, el}</code></td><td>多应用插件：每个应用窗口就绪（外壳只注一次）</td></tr>
+<tr><td><code>plugin-app-open</code></td><td><code>{id, appId, windowName, file}</code></td><td>访达带文件打开（窗口复用也发）</td></tr>
+<tr><td><code>plugin-app-unload</code></td><td><code>{id, appId}</code></td><td>关掉其中一个应用窗口</td></tr>
+<tr><td><code>plugin-unload</code></td><td><code>{id}</code></td><td>整个插件无存活窗口；<b>你的全局监听 / 定时器 / __ 钩子都在这里释放</b></td></tr>
+</table>
+
+<h2>状态广播（document，detail = 对象，bubbles: true）</h2>
+<table>
+<tr><th>事件</th><th>detail</th><th>语义</th></tr>
+<tr><td><code>settings-changed</code></td><td><code>{key, value, previous, persisted, type}</code></td><td>设置中枢写入（同值不广播）</td></tr>
+<tr><td><code>languagechange</code></td><td>—</td><td>语言切换（i18n.onChange 的底层事件）</td></tr>
+<tr><td><code>trash-changed</code></td><td><code>{empty}</code></td><td>废纸篓增删成功（v0.2.95，驱动 Dock 满/空图标）</td></tr>
+<tr><td><code>trash-icon-change</code></td><td>变体键</td><td>用户切废纸篓图标变体</td></tr>
+<tr><td><code>deskly:*</code> / 自定义 topic</td><td>任意</td><td>经 <code>Deskly.bus.emit(topic, data)</code> 或内核 <code>app-registry.broadcast()</code>（形状相同：document + bubbles + CustomEvent.detail）</td></tr>
+</table>
+
+<h2>window.__* 全局钩子速查（真实存在，逐条有 file:line）</h2>
+<table>
+<tr><th>钩子</th><th>能力</th></tr>
+<tr><td><code>__dialog</code></td><td>系统弹窗：alert / error / confirm(→Promise&lt;boolean&gt;) / messageBox / prompt（替代原生）</td></tr>
+<tr><td><code>__notify</code></td><td>站内通知：show(opts) 返回元素或 null、dismissAll()、pendingCount()、resetPendingCount()</td></tr>
+<tr><td><code>__popover</code></td><td>下拉浮层：open({anchor, content, …}) 把菜单搬进 body 浮出层（能伸出插件窗口）、close / closeAll / openCount / z</td></tr>
+<tr><td><code>__dock</code></td><td>程序坞：minimizeToDock / restoreFromDock / setBadge / addToDock / updateRecents / syncRunningApps …</td></tr>
+<tr><td><code>__settings</code> / <code>__log</code></td><td>见 <a href="settings.html">设置</a> / <a href="log.html">日志</a></td></tr>
+<tr><td><code>__sound</code> / <code>__display</code> / <code>__lock</code> / <code>__permissions</code> / <code>__spotlight</code></td><td>各自 owner 模块接口</td></tr>
+<tr><td><code>__surface</code></td><td>模糊等级与文字令牌，见 <a href="surface.html">表面</a></td></tr>
+<tr><td><code>__osfs</code></td><td>文件存储，见 <a href="osfs.html">OSFS</a></td></tr>
+<tr><td><code>__launchpad</code></td><td>启动台开/关（isOpen / open / close）</td></tr>
+<tr><td><code>__getPluginByName / __getAppByName / __pluginManagerReady</code></td><td>按显示名解析插件/应用记录、等注册表就绪</td></tr>
+<tr><td><code>__menuActions</code></td><td>菜单命令注册表（你加的键必须在 plugin-unload 里 delete）</td></tr>
+</table>
+
+<h2>菜单 cmd 语法（字符串形态只有两种合法）</h2>
+<pre><code>name                 // 注册表键名
+name('arg')          // + 至多一个字符串实参</code></pre>
+<p>其它任何 JS 表达式<b>一律被拒绝</b>并打日志——MV3 扩展页 CSP 是 <code>script-src 'self'</code>，
+<code>new Function</code> / <code>eval</code> 直接失败。JS 里写的菜单表可以把 cmd 放成函数（内核内置 mod 这么用），
+但 HTML 上的 <code>cmd="…"</code> 属性读出来永远是字符串，插件界面只能写键名。</p>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

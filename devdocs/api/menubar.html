@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>菜单栏状态项 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="menubar" data-base="../" data-version="0.2.95">
+<main>
+<h1>菜单栏状态项</h1>
+<p class="lede">v0.2.95 新增：菜单栏右侧时钟前的电池 / 音量 / 蓝牙三个真数据状态项。</p>
+
+<h2>三个状态项（menubar-status.js）</h2>
+<table>
+<tr><th>项</th><th>数据源（真数据，无装饰图）</th><th>显隐</th></tr>
+<tr><td>电池</td><td><code>navigator.getBattery()</code> 直读 + 百分比数字；<b>无电池 API 或桌面机返回「100% 充电中」的假状态时整项隐藏，不画假电池</b></td><td>默认显示</td></tr>
+<tr><td>音量</td><td><code>sound.master</code> / <code>sound.muted</code>（与控制中心同一 JSON 槽；静音时波形熄灭）</td><td>默认显示</td></tr>
+<tr><td>蓝牙</td><td><code>controlcenter.bluetooth</code>（关闭态降透明度）</td><td>默认显示</td></tr>
+</table>
+
+<h2>三个「在菜单栏显示」开关</h2>
+<p>模块自注册进设置中枢（owner 权威，同 <code>controlcenter.showInMenuBar</code> 的自持定义模式）：</p>
+<pre><code>menubar.showBattery    // 系统设置 › 控制中心面板自动出卡片（group: 菜单栏状态项）
+menubar.showVolume
+menubar.showBluetooth</code></pre>
+<p>关掉的项元素仍在 DOM，只是 <code>display:none</code> 不占位——再打开不必重新挂载。
+开关由设置面板驱动，与菜单栏本身<b>双向同步</b>。</p>
+
+<h2>交互与扩展</h2>
+<ul>
+<li>点击任一状态项 → 打开控制中心面板（连通性/音量模块的家；不做「点电池开电池面板」的半吊子路径）；</li>
+<li>数据刷新订阅 <code>settings-changed</code>（音量/静音/蓝牙都经设置中枢写）；</li>
+<li><b>加自定义状态项</b>：往 <code>menubar-status.js</code> 的 <code>ICONS</code> + <code>makeItem()</code> 序列里加一项，
+    配套注册一个 <code>menubar.show&lt;Key&gt;</code> 定义（组「菜单栏状态项」、pane controlcenter），数据源接进
+    settings-changed 或你自己的事件；遵循「无数据就隐藏整项，不画假值」的原则（battery 的 no-data 处理是示范）。</li>
+</ul>
+<div class="note"><b>历史收口</b> v0.2.95 同时删掉了菜单栏右端那张<b>无监听的 wifi 装饰图</b>
+（appControl 列表里的一项）——真实 Wi-Fi 状态在控制中心面板看，不再摆死图。</div>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>日志 __log · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="log" data-base="../" data-version="0.2.95">
+<main>
+<h1>日志 __log</h1>
+<p class="lede">可查、可留存、可导出的运行记录；300+ 处裸 console.* 已被自动归档。</p>
+
+<h2>方法</h2>
+<table>
+<tr><th>方法</th><th>说明</th></tr>
+<tr><td><code>info/warn/error/debug(source, msg, data?)</code></td><td>按级别写一条；被门槛过滤时返回 null</td></tr>
+<tr><td><code>entry(level, source, msg, data?)</code></td><td>级别是变量时的统一入口；非法级别按 info 归档</td></tr>
+<tr><td><code>for(source)</code></td><td>绑定来源的子日志器（.info/.warn/.error/.debug/.entry/.timer）</td></tr>
+<tr><td><code>timer(label)</code></td><td><code>timer("首屏").stop()</code> 以 info 记毫秒差并返回数字</td></tr>
+<tr><td><code>assert(cond, source, msg)</code></td><td>不成立记 error 并返回 false</td></tr>
+<tr><td><code>query(opts?)</code> / <code>recent(n=100)</code> / <code>count()</code> / <code>stats()</code></td><td>条件筛选 / 最近 n 条（时间正序）/ 条数 / 分级分来源统计（含 capacity、dropped）</td></tr>
+</table>
+
+<h2>门槛与来源分类</h2>
+<ul>
+<li>六个调试项由 log.js 自注册：<code>debug.logLevel</code>（门槛）/ <code>debug.bufferSize</code> /
+    <code>debug.persist</code> / <code>debug.captureConsole</code> / <code>debug.captureErrors</code> / <code>debug.persistCount</code>。
+    <b>默认门槛是 <code>info</code></b>——你写的 debug 不出现是门槛滤掉的，不是丢了；排查时先
+    <code>__settings.set("debug.logLevel","debug")</code>。</li>
+<li>来源统一带类别前缀：已含斜杠的照用；<b>裸名按内核模块白名单判定，未命中一律归 <code>plugin/</code></b>。
+    插件请显式写 <code>plugin/&lt;你的id&gt;</code>——哪天内核加了同名模块，你的日志会静默跑进 kernel/ 里，「按程序分类」维度就废了。</li>
+</ul>
+<pre><code>const log = __log.for("plugin/my-plugin");
+log.info("界面就绪");            // → source = "plugin/my-plugin"
+log.timer("首屏").stop();</code></pre>
+
+<h2>缓冲与留存</h2>
+<p>缓冲在内核（跨窗口、跨刷新）；已写的代码不必改造——<code>console.*</code> 在 log.js 求值时就被包了一层，
+先归档再原样输出，浏览器控制台行为不变。应用内查看：顶栏「调试 → 查看运行记录」
+（清空 / 导出文件 / 复制剪贴板 / 切门槛 / 重载当前插件都在那个菜单里）。</p>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -843,3 +843,113 @@ body.dark-mode .cc-privacy-chev {
   display: block;
   fill: none;
 }
+
+/* ── 二级详情与「不可用」态（F-20） ─────────────────────────────────────
+   不可用模块只展示真实状态与原因，不再提供会翻转假布尔的开关。
+   详情页从主视图内部替换内容，返回按钮复用 chevron 图标旋转 180°。 */
+.cc-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 2px 4px;
+}
+
+.cc-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cc-detail-back {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.75);
+  cursor: pointer;
+  transform: rotate(180deg);
+}
+
+.cc-detail-back:hover {
+  background: rgba(127, 127, 127, 0.18);
+}
+
+.cc-detail-back svg {
+  width: 12px;
+  height: 12px;
+}
+
+html[data-theme="dark"] .cc-detail-back,
+body.dark-mode .cc-detail-back {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.cc-detail-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+html[data-theme="dark"] .cc-detail-title,
+body.dark-mode .cc-detail-title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cc-detail-note {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+html[data-theme="dark"] .cc-detail-note,
+body.dark-mode .cc-detail-note {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.cc-detail-action {
+  align-self: flex-start;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: var(--accent, #0a84ff);
+  color: #fff;
+  cursor: pointer;
+}
+
+.cc-detail-action:hover {
+  filter: brightness(1.08);
+}
+
+/* 不可用：整体降不透明度 + 去掉蓝色"开启"态，避免看起来仍可切换 */
+.cc-conn-row--unavailable {
+  opacity: 0.55;
+}
+
+.cc-conn-row--unavailable .cc-conn-icon {
+  background: rgba(127, 127, 127, 0.35);
+}
+
+.cc-conn-row--unavailable:hover {
+  background: transparent;
+}
+
+.cc-small-card--unavailable {
+  opacity: 0.55;
+}
+
+.cc-small-sub {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .cc-small-sub,
+body.dark-mode .cc-small-sub {
+  color: rgba(255, 255, 255, 0.45);
+}

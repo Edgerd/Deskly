@@ -8,6 +8,20 @@
     "pathLabel": "請求的路徑喵"
   },
   "menu": {
+    "reason": {
+      "planned": "还没做喵",
+      "browser": "浏览器不让喵",
+      "context": "现在没东西可以点喵"
+    },
+    "note": {
+      "fileOps": "文件操作还没接上喵",
+      "editOps": "编辑命令还没接上喵",
+      "print": "打印要用浏览器的框喵",
+      "getInfo": "简介窗口还没做喵",
+      "toolbar": "工具栏还不能自定义喵",
+      "utilities": "这里没有「实用工具」喵",
+      "help": "说明书正在搬进来喵"
+    },
     "logo": "本机在此喵~",
     "about": "关于本机喵~",
     "systemPreferences": "系统设置...喵~",
@@ -49,7 +63,7 @@
     "history": "历史记录喵~",
     "bookmarks": "书签喵~",
     "debug": "调试喵~",
-    "trashEmptied": "垃圾倒完了喵（ demo ）。",
+    "trashEmptied": "垃圾倒完了喵。",
     "app": "喵应用",
     "quit": "退下喵",
     "new": "新開喵",
@@ -83,7 +97,8 @@
       "dumpZLayers": "谁压着谁体检喵~",
       "selfTest": "挠自己一下喵~",
       "toggleDeveloperMode": "开发者模式开关喵~"
-    }
+    },
+    "goTrash": "废纸篓喵~"
   },
   "finder": {
     "title": "访达喵~",
@@ -187,7 +202,12 @@
     "goToFolder": "跳到資料夾喵：",
     "initError": "喵達 startup 失敗喵，關掉再試一次。",
     "showInfo": "看看簡介喵",
-    "unsupportedPreview": "這類檔案喵還 preview 不了。"
+    "unsupportedPreview": "這類檔案喵還 preview 不了。",
+    "emptyTrash": "清倒废纸篓...喵~",
+    "emptyTrashConfirm": "要永久删除废纸篓里所有项目吗喵？撤销不了哦喵~。",
+    "putBack": "放回原处喵~",
+    "putBackFailed": "放回原处没成功（原位置可能不在了）喵，换个文件夹放吧喵~。",
+    "trashMoveFailed": "没移进废纸篓喵，重试或重新授权喵~。"
   },
   "dock": {
     "launchpad": "启动台喵~",
@@ -213,11 +233,12 @@
     "hideDock": "Dock藏起來喵",
     "hideRecentApps": "「最近used喵」藏起來",
     "openSettings": "系統設定開喵",
-    "openWith": "用 {app} 開 {name} 喵",
+    "openWith": "用 {app} 開 {name}（演示：文件还没真正交给应用）喵",
     "options": "選項喵",
     "quit": "退下喵",
     "showDock": "Dock露出來喵",
-    "showRecentApps": "「最近used喵」露出來"
+    "showRecentApps": "「最近used喵」露出來",
+    "trashMoved": "已移入废纸篓（{n} 项）喵~"
   },
   "common": {
     "ok": "好喵~",
@@ -246,7 +267,28 @@
     "on": "开启喵~",
     "off": "关闭喵~",
     "everyone": "所有人喵~",
-    "connected": "已连接喵~"
+    "connected": "已连接喵~",
+    "unavailable": "用不了喵",
+    "notConnected": "断网啦喵",
+    "nowPlaying": "正在唱喵",
+    "inPageMedia": "这一页在放的东西喵",
+    "play": "放吧喵",
+    "pause": "歇会儿喵",
+    "back": "回去喵",
+    "openDisplay": "打开显示器设置喵",
+    "openSound": "打开声音设置喵",
+    "cameraInUse": "相机被人用着喵",
+    "micInUse": "麦克风被人用着喵",
+    "locationInUse": "定位在用喵",
+    "detail": {
+      "wifi": "浏览器只知道有没有网喵，看不到旁边的网，也没法输密码喵。",
+      "bluetooth": "浏览器摸不到蓝牙喵，所以既没有设备表，也不能开关喵。",
+      "airdrop": "隔空投送要用系统自己的无线本事喵，浏览器做不到喵。",
+      "airplane": "飞行模式要直接关无线硬件喵，浏览器没这个权限喵。",
+      "mirroring": "投屏要系统把画面送出去喵，浏览器做不到喵。",
+      "display": "分辨率、刷新率和屏幕摆放归系统管喵；亮度和夜览在系统设置里喵。",
+      "volume": "用哪个喇叭是系统定的喵，这里只能调音量和静音喵。"
+    }
   },
   "settings": {
     "language": "喵語選擇",
@@ -956,6 +998,39 @@
       "word": "文稿喵",
       "excel": "表格喵",
       "ppt": "演示喵"
+    },
+    "manual": "Mac 说明书喵"
+  },
+  "manual": {
+    "badge": "说明书喵",
+    "searchPlaceholder": "翻翻说明书喵",
+    "chapters": "章节喵",
+    "sections": "小节喵",
+    "imageNote": "图都写成小字了喵，原图在 docs/iMac-2024-macOS15-知识库 里喵",
+    "sectionUnit": "节喵",
+    "resultUnit": "条喵",
+    "noResults": "找不到喵",
+    "loadFailed": "说明书读不出来喵，重装一下嘛喵。"
+  },
+  "menubar": {
+    "battery": "电池喵~",
+    "volume": "声音喵~",
+    "bluetooth": "蓝牙喵~",
+    "batteryTip": "电池 {pct}%{state}喵~",
+    "batteryCharging": "（充电中）",
+    "volumeTip": "音量 {v}%喵~",
+    "bluetoothOff": "（关闭）",
+    "showBattery": "电池",
+    "showVolume": "声音",
+    "showBluetooth": "蓝牙"
+  },
+  "keyboard": {
+    "tier": {
+      "native": "绑好了喵",
+      "fallback": "替代按键喵",
+      "reserved": "浏览器留着喵",
+      "planned": "还没做喵",
+      "menu": "菜单里能点喵"
     }
   }
 }

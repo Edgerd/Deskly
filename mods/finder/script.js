@@ -9,6 +9,7 @@
 
 import { VFS } from '../../src/javascripts/vfs.js';
 import { OSFS } from '../../src/javascripts/osfs.js';
+import { TRASH_ORIGIN_SUFFIX } from '../../src/javascripts/trash.js';
 import { getAppByExtension, openApp } from '../../src/javascripts/plugin-manager.js';
 import { i18n } from '../../src/javascripts/i18n.js';
 import { createContextMenu } from '../../src/javascripts/ui/contextMenu.js';
@@ -76,8 +77,12 @@ async function render(path) {
     const seq = ++renderSeq;
     FinderState.setCurrentPath(path);
     try {
-        const entries = await VFS.list(path);
+        let entries = await VFS.list(path);
         if (disposed || seq !== renderSeq) return;
+        // P0-4：/废纸篓 视图隐藏「放回原处」的溯源伴生文件（记账用，不是真实体）
+        if (OSFS.normalizePath(path) === OSFS.TOP.trash.path) {
+            entries = entries.filter((e) => !e.name.endsWith(TRASH_ORIGIN_SUFFIX));
+        }
         FinderState.setEntries(entries);
     } catch (err) {
         if (disposed || seq !== renderSeq) return;
@@ -392,6 +397,16 @@ async function init() {
     };
     document.addEventListener('finder-command', onFinderCommand);
     track(() => document.removeEventListener('finder-command', onFinderCommand));
+
+    // 废纸篓内容变化（P0-4：清倒 / 放回 / 从程序坞拖入）时，正在看 /废纸篓 的窗口跟着刷新。
+    const onTrashChanged = () => {
+        const path = FinderState.getState().currentPath;
+        if (OSFS.normalizePath(path || '/') === OSFS.TOP.trash.path) {
+            refresh().catch((err) => console.error('[finder] 废纸篓刷新失败：', err));
+        }
+    };
+    document.addEventListener('trash-changed', onTrashChanged);
+    track(() => document.removeEventListener('trash-changed', onTrashChanged));
 
     // 6. 键盘快捷键
     const onFinderKeydown = (e) => {

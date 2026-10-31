@@ -16,6 +16,7 @@
 import { VERSION } from "./version.js";
 // 资源路径统一由 paths.js 生成（./mods/<id>/… 与 assets 下的公共图标只有这一个出处）
 import { GENERIC_APP_ICON, modFile, modUrl, modDateUrl } from "./paths.js";
+import { brandIcon } from "./office-brand.js";
 // 窗口层必须静态引入：插件界面注入后要立刻隐藏并在同一帧内完成尺寸/居中，
 // 否则 `await import("./window.js")` 的网络往返会先画出一帧「默认 680×570、
 // 未居中」的裸窗口，再跳到真实尺寸 —— 这正是用户看到的打开瞬间错位。
@@ -82,6 +83,7 @@ const BUILTIN_IDS = [
     "siri",
     "safari",
     "office",
+    "manual",
 ];
 
 // 重显启动台：取消遗留退出计时器并标记运行态（启动台为 fullscreen 入口，根元素 .launchpad 无 id）
@@ -304,6 +306,11 @@ export function getIcon(id) {
 export function getIconForName(nameOrId) {
     const rec = resolveAppRecord(nameOrId);
     if (!rec) return null;
+    // 办公子应用按品牌包取图标（MS 图标缺失时 brandIcon 自动回退 iWork）。
+    if (String(rec.appId || "").startsWith("office.")) {
+        const branded = brandIcon(rec.appId);
+        if (branded) return branded;
+    }
     if (!rec.app) return getIcon(rec.id);
     return resolveManifestIcon(rec.app, rec.id) || getIcon(rec.id);
 }

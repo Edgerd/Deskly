@@ -61,7 +61,7 @@ const PERMISSION_LABELS = {
     "system-patch:dock": ["程序坞补丁", "给 dock 插入或替换内容"],
     "system-patch:finderbar": ["顶栏补丁", "给顶部菜单栏插入或替换内容"],
     "system-patch:desktop": ["桌面补丁", "给桌面层插入或替换内容"],
-    "system-patch:wallpaper": ["壁纸补丁", "给壁纸层插入或替换内容"],
+    "system-patch:wallpaper": ["墙纸补丁", "给墙纸层插入或替换内容"],
     "system-patch:menu": ["菜单补丁", "给顶栏菜单项插入或替换内容"],
 };
 

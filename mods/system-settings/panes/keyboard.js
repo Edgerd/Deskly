@@ -10,6 +10,7 @@
  */
 
 import * as finderbarApi from "../../../src/javascripts/finderbar.js";
+import { tierText } from "../../../src/javascripts/keyboard.js";
 import {
     t, el, note, group, controlSwitch, actionRow, statusRow, table, usePaneStyle,
 } from "../ui.js";
@@ -34,6 +35,7 @@ export const messages = {
                 menuColumn: "菜单",
                 labelColumn: "操作",
                 shortcutColumn: "快捷键",
+                statusColumn: "状态",
                 copyGroup: "快捷键清单",
                 copy: "复制快捷键清单",
                 copyBtn: "复制",
@@ -59,6 +61,7 @@ export const messages = {
                 menuColumn: "Menu",
                 labelColumn: "Action",
                 shortcutColumn: "Shortcut",
+                statusColumn: "Status",
                 copyGroup: "Shortcut list",
                 copy: "Copy shortcut list",
                 copyBtn: "Copy",
@@ -84,6 +87,7 @@ export const messages = {
                 menuColumn: "メニュー",
                 labelColumn: "操作",
                 shortcutColumn: "ショートカット",
+                statusColumn: "状態",
                 copyGroup: "ショートカット一覧",
                 copy: "ショートカット一覧をコピー",
                 copyBtn: "コピー",
@@ -109,6 +113,7 @@ export const messages = {
                 menuColumn: "哪个菜单",
                 labelColumn: "做什么",
                 shortcutColumn: "按什么键",
+                statusColumn: "能不能按喵",
                 copyGroup: "把清单带走喵",
                 copy: "复制快捷键清单",
                 copyBtn: "复制喵",
@@ -125,6 +130,7 @@ const CSS = `
 .ss-keyboard .ss-keyboard__filter .ss-input { flex: 1 1 auto; }
 .ss-keyboard .ss-keyboard__count { font-size: 12px; opacity: .65; white-space: nowrap; }
 .ss-keyboard .ss-table { width: 100%; }
+.ss-keyboard .ss-keyboard__tier { font-size: 12px; opacity: .7; }
 `;
 
 /**
@@ -148,6 +154,13 @@ export function build() {
             { key: "menu", label: t("ss.keyboard.menuColumn", "菜单"), width: "16%" },
             { key: "label", label: t("ss.keyboard.labelColumn", "操作") },
             { key: "shortcut", label: t("ss.keyboard.shortcutColumn", "快捷键"), width: "16%" },
+            {
+                key: "status",
+                label: t("ss.keyboard.statusColumn", "状态"),
+                width: "14%",
+                // 状态来自 keyboard.js 的键位表：已绑定 / 等价键 / 浏览器保留 / 尚未实现 / 菜单可用
+                render: (entry) => el("span", { class: "ss-keyboard__tier", text: tierText(entry.status, t) }),
+            },
         ],
         rows,
         empty: t("ss.keyboard.empty", "没有匹配的快捷键。"),
@@ -155,7 +168,7 @@ export function build() {
 
     /** 按输入框内容过滤表格并更新命中数。 @param {string} query 过滤词 */
     const applyFilter = (query) => {
-        const hits = filterRows(rows, query);
+        const hits = filterRows(rows, query, t);
         shortcutTable.setRows(hits);
         countText.textContent = `${t("ss.keyboard.count", "命中条数")} ${hits.length}/${rows.length}`;
     };
@@ -207,15 +220,16 @@ function readShortcutMap() {
 }
 
 /**
- * 四列模糊过滤（大小写不敏感，任意字段命中即保留）。
+ * 五列模糊过滤（大小写不敏感，任意字段命中即保留；状态列按当前语言参与匹配）。
  * @param {Array<object>} rows 全部条目
  * @param {string} query 过滤词
+ * @param {Function} translate 文案函数
  * @returns {Array<object>} 命中条目
  */
-function filterRows(rows, query) {
+function filterRows(rows, query, translate) {
     const needle = String(query || "").trim().toLowerCase();
     if (!needle) return rows;
-    return rows.filter((entry) => [entry.app, entry.menu, entry.label, entry.shortcut]
+    return rows.filter((entry) => [entry.app, entry.menu, entry.label, entry.shortcut, tierText(entry.status, translate)]
         .some((field) => String(field || "").toLowerCase().includes(needle)));
 }
 

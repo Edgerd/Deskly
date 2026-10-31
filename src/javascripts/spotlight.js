@@ -26,7 +26,7 @@
 import { settings } from "./settings.js";
 import { i18n } from "./i18n.js";
 import { Z } from "./zindex.js";
-import { assetIcon, assetPath, glyph, FOLDER_ICON, GENERIC_DOC_ICON, GENERIC_APP_ICON } from "./paths.js";
+import { assetIcon, assetPath, glyph, modFile, FOLDER_ICON, GENERIC_DOC_ICON, GENERIC_APP_ICON } from "./paths.js";
 import { listApps, isPluginEnabled, displayNameFor } from "./app-registry.js";
 import { VFS } from "./vfs.js";
 
@@ -37,7 +37,14 @@ const HISTORY_MAX = 10;
 const PER_FAMILY_LIMIT = 6;
 
 /** 快捷键候选（与设置项 values 一致）。 */
-const HOTKEYS = ["ctrl+space", "alt+space", "off"];
+const HOTKEYS = ["cmd+space", "ctrl+space", "alt+space", "off"];
+
+/** 唤起键 → 修饰键要求（三选一，空格键本体由 hotkeyMatches 判定）。 */
+const HOTKEY_MAP = {
+    "cmd+space": { meta: true },
+    "ctrl+space": { ctrl: true },
+    "alt+space": { alt: true },
+};
 
 /**
  * 设置面板 id -> 中文名与图标。
@@ -87,7 +94,7 @@ const COMMANDS = [
     { action: "restart", label: "重新启动", sub: "会话命令 · 重新加载页面", icon: glyph("arrow.up.left.and.arrow.down.right") },
     { action: "forceQuit", label: "强制退出全部应用", sub: "会话命令", icon: glyph("hand.raised.fill") },
     { action: "logOut", label: "退出登录", sub: "会话命令", icon: glyph("person.2.fill") },
-    { action: "emptyTrash", label: "清空回收站", sub: "桌面", icon: assetPath("icons/trash/trash_light.png") },
+    { action: "emptyTrash", label: "清倒废纸篓", sub: "桌面", icon: assetPath("icons/trash/trash_light.png") },
     { action: "hideActiveApp", label: "隐藏当前应用", sub: "窗口", icon: glyph("chevron.down") },
     { action: "showAll", label: "显示全部窗口", sub: "窗口", icon: glyph("menubar.dock.rectangle") },
     { action: "aboutThisMac", label: "关于本机", sub: "会话命令", icon: glyph("gear") },
@@ -114,8 +121,8 @@ const ui = {
 /** 注册本模块托管的设置项（其余 spotlight.* 由定义表声明）。 */
 function defineSchema() {
     settings.define({
-        key: "spotlight.hotkey", type: "string", default: "ctrl+space",
-        values: HOTKEYS, valuesLabel: ["Control + 空格", "Option + 空格", "关闭"],
+        key: "spotlight.hotkey", type: "string", default: "cmd+space",
+        values: HOTKEYS, valuesLabel: ["Command + 空格", "Control + 空格", "Option + 空格", "关闭"],
         control: "dropdown", pane: "spotlight", group: "聚焦", order: 5,
         label: "打开快捷键",
     });
@@ -380,8 +387,66 @@ async function searchAll(query) {
     if (enabled("spotlight.apps")) batches.push(await appResults(q));
     if (enabled("spotlight.settings")) batches.push(settingResults(q));
     if (enabled("spotlight.commands")) batches.push(commandResults(q));
+    if (enabled("spotlight.manual")) batches.push(await manualResults(q));
     if (enabled("spotlight.files")) batches.push(await fileResults(q));
     return rank(batches.flat());
+}
+
+// ---- 使用手册 ----
+
+/** 手册索引：首次搜索时加载一次；失败也记住结果，避免每次输入都重复请求。 */
+let manualIndexPromise = null;
+
+/**
+ * 读手册索引（由 dev/build-manual-content.mjs 生成）。
+ * @returns {Promise<object|null>} 索引对象；不可用时 null
+ */
+function manualIndex() {
+    if (!manualIndexPromise) {
+        manualIndexPromise = fetch(modFile("manual", "content/index.json"))
+            .then((res) => (res.ok ? res.json() : null))
+            .catch(() => null);
+    }
+    return manualIndexPromise;
+}
+
+/** 手册类结果：小节标题与摘要都参与匹配，点按打开对应章节。 */
+async function manualResults(query) {
+    const index = await manualIndex();
+    if (!index || !Array.isArray(index.search)) return [];
+    const hits = [];
+    index.search.forEach((entry) => {
+        const score = rankOf(query, entry.section, entry.text, entry.chapterTitle);
+        if (score === 3) return;
+        hits.push({ entry, score });
+    });
+    hits.sort((a, b) => a.score - b.score);
+    return hits.slice(0, PER_FAMILY_LIMIT).map(({ entry }) => ({
+        type: "manual",
+        label: entry.section,
+        sub: `${entry.chapterTitle} · ${i18n.t("spotlight.manualHint", "手册")}`,
+        icon: glyph("document.blue"),
+        onSelect: () => openManualAt(entry),
+    }));
+}
+
+/**
+ * 打开手册并跳到该节。手册是插件，首次打开要等外壳与脚本就位，
+ * 这里轮询中栏条目出现后再派发（固定延时在慢机器上会赶在监听注册之前）。
+ * @param {{chapter:string,h:number}} entry 命中的索引条目
+ * @returns {Promise<void>}
+ */
+async function openManualAt(entry) {
+    await openAppByName("Mac 使用手册");
+    const jump = () => document.dispatchEvent(new CustomEvent("manual-open", {
+        detail: { chapter: entry.chapter, h: entry.h }, bubbles: true,
+    }));
+    let tries = 0;
+    const tick = () => {
+        if (document.querySelector(".manual__chapters .manual__row")) { setTimeout(jump, 60); return; }
+        if (tries++ < 50) setTimeout(tick, 100);
+    };
+    tick();
 }
 
 // ---- 搜索历史 ----
@@ -730,17 +795,21 @@ function toggleSpotlight() {
 
 /** 事件是否命中给定的快捷键描述。 */
 function hotkeyMatches(spec, event) {
-    if (!spec || spec === "off") return false;
+    if (!spec || spec === "off" || event.repeat || event.shiftKey) return false;
+    const want = HOTKEY_MAP[spec];
+    if (!want) return false;
     if (event.key !== " " && event.code !== "Space") return false;
-    const space = spec === "ctrl+space"
-        ? (event.ctrlKey || event.metaKey) && !event.altKey
-        : event.altKey && !event.ctrlKey && !event.metaKey;
-    return Boolean(space) && !event.shiftKey && !event.repeat;
+    return Boolean(want.meta) === Boolean(event.metaKey)
+        && Boolean(want.ctrl) === Boolean(event.ctrlKey)
+        && Boolean(want.alt) === Boolean(event.altKey);
 }
 
 /** document 级快捷键入口。 */
 function onHotkey(event) {
-    if (!hotkeyMatches(settings.get("spotlight.hotkey"), event)) return;
+    // F4：手册里的「聚焦」键，无修饰键时归聚焦（启动台改用 ⌃↓，见 keyboard.js 键位表）
+    const plainF4 = event.key === "F4"
+        && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.repeat;
+    if (!plainF4 && !hotkeyMatches(settings.get("spotlight.hotkey"), event)) return;
     event.preventDefault();
     event.stopPropagation();
     toggleSpotlight();

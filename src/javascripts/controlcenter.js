@@ -27,6 +27,7 @@
 
 import { i18n } from "./i18n.js";
 import { Z } from "./zindex.js";
+import { dispatchMenuCommand } from "./ui/menuCommands.js";
 
 // ========== SVG 图标库（内联，避免外链依赖） ==========
 const SVG = {
@@ -116,11 +117,8 @@ const DEFAULT_STATE = {
   battery: 100,
   batteryCharging: true,
   batteryHasBattery: false,
-  nowPlaying: {
-    song: "Night Drive",
-    artist: "The Midnight",
-    playing: true,
-  },
+  // 不预置演示曲目：没有真实 <audio>/<video> 在播时不渲染「正在播放」卡片（F-20）。
+  nowPlaying: { song: "", artist: "", playing: false },
   privacy: {
     mic: false,
     camera: false,
@@ -131,6 +129,8 @@ const DEFAULT_STATE = {
 // ========== 模块变量 ==========
 let state = { ...DEFAULT_STATE };
 let panelEl = null;
+/** 当前二级详情视图（null = 主视图）；点 Wi-Fi/蓝牙等卡片进入，返回时清空。 */
+let detailView = null;
 let overlayEl = null;
 let iconEl = null;
 let finderbarEl = null;
@@ -163,10 +163,10 @@ function escapeText(value) {
  * @type {Array<{key: string, path: string, type: string, default: *, label: string, hint?: string, owner: string, values?: Array<string>, valuesLabel?: Array<string>, min?: number, max?: number, step?: number, format?: string}>}
  */
 export const CONTROL_CENTER_FIELDS = [
-  { key: "controlcenter.wifi", path: "wifi", type: "boolean", default: DEFAULT_STATE.wifi, label: "Wi-Fi", owner: "system" },
-  { key: "controlcenter.bluetooth", path: "bluetooth", type: "boolean", default: DEFAULT_STATE.bluetooth, label: "蓝牙", owner: "system" },
-  { key: "controlcenter.airdrop", path: "airdrop", type: "boolean", default: DEFAULT_STATE.airdrop, label: "隔空投送", hint: "开启后对「所有人」可见", owner: "system" },
-  { key: "controlcenter.airplane", path: "airplane", type: "boolean", default: DEFAULT_STATE.airplane, label: "飞行模式", hint: "同时关闭 Wi-Fi、蓝牙与隔空投送", owner: "system" },
+  { key: "controlcenter.wifi", path: "wifi", type: "boolean", default: DEFAULT_STATE.wifi, label: "Wi-Fi", owner: "system", unavailable: true },
+  { key: "controlcenter.bluetooth", path: "bluetooth", type: "boolean", default: DEFAULT_STATE.bluetooth, label: "蓝牙", owner: "system", unavailable: true },
+  { key: "controlcenter.airdrop", path: "airdrop", type: "boolean", default: DEFAULT_STATE.airdrop, label: "隔空投送", hint: "开启后对「所有人」可见", owner: "system", unavailable: true },
+  { key: "controlcenter.airplane", path: "airplane", type: "boolean", default: DEFAULT_STATE.airplane, label: "飞行模式", hint: "同时关闭 Wi-Fi、蓝牙与隔空投送", owner: "system", unavailable: true },
   { key: "controlcenter.focus", path: "focus", type: "boolean", default: DEFAULT_STATE.focus, label: "专注模式", owner: "system" },
   {
     key: "controlcenter.focusMode", path: "focusMode", type: "string", default: DEFAULT_STATE.focusMode,
@@ -175,7 +175,7 @@ export const CONTROL_CENTER_FIELDS = [
     label: "专注模式名称", owner: "system",
   },
   { key: "controlcenter.stage", path: "stage", type: "boolean", default: DEFAULT_STATE.stage, label: "台前调度", owner: "system" },
-  { key: "controlcenter.mirroring", path: "mirroring", type: "boolean", default: DEFAULT_STATE.mirroring, label: "屏幕镜像", owner: "system" },
+  { key: "controlcenter.mirroring", path: "mirroring", type: "boolean", default: DEFAULT_STATE.mirroring, label: "屏幕镜像", owner: "system", unavailable: true },
 ];
 
 /** 路径 -> 字段定义（含由其它内核模块托管的声音 / 亮度字段）。 */
@@ -377,6 +377,7 @@ function createPanel() {
 }
 
 function renderPanel() {
+  if (detailView) { renderDetailView(); return; }
   if (!panelEl) createPanel();
 
   // 隐私指示条（若有任一激活，沿用既有逻辑；不固定显示 Voice Memos 顶条）
@@ -384,9 +385,9 @@ function renderPanel() {
   let privacyHtml = "";
   if (privacyActive) {
     let dotType = state.privacy.camera ? "camera" : (state.privacy.mic ? "mic" : "location");
-    let label = state.privacy.camera ? "摄像头正在被 Safari 使用"
-      : state.privacy.mic ? "麦克风正在被 Safari 使用"
-      : "位置服务正在使用中";
+    let label = state.privacy.camera ? t("controlcenter.cameraInUse", "摄像头正在被使用")
+      : state.privacy.mic ? t("controlcenter.micInUse", "麦克风正在被使用")
+      : t("controlcenter.locationInUse", "位置服务正在使用中");
     privacyHtml = `
       <div class="cc-privacy-bar" data-action="privacy">
         <span class="cc-privacy-dot ${dotType}"></span>
@@ -398,25 +399,24 @@ function renderPanel() {
   // 状态读取走「设置中枢优先」：亮度 / 音量的键（display.brightness、sound.master、
   // sound.muted）由其它内核模块托管，面板显示中枢里的值而不是内存镜像，
   // 避免控制中心与系统设置各显示各的。
-  const wifi = Boolean(currentValueOf("wifi"));
-  const bluetooth = Boolean(currentValueOf("bluetooth"));
-  const airdrop = Boolean(currentValueOf("airdrop"));
-  const airplane = Boolean(currentValueOf("airplane"));
+  // 真实可得的状态：网络在线/离线来自 navigator.onLine；其余无线开关浏览器不提供。
+  // 不再把内存镜像里的布尔当成"已连接"渲染 —— 那只是界面自己骗自己（F-20）。
+  const online = navigator.onLine !== false;
   const focusOn = Boolean(currentValueOf("focus"));
   const stageOn = Boolean(currentValueOf("stage"));
-  const mirroringOn = Boolean(currentValueOf("mirroring"));
   const brightness = Number(currentValueOf("displayBrightness"));
   const volume = Number(currentValueOf("volume"));
   const muted = Boolean(currentValueOf("volumeMuted"));
+  const unavailable = t("controlcenter.unavailable", "不可用");
 
-  // 第一行：左连通性组（Wi-Fi / 蓝牙 / AirDrop / 飞行模式）+ 右 Focus 大卡
+  // 第一行：左连通性组（Wi-Fi 显示真实在线状态；蓝牙/隔空投送/飞行模式标为不可用）+ 右 Focus 大卡
   const connectivityHtml = `
     <div class="cc-grid">
       <div class="cc-card cc-connectivity">
-        ${renderConnRow("wifi", SVG.wifi, wifi, t("controlcenter.wifi", "Wi-Fi"), wifi ? "WebStartOS-Home" : t("controlcenter.off", "关闭"))}
-        ${renderConnRow("bluetooth", SVG.bluetooth, bluetooth, t("controlcenter.bluetooth", "蓝牙"), bluetooth ? t("controlcenter.on", "开启") : t("controlcenter.off", "关闭"))}
-        ${renderConnRow("airdrop", SVG.airdrop, airdrop, t("controlcenter.airdrop", "隔空投送"), airdrop ? t("controlcenter.everyone", "所有人") : t("controlcenter.off", "关闭"))}
-        ${renderConnRow("airplane", SVG.airplane, airplane, t("controlcenter.airplane", "飞行模式"), airplane ? t("controlcenter.on", "开启") : t("controlcenter.off", "关闭"))}
+        ${renderConnRow("wifi", SVG.wifi, online, t("controlcenter.wifi", "Wi-Fi"), online ? t("controlcenter.connected", "已连接") : t("controlcenter.notConnected", "未连接"), { available: false })}
+        ${renderConnRow("bluetooth", SVG.bluetooth, false, t("controlcenter.bluetooth", "蓝牙"), unavailable, { available: false })}
+        ${renderConnRow("airdrop", SVG.airdrop, false, t("controlcenter.airdrop", "隔空投送"), unavailable, { available: false })}
+        ${renderConnRow("airplane", SVG.airplane, false, t("controlcenter.airplane", "飞行模式"), unavailable, { available: false })}
       </div>
       <div class="cc-card cc-focus-card" data-action="focus" role="button" tabindex="0"
            aria-label="${escapeText(t("controlcenter.focus", "Focus"))}" aria-pressed="${focusOn ? "true" : "false"}">
@@ -433,10 +433,11 @@ function renderPanel() {
         <div class="cc-small-icon ${stageOn ? "active" : ""}" aria-hidden="true">${SVG.stage}</div>
         <div class="cc-small-title">${escapeText(t("controlcenter.stageManager", "台前调度"))}</div>
       </div>
-      <div class="cc-card cc-small-card" data-action="mirroring" role="button" tabindex="0"
-           aria-label="${escapeText(t("controlcenter.screenMirroring", "屏幕镜像"))}" aria-pressed="${mirroringOn ? "true" : "false"}">
-        <div class="cc-small-icon ${mirroringOn ? "active" : ""}" aria-hidden="true">${SVG.mirroring}</div>
+      <div class="cc-card cc-small-card cc-small-card--unavailable" data-action="mirroring" role="button" tabindex="0"
+           aria-label="${escapeText(t("controlcenter.screenMirroring", "屏幕镜像"))}">
+        <div class="cc-small-icon" aria-hidden="true">${SVG.mirroring}</div>
         <div class="cc-small-title">${escapeText(t("controlcenter.screenMirroring", "屏幕镜像"))}</div>
+        <div class="cc-small-sub">${escapeText(unavailable)}</div>
       </div>
     </div>`;
 
@@ -460,69 +461,62 @@ function renderPanel() {
     )}
   `;
 
-  // 第五行：Music 卡（歌曲封面显示区 + 播放控制）
-  const hasNowPlaying = state.nowPlaying.playing || (state.nowPlaying.song && state.nowPlaying.song.length > 0);
-  let musicHtml = "";
-  if (hasNowPlaying) {
-    musicHtml = `
-    <div class="cc-nowplaying" data-action="nowplaying">
-      <div class="cc-np-art">${SVG.music}</div>
-      <div class="cc-np-info">
-        <div class="cc-np-song">${escapeText(state.nowPlaying.song || "未播放音乐")}</div>
-        <div class="cc-np-artist">${escapeText(state.nowPlaying.artist || "")}</div>
-      </div>
-      <div class="cc-np-controls">
-        <div class="cc-np-btn" data-np="prev">${SVG.prev}</div>
-        <div class="cc-np-btn play" data-np="toggle">${state.nowPlaying.playing ? SVG.pause : SVG.play}</div>
-        <div class="cc-np-btn" data-np="next">${SVG.next}</div>
-      </div>
-    </div>`;
-  }
+  // 第五行：正在播放（只显示页面里真实在播的媒体；没有就整卡隐藏，绝不预置假曲目）
+  const playingMedia = findPlayingMedia();
+  const musicHtml = playingMedia ? renderNowPlaying(playingMedia) : "";
 
   panelEl.innerHTML = privacyHtml + connectivityHtml + stageRow + sliderRow + musicHtml;
 
-  // 绑定连通性行点击
+  // 连通性行：没有可切换的真实能力，点按只打开二级说明（不再翻转假布尔）
   panelEl.querySelectorAll(".cc-conn-row").forEach((el) => {
-    el.addEventListener("click", () => handleCardAction(el.getAttribute("data-action")));
+    el.addEventListener("click", () => openDetail(el.getAttribute("data-action")));
   });
 
   // 隐私条点击
   const privacyBar = panelEl.querySelector(".cc-privacy-bar");
   if (privacyBar) {
-    privacyBar.addEventListener("click", () => window.__dialog && window.__dialog.alert("隐私设置", "请前往系统设置查看详细信息。"));
+    privacyBar.addEventListener("click", () => openSettingsPane("privacy"));
   }
 
-  // Focus / Stage / Screen 点击
-  panelEl.querySelectorAll(".cc-focus-card, .cc-small-card").forEach((el) => {
+  // Focus 走真实开关；Stage 走真实收纳（F-09 未落地前只切桌面图标，由 applyStageManager 负责）
+  panelEl.querySelectorAll(".cc-focus-card").forEach((el) => {
     el.addEventListener("click", () => handleCardAction(el.getAttribute("data-action")));
   });
+  panelEl.querySelectorAll(".cc-small-card").forEach((el) => {
+    el.addEventListener("click", () => {
+      const action = el.getAttribute("data-action");
+      if (action === "stage") handleCardAction(action);
+      else openDetail(action);
+    });
+  });
 
-  // 正在播放按钮
+  // 正在播放：只有一个真实按钮（播放/暂停），不再提供没有播放列表支撑的上一首/下一首
   panelEl.querySelectorAll(".cc-np-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      handleNowPlaying(btn.getAttribute("data-np"));
+      toggleMedia(playingMedia);
     });
   });
-
-  // 正在播放整体点击（打开音乐）
-  const npCard = panelEl.querySelector('[data-action="nowplaying"]');
-  if (npCard) {
-    npCard.addEventListener("click", () => {
-      hide();
-      window.__dialog && window.__dialog.alert("音乐", "此处可打开内置音乐播放器。");
-    });
-  }
 
   bindSliders();
 }
 
 // ========== 连通性行（左大蓝圆 + 右标题/副标题） ==========
-function renderConnRow(action, iconSvg, active, title, sub) {
+/**
+ * @param {string} action 动作/详情标识
+ * @param {string} iconSvg 图标
+ * @param {boolean} active 是否处于"开启/在线"态
+ * @param {string} title 标题
+ * @param {string} sub 副标题
+ * @param {{available?: boolean}} [opts] available=false 表示浏览器无法提供该开关，只展示状态
+ * @returns {string} 行 HTML
+ */
+function renderConnRow(action, iconSvg, active, title, sub, opts = {}) {
+  const available = opts.available !== false;
   return `
-    <div class="cc-conn-row" data-action="${action}" role="button" tabindex="0"
-         aria-label="${escapeText(title)}" aria-pressed="${active ? "true" : "false"}">
-      <div class="cc-conn-icon ${active ? "active" : ""}" aria-hidden="true">${iconSvg}</div>
+    <div class="cc-conn-row ${available ? "" : "cc-conn-row--unavailable"}" data-action="${action}" role="button" tabindex="0"
+         aria-label="${escapeText(title)}" ${available ? `aria-pressed="${active ? "true" : "false"}"` : ''}>
+      <div class="cc-conn-icon ${active && available ? "active" : ""}" aria-hidden="true">${iconSvg}</div>
       <div class="cc-conn-text">
         <div class="cc-conn-title">${escapeText(title)}</div>
         <div class="cc-conn-sub">${escapeText(sub)}</div>
@@ -626,8 +620,8 @@ function bindSliders() {
     if (rightBtn) {
       rightBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (key === "display") window.__dialog && window.__dialog.alert("显示器设置", "可选择显示器分辨率、色彩、Night Shift 等。");
-        else if (key === "volume") window.__dialog && window.__dialog.alert("声音输出", "可选择内置扬声器、耳机、AirPlay 等输出设备。");
+        // 不再用弹窗承诺做不到的能力（分辨率 / AirPlay 输出）：直接打开真实存在的设置面板。
+        openSettingsPane(key === "display" ? "display" : "sound");
       });
     }
   });
@@ -654,10 +648,10 @@ function applySliderValue(key, ratio, persist = true) {
 
 // 将亮度映射到 CSS 覆盖层（屏幕变暗效果）
 function applyDisplayBrightness() {
-  let overlay = document.getElementById("webstartos-brightness-overlay");
+  let overlay = document.getElementById("deskly-brightness-overlay") || document.getElementById("webstartos-brightness-overlay");
   if (!overlay) {
     overlay = document.createElement("div");
-    overlay.id = "webstartos-brightness-overlay";
+    overlay.id = "deskly-brightness-overlay";
     Object.assign(overlay.style, {
       position: "fixed", top: 0, left: 0,
       width: "100vw", height: "100vh",
@@ -696,15 +690,153 @@ function applyStageManager() {
   desktop.classList.toggle("stage-manager-on", !!state.stage);
 }
 
-// ========== 正在播放按钮处理 ==========
-// 曲目与播放态也存在同一个 JSON 槽里，键由本模块自己登记（controlcenter.nowPlaying），
-// 所以这里同样只经设置中枢写入，不再直接改 state —— 单一写入方对所有字段一视同仁。
-function handleNowPlaying(action) {
-  const next = { ...state.nowPlaying };
-  if (action === "toggle") next.playing = !next.playing;
-  else if (action === "prev") { next.song = "Night Drive"; next.artist = "The Midnight"; }
-  else if (action === "next") { next.song = "Sunset Lover"; next.artist = "Petit Biscuit"; }
-  commitToSettings(NOW_PLAYING_KEY, "nowPlaying", next);
+// ========== 正在播放：只认真实在播的页面媒体 ==========
+/**
+ * 找出页面里正在播放的 <audio>/<video>。
+ * 只扫描主文档：插件在自己的 iframe 里，跨文档读取会被同源策略挡住；
+ * 需要让控制中心看到播放状态的插件应给媒体元素加 `data-deskly-title`，
+ * 并通过 window.parent 广播（后续接 Deskly.nowPlaying 时再补）。
+ * @returns {HTMLMediaElement|null}
+ */
+function findPlayingMedia() {
+  const list = Array.from(document.querySelectorAll("audio, video"));
+  return list.find((m) => !m.paused && !m.ended && m.readyState > 0) || null;
+}
+
+/** 媒体标题：优先 data-deskly-title，其次 title 属性，最后用通用文案。 */
+function mediaTitle(media) {
+  return media.dataset.desklyTitle || media.getAttribute("title") || t("controlcenter.nowPlaying", "正在播放");
+}
+
+/** 正在播放卡片：只有一个播放/暂停按钮（没有播放列表，就不放上一首/下一首）。 */
+function renderNowPlaying(media) {
+  const paused = media.paused;
+  return `
+    <div class="cc-nowplaying" data-action="nowplaying">
+      <div class="cc-np-art">${SVG.music}</div>
+      <div class="cc-np-info">
+        <div class="cc-np-song">${escapeText(mediaTitle(media))}</div>
+        <div class="cc-np-artist">${escapeText(t("controlcenter.inPageMedia", "页面内正在播放的媒体"))}</div>
+      </div>
+      <div class="cc-np-controls">
+        <div class="cc-np-btn play" data-np="toggle" role="button" tabindex="0"
+             aria-label="${escapeText(paused ? t("controlcenter.play", "播放") : t("controlcenter.pause", "暂停"))}">${paused ? SVG.play : SVG.pause}</div>
+      </div>
+    </div>`;
+}
+
+/** 播放/暂停真实媒体；结束后控制中心会通过 play/pause 监听自行重绘。 */
+function toggleMedia(media) {
+  if (!media) return;
+  if (media.paused) media.play().catch(() => { /* 自动播放被拒：保持暂停态即可 */ });
+  else media.pause();
+}
+
+// ========== 二级详情（无真实能力的模块给解释，有真实能力的给控件 + 设置入口） ==========
+/** 详情页文案：键 + 中文兜底。 */
+const DETAIL_TEXT = {
+  wifi: ["controlcenter.detail.wifi", "浏览器只提供在线/离线状态，无法列出附近网络或输入密码。"],
+  bluetooth: ["controlcenter.detail.bluetooth", "浏览器扩展无法访问系统蓝牙，这里不能切换蓝牙，也不显示设备列表。"],
+  airdrop: ["controlcenter.detail.airdrop", "隔空投送需要 macOS 的系统级无线能力，浏览器扩展无法实现。"],
+  airplane: ["controlcenter.detail.airplane", "飞行模式需要直接控制无线硬件，浏览器不提供该能力。"],
+  mirroring: ["controlcenter.detail.mirroring", "屏幕镜像需要系统级显示输出能力，浏览器扩展无法实现。"],
+  display: ["controlcenter.detail.display", "分辨率、刷新率与多显示器排列由系统决定；亮度与夜览可在系统设置中调整。"],
+  volume: ["controlcenter.detail.volume", "输出设备由系统决定；这里只能调整音量与静音。"],
+};
+
+/** 详情页标题。 */
+function detailTitle(kind) {
+  const map = {
+    wifi: ["controlcenter.wifi", "Wi-Fi"],
+    bluetooth: ["controlcenter.bluetooth", "蓝牙"],
+    airdrop: ["controlcenter.airdrop", "隔空投送"],
+    airplane: ["controlcenter.airplane", "飞行模式"],
+    mirroring: ["controlcenter.screenMirroring", "屏幕镜像"],
+    display: ["controlcenter.display", "显示器"],
+    volume: ["controlcenter.sound", "声音"],
+  };
+  const [key, fallback] = map[kind] || ["controlcenter.detail", "详情"];
+  return t(key, fallback);
+}
+
+/**
+ * 打开二级详情。
+ * @param {string} kind 详情标识（wifi/bluetooth/.../display/volume）
+ */
+function openDetail(kind) {
+  if (!kind) return;
+  detailView = kind;
+  renderPanel();
+}
+
+/**
+ * 渲染二级详情：顶部返回 + 标题，中间是真实控件或原因说明。
+ * 有真实设置面板的（显示器/声音）给一个直达按钮。
+ */
+function renderDetailView() {
+  const kind = detailView;
+  const [noteKey, noteFallback] = DETAIL_TEXT[kind] || ["controlcenter.detail.wifi", ""];
+  const note = t(noteKey, noteFallback);
+  let body = "";
+  let pane = "";
+  if (kind === "display") {
+    body = renderSlider("display", t("controlcenter.display", "显示器"), SVG.sun,
+      Number(currentValueOf("displayBrightness")), false, SVG.airplayDisplay);
+    pane = "display";
+  } else if (kind === "volume") {
+    body = renderSlider("volume", t("controlcenter.sound", "声音"), SVG.volume,
+      Number(currentValueOf("volume")), Boolean(currentValueOf("volumeMuted")), SVG.airpods);
+    pane = "sound";
+  }
+  const action = pane
+    ? `<button type="button" class="cc-detail-action" data-pane="${pane}">${escapeText(
+        pane === "display" ? t("controlcenter.openDisplay", "打开显示器设置") : t("controlcenter.openSound", "打开声音设置"))}</button>`
+    : "";
+  panelEl.innerHTML = `
+    <div class="cc-detail">
+      <div class="cc-detail-head">
+        <button type="button" class="cc-detail-back" aria-label="${escapeText(t("controlcenter.back", "返回"))}">${SVG.chevronRight}</button>
+        <span class="cc-detail-title">${escapeText(detailTitle(kind))}</span>
+      </div>
+      ${body}
+      <div class="cc-detail-note">${escapeText(note)}</div>
+      ${action}
+    </div>`;
+  panelEl.querySelector(".cc-detail-back").addEventListener("click", () => {
+    detailView = null;
+    renderPanel();
+  });
+  const actionBtn = panelEl.querySelector(".cc-detail-action");
+  if (actionBtn) actionBtn.addEventListener("click", () => openSettingsPane(actionBtn.getAttribute("data-pane")));
+  if (body) bindSliders();
+}
+
+/**
+ * 打开系统设置的某个面板（与聚焦的 openPane 同一套深链）。
+ * @param {string} pane 面板 id
+ * @returns {Promise<void>}
+ */
+async function openSettingsPane(pane) {
+  if (!pane) return;
+  hide();
+  try {
+    if (typeof globalThis.__pluginManagerReady === "function") await globalThis.__pluginManagerReady();
+    // 必须等应用真正打开并挂上“打开面板”的监听后再派发：dispatchMenuCommand 是同步的，
+    // 早派发的事件会落在监听注册之前（实测会停在默认面板）。
+    const opener = window.__menuActions && window.__menuActions.openAppByName;
+    if (typeof opener === "function") await opener("系统设置");
+    else dispatchMenuCommand("openAppByName('系统设置')");
+    // 等侧栏真正渲染出来（插件按需加载，固定延时在慢机器上会赶在监听注册之前）
+    for (let i = 0; i < 40; i += 1) {
+      const ready = [...document.querySelectorAll(".ss-nav__btn")].some((btn) => btn.textContent.trim());
+      if (ready) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  } catch { /* 打开失败由命令分发记日志 */ }
+  const jump = () => document.dispatchEvent(new CustomEvent("system-settings-open-pane", { detail: { pane }, bubbles: true }));
+  jump();
+  // 再补一次：外壳可能在首次派发后才完成监听注册（幂等，后到的会覆盖前一次）
+  setTimeout(jump, 300);
 }
 
 // ========== 显示/隐藏 ==========
@@ -720,6 +852,8 @@ export function show() {
 
 export function hide() {
   if (!panelEl) return;
+  // 关闭面板即回到主视图：下次打开不该停在某个二级详情里
+  detailView = null;
   overlayEl.classList.remove("visible");
   panelEl.classList.remove("visible");
   iconEl?.classList.remove("active");
@@ -852,6 +986,51 @@ function currentValueOf(path) {
   return readPath(state, path);
 }
 
+// ========== 麦克风活动：包装 getUserMedia，统计活动音轨 ==========
+/**
+ * 浏览器不暴露全局麦克风是否在被使用，只能在自家调用点统计：
+ * 包装 navigator.mediaDevices.getUserMedia，成功返回后按音轨数计数，
+ * 音轨 ended / 流 inactive 时递减。插件与页面内代码都走同一个 API，因此都能被看到。
+ * 拿不到 mediaDevices（无权限、非安全上下文）时静默跳过，指示器保持不显示。
+ * @returns {void}
+ */
+function installMicActivity() {
+  const md = navigator.mediaDevices;
+  if (!md || typeof md.getUserMedia !== "function" || md.__desklyMicPatched) return;
+  let activeTracks = 0;
+  const sync = () => {
+    const active = activeTracks > 0;
+    if (state.privacy.mic === active) return;
+    state.privacy.mic = active;
+    saveState();
+    if (panelVisible()) renderPanel();
+  };
+  try {
+    const original = md.getUserMedia.bind(md);
+    md.getUserMedia = async (constraints) => {
+      const stream = await original(constraints);
+      const tracks = stream.getAudioTracks ? stream.getAudioTracks() : [];
+      if (tracks.length) {
+        activeTracks += tracks.length;
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
+          activeTracks = Math.max(0, activeTracks - tracks.length);
+          sync();
+        };
+        tracks.forEach((track) => track.addEventListener("ended", release, { once: true }));
+        if (typeof stream.addEventListener === "function") stream.addEventListener("inactive", release, { once: true });
+        sync();
+      }
+      return stream;
+    };
+    md.__desklyMicPatched = true;
+  } catch (err) {
+    logCC("warn", "无法安装麦克风活动监听：", err);
+  }
+}
+
 // ========== 电池 API：读取系统真实电量，但本次不渲染电池卡片 ==========
 async function initBattery() {
   try {
@@ -928,6 +1107,16 @@ export function init() {
   document.addEventListener("languagechange", () => {
     if (panelVisible()) renderPanel();
   });
+
+  // 页面媒体开始/结束播放时重绘：卡片只反映真实在播的东西（F-20）
+  ["play", "pause", "ended"].forEach((type) => {
+    document.addEventListener(type, () => {
+      if (panelVisible()) renderPanel();
+    }, true);
+  });
+
+  // 麦克风活动指示器：包装 getUserMedia 统计活动音轨
+  installMicActivity();
 
   // 双向同步：别的界面（系统设置面板、声音 / 显示器模块）改动同一份状态时，
   // 把新值并回内存镜像并重绘。自己触发的写入因为镜像已一致，直接跳过。

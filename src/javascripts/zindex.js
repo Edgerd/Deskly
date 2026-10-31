@@ -8,13 +8,17 @@
  *   ≤ 9499       普通浮层（顶栏下拉 .menu，CSS 默认 7000，点击时在此封顶内提升）
  *   9500         Dock
  *   9510         Dock 文件夹堆栈（从 Dock 弹出，需盖过窗口与 Dock）
- *   9600         启动台
+ *   9600         启动台（启动期间 Dock / 堆栈临时抬到 9601 / 9602，见 launchpad CSS）
+ *   9601         启动台打开时的 Dock（Z.LAUNCHPAD_DOCK）
+ *   9602         启动台打开时的 Dock 堆栈（Z.LAUNCHPAD_DOCK_STACK）
+ *   9605         客户端提示背板（移动端不兼容警示，见 main.css 的 body > div.overlay）
  *   9610         系统弹窗 / 通知
  *   9620         右键菜单（须盖过窗口与普通浮层，也要盖过它所属的弹窗）
+ *   9628         控制中心背板（.controlcenter-overlay，落在右键菜单与面板之间）
  *   9630         控制中心 / 日期弹层（从顶栏垂下，可与右键菜单同级共存）
  *   9640         浮出层（下拉菜单 portal，须盖过窗口与 Dock，但仍低于聚焦搜索）
  *   9700         聚焦搜索面板（系统级检索浮层，盖过弹层与窗口，但仍在菜单栏之下）
- *   9999         菜单栏
+ *   9999         菜单栏 / Dock 悬停提示（.tip 与菜单栏同档，见 dock.css）
  *   10000        显示亮度压暗层（盖过一切界面内容）
  *   10001        Night Shift 暖色层（= 压暗层 + 1，与压暗层叠加相乘）
  *   10010        会话遮罩（锁屏 / 睡眠 / 关机，盖过压暗层与暖色层）
@@ -24,15 +28,34 @@ export const Z = {
     WINDOW_MIN: 2050,
     WINDOW_MAX: 9000,
     MENU_FLOAT_MAX: 9499,
+    // 菜单项悬浮说明：与普通浮层封顶同值。说明节点总是后插入 body，
+    // 与菜单同层时按 DOM 顺序压在其上；不越过 Dock（9500）。
+    MENU_HINT: 9499,
+    // 最小化「神奇效果」覆盖层：要盖住窗口与普通浮层，但必须低于 Dock ——
+    // 条带滑过坞线后从坞条底下没入，才是「吸进图标里」。
+    GENIE: 9450,
     DOCK: 9500,
     DOCK_STACK: 9510,
     LAUNCHPAD: 9600,
+    // 启动台打开时（html.deskly-launchpad-open）程序坞与堆栈要越过启动台本身，
+    // 但绝不能碰到 Z.MODAL(9610) 以上（启动台里点弹窗仍要浮得住）。
+    LAUNCHPAD_DOCK: 9601,
+    LAUNCHPAD_DOCK_STACK: 9602,
+    // 移动端「客户端不兼容」警示背板（client.js 创建的 body > div.overlay）：
+    // 必须压在启动台/窗口/程序坞之上，又低于 Z.MODAL，配套弹窗才浮在背板上。
+    // 旧值 4000 落在窗口区间 2050–9000 内，会被动态窗口层级互相压制。
+    CLIENT_NOTICE: 9605,
     MODAL: 9610,
     CONTEXT: 9620,
+    // 控制中心背板（.controlcenter-overlay，controlcenter.css）：压在右键菜单
+    // 之上、控制中心面板（Z.PANEL）之下——它只是背板，面板要盖住它。
+    CC_OVERLAY: 9628,
     PANEL: 9630,
     POPOVER: 9640,
     SPOTLIGHT: 9700,
     MENU_BAR: 9999,
+    // Dock 悬停提示（.tip，dock.css）：与菜单栏同档（同为 9999），入表统一管理。
+    DOCK_TIP: 9999,
     BRIGHTNESS: 10000,
     // Night Shift 暖色层紧压压暗层之上（= BRIGHTNESS + 1）：两层都是 multiply，
     // 先压暗再染暖，顺序反过来暖色会被黑层吃掉。

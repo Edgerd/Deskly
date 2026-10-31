@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>五分钟写第一个插件 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="quickstart" data-base="../" data-version="0.2.95">
+<main>
+<h1>五分钟写第一个插件</h1>
+<p class="lede">以 <code>mods/about/</code>（最小完整骨架）为模板。会拆计算逻辑的看 <code>mods/calculator/</code>。</p>
+
+<h2>五步</h2>
+<ol>
+<li>建目录 <code>mods/&lt;id&gt;/</code>：manifest.json + index.html + style.css + script.js（+ 图标，规则见下）；</li>
+<li>把 id 加进 <code>src/javascripts/plugin-manager.js</code> 的 <code>BUILTIN_IDS</code>（内置插件才需要；走商店分发则不用）；</li>
+<li>在浏览器里刷新扩展新标签页：程序坞出现图标，点击开窗；</li>
+<li>跑 <a href="../reference/dev-tools.html">node dev/static-check.mjs</a>（键位 / 资源 / import 全量核对）；</li>
+<li>有计算逻辑：把纯函数拆进独立文件被 entry import（冷加载的模块表特性见 <a href="cold-load.html">冷加载</a>）。</li>
+</ol>
+
+<h2>最小 manifest（全字段表见<a href="plugin-format.html">插件包格式</a>）</h2>
+<pre><code>{
+  "id": "my-plugin",
+  "name": "我的插件",
+  "version": "1.0.0",
+  "entry": "window",            // window | fullscreen
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "window": { "width": 420, "height": 560, "centered": true, "resizable": true },
+  "permissions": []            // 哪怕不用能力也要写 []（static-check 第 7 节核对）
+}</code></pre>
+
+<h2>index.html（HTML 片段，不是完整文档）</h2>
+<pre><code>&lt;div class="window" data-window="size:420x560;resizable:false" data-titlebar="compact"&gt;
+  &lt;header class="titlebar"&gt;…红绿灯…&lt;/header&gt;
+  &lt;section class="content"&gt;
+    &lt;p data-i18n="myPlugin.title" data-i18n-fallback="我的插件"&gt;我的插件&lt;/p&gt;
+  &lt;/section&gt;
+&lt;/div&gt;</code></pre>
+<p><code>data-window</code> 的键（size / min / max / aspect / center / resizable / titlebar / snap / blur）
+以 <code>window-manager.js</code> 为准；与 <code>manifest.window</code> 冲突时<b>以 data-window 为准</b>。</p>
+
+<h2>script.js（ES Module，顶层直接 init）</h2>
+<pre><code>import { i18n } from '../../src/javascripts/i18n.js';
+
+i18n.registerMessagesAll({
+  "zh-CN": { myPlugin: { title: "我的插件", run: "运行" } },
+  en:      { myPlugin: { title: "My Plugin", run: "Run" } },
+});
+
+function init() {
+  const root = document.querySelector('.window[data-plugin-id="my-plugin"]');
+  // 界面逻辑
+}
+init();
+
+// ★ 冷加载硬约束：全局注册必须在 plugin-unload 里释放
+window.addEventListener("plugin-unload", (e) => {
+  if (e.detail?.id !== "my-plugin") return;
+  // 解绑 document/window 监听、清定时器、delete window.__menuActions 里你加的键
+});</code></pre>
+
+<h2>图标（硬规则）</h2>
+<ul>
+<li>应用图标<b>一律 PNG，禁止 SVG</b>；</li>
+<li>先到 <code>assets/icons/</code>（含 dock/、folder/ 子目录）找，找到就<b>复制</b>进插件目录，
+    <code>manifest.icon</code> 只写裸文件名（如 <code>"icon.png"</code>）——ZIP 要求插件目录自包含；</li>
+<li>库里没有合适的就<b>不声明</b> icon，系统自动落 <code>GENERIC_APP_ICON</code> 占位图（<code>assets/icons/dock/Launcher.png</code>）；不引用、不凑数、不自绘。</li>
+</ul>
+
+<div class="okbox"><b>跑通标准</b> 程序坞出现你的图标 → 点击开窗且红绿灯可拖动/缩放 →
+右上角显示「设置」齿轮可改你的设置项 → 顶栏出现你的自定义菜单 → <code>static-check</code> 全绿。</div>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

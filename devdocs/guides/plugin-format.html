@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>插件包格式 · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="plugin-format" data-base="../" data-version="0.2.95">
+<main>
+<h1>插件包格式</h1>
+<p class="lede">manifest 字段全表（以代码读取方为准）、多应用插件、图标与路径硬规则、store 自声明、ZIP 打包。</p>
+
+<h2>固定目录结构</h2>
+<pre><code>mods/{id}/
+├── manifest.json   # 插件清单（唯一事实来源）
+├── index.html      # 窗口/界面 HTML 片段（恰好一个 .window 根）
+├── style.css       # 样式
+├── script.js       # 逻辑（ES Module）
+└── icon.png        # 图标（Dock / 启动台 / 商店共用）</code></pre>
+<p><b>id 命名</b>：小写蛇形（<code>vs_code</code>、<code>system-settings</code>），只允许
+<code>[A-Za-z0-9][A-Za-z0-9._-]*</code> 且不含 <code>..</code>——id 直接拼进 <code>./mods/&lt;id&gt;/</code> 路径与
+<code>script[plugin=&lt;id&gt;]</code> 选择器，非法即拒注册。</p>
+
+<h2>manifest 字段（「读取方」列以代码 grep 为准）</h2>
+<table>
+<tr><th>字段</th><th>必填</th><th>说明</th></tr>
+<tr><td><code>id</code></td><td>✅</td><td>唯一标识：注册表键 + 资源路径拼接</td></tr>
+<tr><td><code>name</code></td><td>✅</td><td>显示名（Dock / 启动台 / 菜单 / 商店）；多应用时也是窗口去重键</td></tr>
+<tr><td><code>entry</code></td><td>✅</td><td><code>window</code> | <code>fullscreen</code>；启动台只列 window</td></tr>
+<tr><td><code>main</code> / <code>style</code> / <code>script</code></td><td>✅</td><td>缺省 <code>index.html</code> / <code>style.css</code> / <code>script.js</code>；经 <code>safeAssetName()</code> 校验</td></tr>
+<tr><td><code>icon</code></td><td> </td><td>见「图标规则」；不声明则落 <code>GENERIC_APP_ICON</code> 占位</td></tr>
+<tr><td><code>window.*</code></td><td> </td><td>width / height / resizable / centered；被 <code>data-window</code> 覆盖（后者为准）</td></tr>
+<tr><td><code>apps[]</code></td><td> </td><td>多应用插件声明，见下节</td></tr>
+<tr><td><code>menus</code></td><td> </td><td>顶栏菜单自定义：<code>{"文件":[{label, i18nKey?, shortcut?, cmd?, disabled?}]}</code>；只整组替换声明过的标题，未声明的保留宿主默认集</td></tr>
+<tr><td><code>version</code></td><td> </td><td>商店卡片 <code>v&lt;ver&gt;</code> 与安装记账；<b>不做自动更新比对</b>（没有远程源）</td></tr>
+<tr><td><code>type</code></td><td> </td><td>只有 <code>app</code>；启动台按它过滤，plugin-manager 不读</td></tr>
+<tr><td><code>description</code></td><td> </td><td>商店卡片/详情的缺省文案（store.tagline/summary 没写时）；plugin-manager 不读</td></tr>
+<tr><td><code>author</code></td><td> </td><td><b>根级这个字段是死的</b>（无任何读取方）；商店详情显示作者写 <code>store.author</code></td></tr>
+<tr><td><code>store</code></td><td> </td><td>商店自声明区块，见下节</td></tr>
+<tr><td><code>formats</code></td><td> </td><td>根级是<b>纯文档字段</b>（无人读取）；接管文件类型只认 <code>apps[].formats</code></td></tr>
+<tr><td><code>permissions</code></td><td>✅</td><td>取值必须来自 <code>api-grants.js</code> 的 15 条 <code>PERMISSION_NAMES</code>；
+      <b>没声明的能力调用直接 <code>ok:false</code></b>；哪怕无能力也要写 <code>"permissions": []</code>（static-check 第 7 节核对）</td></tr>
+<tr><td><code>_installed</code></td><td> </td><td>安装/还原流程写入的内部标记，非用户可填</td></tr>
+</table>
+
+<h2>多应用插件（apps[]，参考实现 mods/office/）</h2>
+<ul>
+<li><b>appId</b> = <code>&lt;插件id&gt;.&lt;app.id&gt;</code>（如 <code>office.word</code>）；</li>
+<li>每个应用一个 HTML 片段（缺省 <code>&lt;app.id&gt;.html</code>），片段<b>恰好一个 .window 根</b>；宿主把其 id 写成 <code>app.windowName || app.name</code> —— 所以应用显示名不能互相撞（窗口 id 是去重键）；</li>
+<li><b>外壳只注入一次</b>：首个应用打开时注 style + script，之后每个应用只注自己的片段。
+    script.js 顶层<b>只允许登记全局监听与菜单命令</b>，界面初始化必须写在 <code>plugin-app-load</code> 回调里
+    （detail = <code>{id, appId, windowName, el}</code>）—— 与单应用「顶层直接 init()」相反，别照搬；</li>
+<li>关单个应用发 <code>plugin-app-unload</code>；整个插件无存活窗口时才发 <code>plugin-unload</code>（按
+    <code>.window[data-plugin-id]</code> 存活数引用计数）；全局资源只在该事件里释放；</li>
+<li><code>apps[].formats</code>（如 <code>[".docx", ".txt"]</code>，带不带点都行）声明能打开的扩展名：
+    访达双击经 <code>getAppByExtension()</code> 问路 → <code>openApp(appId, {file})</code> + 派发 <code>plugin-app-open</code>
+    （detail = <code>{id, appId, windowName, file}</code>，窗口已存在时也派发）。<b>只有实现了
+    plugin-app-open 的应用才该声明 formats</b>；没命中时访达原样退回 Quick Look。</li>
+</ul>
+
+<h2>图标（硬性四条）</h2>
+<ol>
+<li><b>应用图标一律 PNG，禁 SVG</b>（Dock/启动台/商店共用同一张位图；菜单栏单色 glyph 如 siri 的 icon.svg 不受限）；</li>
+<li>新应用图标<b>先到 <code>assets/icons/</code> 找</b>（含 dock/、folder/ 子目录）；</li>
+<li>找到就<b>复制</b>进插件目录，manifest 只写裸文件名（ZIP 要求自包含；<b>不要把库里原文件移走</b>——
+    dock.js 的 iconMap 按名字兜底引用整个库）；</li>
+<li>没有合适的就<b>不声明</b>——系统自动落 <code>GENERIC_APP_ICON</code>（<code>assets/icons/dock/Launcher.png</code>），
+    三处 <code>img.onerror</code> 都回退它；占位图只有一个来源，别在别处再写死路径。</li>
+</ol>
+<p>解析顺序：<code>manifest.icon</code>（权威）→ <code>./mods/&lt;id&gt;/icon.png</code>（目录约定兜底）→ 占位图。
+<code>apps[].icon</code> 优先于插件级 <code>icon</code>，再落回上述三级（套件缺图显示套件图标，不是占位）。</p>
+
+<h2>相对路径约定</h2>
+<table>
+<tr><th>引用目标</th><th>写法</th></tr>
+<tr><td>根图片 / 根图标 / 共享 JS / 共享 UI</td><td><code>../../assets/images/…</code> / <code>../../src/javascripts/…</code></td></tr>
+</table>
+<ul>
+<li><code>../../</code> 只对两类必需：<b>import 说明符</b>与 <b>CSS url()</b>（相对文件自身解析）；</li>
+<li>JS 运行时 URL（<code>&lt;img src&gt;</code>、<code>fetch()</code>、<code>Notification.icon</code>）相对<b>文档</b>解析——
+    插件里写 <code>../../assets/…</code> 只是被截断回根、<b>看着能用实为巧合</b>。因此 JS 内资源路径一律
+    <code>import { assetPath, modPath } from "../../src/javascripts/paths.js"</code>；</li>
+<li><b>import 说明符不带 <code>?v=</code></b>（双模块分裂陷阱，见<a href="architecture.html">架构</a>）。</li>
+</ul>
+
+<h2>商店自声明（store）</h2>
+<pre><code>"store": {
+  "category": "办公", "tagline": "…", "summary": "…",
+  "features": ["能力一"], "usage": "…", "updated": "2026-10-26",
+  "author": "…", "homepage": "https://…",
+  "screenshots": ["screens/one.png"]
+}</code></pre>
+<ul>
+<li>只渲染<b>声明了的区块</b>，没写的区块不出现（界面不编文案）；全部 <code>textContent</code> 写入（清单不可信，不解析 HTML）；</li>
+<li>清洗限额（<code>store-api.js:storeMeta()</code>）：category 24 字、tagline 120、summary/usage 600、author 60、updated 20、features ≤12 条×120 字；</li>
+<li><code>screenshots</code> 是插件目录内相对路径（宿主拼 <code>./mods/&lt;id&gt;/&lt;file&gt;</code> 加 <code>?v=</code>），只收 png/jpg/jpeg/webp、拒 <code>..</code>、截前 6 张；取不到不算安装失败（<code>optionalMissing</code>），但 <code>dev/package-plugin.mjs</code> 会因此拒绝打包；</li>
+<li><code>homepage</code> 只收 http(s)://；<b>权限不写在 store 里</b>——详情页权限栏读 <code>manifest.permissions</code>，经 <code>api-grants.describe()</code> 出文案，与授权账本同源。</li>
+</ul>
+
+<h2>打包分发（ZIP）</h2>
+<pre><code>node dev/package-plugin.mjs &lt;id&gt;      # 产物 dist/&lt;id&gt;-&lt;version&gt;.zip</code></pre>
+<ul>
+<li>唯一真源是 <code>mods/&lt;id&gt;/</code>；ZIP 只是导出物（避免「改了 mods 却拿旧 ZIP 去装」的分裂）；</li>
+<li>包内 <code>manifest.json</code> 必须在包根或同一顶层目录（<code>commonRoot()</code> 判公共根）；包内条目一律 POSIX <code>/</code>（不用 Compress-Archive——它的反斜杠条目 SW 命中不了）；解包总字节 ≤ 10MB；</li>
+<li><b>打包即校验</b>：id 必须等于目录名、相对依赖必须落在插件目录内、宿主依赖（<code>../../src/…</code>）必须存在于仓库；少打一个文件在运行时只会表现为「窗口开了但空白」，这一关必须在构建期断掉。</li>
+</ul>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

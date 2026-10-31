@@ -180,3 +180,28 @@ html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .righ
   height: 100%;
   filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.333));
 }/*# sourceMappingURL=finderbar.css.map */
+/* P0-5 菜单栏状态项（menubar-status.js）：电池 / 音量 / 蓝牙，颜色继承 .right
+   的墙纸墨色（浅壁纸自动转黑），点击打开控制中心。 */
+.menubar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 2px;
+  cursor: pointer;
+  color: inherit;
+  opacity: .9;
+}
+.menubar-status:hover { opacity: 1; }
+.menubar-status.is-hidden { display: none; }
+.menubar-status.no-data { display: none; }
+.menubar-status .ms-battery-pct {
+  font-size: 11px;
+  opacity: .85;
+  margin-left: 2px;
+  min-width: 26px;
+  display: inline-block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.menubar-status.is-muted .ms-vol-wave,
+.menubar-status.is-off { opacity: .35; }

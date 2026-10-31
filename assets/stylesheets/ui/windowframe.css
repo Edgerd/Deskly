@@ -66,11 +66,19 @@
 }
 
 /* 拖动时禁止选中正文：从标题栏起手拖窗口，不该顺手把标题文字刷成一片蓝。
-   放在 <html> 上，因为拖到窗口外时选中同样会开始。 */
-html.deskly-dragging,
-html.deskly-dragging * {
+   只写在 <html> 上：user-select 是继承属性，下面所有元素自动拿到 none，
+   等价于原来的 `html.deskly-dragging *`，但不会在拖动开始/结束那一帧
+   对全文档每个元素重新匹配 + 重绘。带 backdrop-filter 的窗口面在整树
+   失效时会被重建再回收，残留的那块就是拖完仍贴在窗口上的鬼影亮带。 */
+html.deskly-dragging {
   -webkit-user-select: none !important;
           user-select: none !important;
+}
+/* 少数显式开启文本选中的控件（输入框 / 地址栏）仍允许选中：
+   它们各自写了 user-select:text，继承值盖不住，这里按需恢复。 */
+html.deskly-dragging :is(input, textarea, [contenteditable="true"]) {
+  -webkit-user-select: text !important;
+          user-select: text !important;
 }
 
 /* ---------- 状态切换过渡 ----------

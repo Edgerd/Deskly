@@ -460,8 +460,11 @@ html[data-transparency="off"] .appstore > .as-sidebar {
     color: var(--as-on-accent);
     background: var(--accent, #0a82ff);
 }
-.card .cta:hover { filter: brightness(1.08); }
-.card .cta:active { filter: brightness(0.92); }
+/* 悬停/按下用背景叠层（纯绘制）代替 filter:brightness()：
+   卡片按钮在带 backdrop-filter 的窗口里，filter 会给按钮建独立渲染层，
+   鼠标划过时反复建/拆会在窗口边界留下鬼影亮带。 */
+.card .cta:hover { background-image: linear-gradient(rgba(255, 255, 255, .08), rgba(255, 255, 255, .08)); }
+.card .cta:active { background-image: linear-gradient(rgba(0, 0, 0, .10), rgba(0, 0, 0, .10)); }
 .card.off .icon { opacity: 0.45; }
 .card.off .name { color: var(--as-text-secondary); }
 
@@ -537,7 +540,7 @@ html[data-transparency="off"] .appstore > .as-sidebar {
     color: var(--as-on-accent);
     background: var(--accent, #0a82ff);
 }
-.hero .hero-acts .cta:hover { filter: brightness(1.08); }
+.hero .hero-acts .cta:hover { background-image: linear-gradient(rgba(255, 255, 255, .08), rgba(255, 255, 255, .08)); }
 .appstore .ghost {
     color: var(--as-text);
     background: var(--as-control-bg);
@@ -549,7 +552,7 @@ html[data-transparency="off"] .appstore > .as-sidebar {
     background: var(--as-danger-bg);
     border-color: transparent;
 }
-.appstore .danger:hover { filter: brightness(1.06); }
+.appstore .danger:hover { background-image: linear-gradient(rgba(255, 255, 255, .06), rgba(255, 255, 255, .06)); }
 
 .dblock {
     padding: 16px 0;

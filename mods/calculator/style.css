@@ -10,9 +10,9 @@
  * 为什么不用 transform：带 backdrop-filter 的元素一旦被 Chrome 提为 3D 合成层
  * （transform / translateZ / will-change:transform 都会触发），毛玻璃会当场退化成
  * 一块半透明白色矩形 —— 这是仓库里反复踩过的「亚克力禁忌」。所以全文件不使用
- * transform，键帽按下反馈一律走 background / box-shadow / filter: brightness()。
- * filter 也不加在带 backdrop-filter 的窗口根本身上（会连带把根提层），只加在键帽等
- * 无 backdrop-filter 的子元素上。
+ * transform 或 filter，键帽与按钮的悬停/按下反馈一律走 background / box-shadow /
+ * color（纯绘制），绝不用 filter: brightness()。filter 会给子元素建独立渲染层，
+ * 在毛玻璃根下反复建/拆这层会在窗口里留下横向亮带鬼影（见 .calc-key 的说明）。
  *
  * 令牌从哪来：--accent / --accent-rgb / --surface-blur-* / --surface-saturate /
  * --text-* / --separator / --hairline / --hover-bg / --press-bg / --scrollbar-thumb
@@ -333,8 +333,10 @@
     height: 1px;
     background: var(--calc-line);
 }
+/* 交换键是透明底 + 橙色符号：提亮改的是字形颜色，用 --calc-op-press 直接换色，
+   不走 filter（见 .calc-key 的图层说明）。 */
 .calc-swap:hover {
-    filter: brightness(1.15);
+    color: var(--calc-op-press);
 }
 .calc-conv-note {
     margin: 2px 0 0;
@@ -511,13 +513,13 @@
     font-size: 13px;
     padding: 7px 0;
     border-radius: 999px;
-    transition: filter .12s ease;
+    transition: background .12s ease, box-shadow .12s ease;
 }
 .calc-rpn-keys button:hover {
-    filter: brightness(1.15);
+    box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .12);
 }
 .calc-rpn-keys button:active {
-    filter: brightness(1.35);
+    box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .28);
 }
 
 /* ===== 键帽栅格：列数由 JS 写内联 --cols ===== */
@@ -549,8 +551,11 @@
     align-items: center;
     justify-content: center;
     -webkit-tap-highlight-color: transparent;
-    /* 反馈走 filter/box-shadow，不用 transform（亚克力禁忌） */
-    transition: background .12s ease, box-shadow .12s ease, filter .12s ease, color .12s ease;
+    /* 反馈只走 background / box-shadow（纯绘制，不建合成层）。
+       禁忌：绝不用 filter（brightness 之类）—— 键帽在 .calculator.window（带 backdrop-filter
+       的亚克力根）之内，filter 会给键帽单独建一层渲染面；鼠标划过一秒内会反复建/拆这层，
+       Chrome 对父级亚克力面的重绘是分块的，拆层后残留的那一块就是窗口里横向的亮带鬼影。 */
+    transition: background .12s ease, box-shadow .12s ease, color .12s ease;
 }
 .calc-key.fn {
     background: var(--calc-fn);
@@ -565,13 +570,23 @@
     color: #fff;
     font-size: 24px;
 }
+/* 悬停/按下：用 inset 大扩散的半透明遮罩代替 filter 提亮/压暗，
+   观感与原来的 brightness(1.12) / brightness(1.35) 对齐，但不产生渲染层。
+   遮罩画在背景之上、文字之下，键帽字形保持清晰。 */
 .calc-key:hover {
-    filter: brightness(1.12);
+    box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .10);
 }
 .calc-key:active,
 .calc-key.flash {
-    filter: brightness(1.35);
-    box-shadow: inset 0 1px 5px rgba(0, 0, 0, .35);
+    box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .26), inset 0 1px 5px rgba(0, 0, 0, .35);
+}
+/* 2nd / Rad 是白底，提亮没有意义，悬停/按下改为压暗 */
+.calc-key.on:hover {
+    box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .10);
+}
+.calc-key.on:active,
+.calc-key.on.flash {
+    box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .22), inset 0 1px 5px rgba(0, 0, 0, .35);
 }
 /* 2nd / Rad 打开：白底黑字，明显区别于常灰 */
 .calc-key.on {
@@ -704,7 +719,7 @@
     background: rgba(255, 255, 255, .2);
     padding: 5px 8px;
     border-radius: 6px;
-    transition: background .12s ease, filter .12s ease;
+    transition: background .12s ease, box-shadow .12s ease;
 }
 .calc-history-btn:hover {
     background: rgba(255, 255, 255, .32);
@@ -713,7 +728,8 @@
     background: var(--calc-danger);
 }
 .calc-history-btn.danger:hover {
-    filter: brightness(1.1);
+    /* 红色底上改用 inset 白色遮罩提亮，不用 filter（见 .calc-key 的图层说明） */
+    box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .12);
 }
 .calc-history-empty {
     padding: 18px 14px;

@@ -673,7 +673,8 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
 .modal-btn:hover { background: var(--finder-hover); }
 .modal-btn:active { transform: scale(0.96); }
 .modal-btn.primary { background: var(--finder-accent); border-color: var(--finder-accent); color: #ffffff; }
-.modal-btn.primary:hover { filter: brightness(1.08); }
+/* 按钮在带 backdrop-filter 的窗口里，hover 用背景叠层而不是 filter（避免子渲染层鬼影） */
+.modal-btn.primary:hover { background-image: linear-gradient(rgba(255, 255, 255, .08), rgba(255, 255, 255, .08)); }
 
 /* ---------- 图标视图 ----------
    视图 class（grid-view / column-view / gallery-view）由 finder-views.js 挂在 #finder-content 上，

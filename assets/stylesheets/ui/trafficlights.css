@@ -75,7 +75,7 @@ html[data-theme="dark"] {
   position: relative;
   cursor: var(--deskly-cursor, default);
   flex: 0 0 auto;
-  transition: filter 0.15s ease;
+  transition: box-shadow 0.15s ease;
 }
 
 .wintools > .red { background: var(--traffic-close); }
@@ -84,11 +84,14 @@ html[data-theme="dark"] {
 .wintools > .gray { background: var(--traffic-disabled); }
 
 /* 悬停提亮 / 按下压暗只作用于可用按钮：禁用位保持恒定灰，
-   不加 hover/active，也不画符号（见 windowtraffic.css 的选择器）。 */
+   不加 hover/active，也不画符号（见 windowtraffic.css 的选择器）。
+   用 inset 遮罩而不是 filter:brightness()：红绿灯长在 .window 标题栏里，
+   窗口根是带 backdrop-filter 的亚克力面，给子元素加 filter 会建独立渲染层，
+   鼠标划过红绿灯时反复建/拆，Chrome 会在窗口边界留下横向亮带鬼影。 */
 .wintools > .red:hover,
 .wintools > .yellow:hover,
-.wintools > .green:hover { filter: brightness(1.08); }
+.wintools > .green:hover { box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .10); }
 
 .wintools > .red:active,
 .wintools > .yellow:active,
-.wintools > .green:active { filter: brightness(0.9); }
+.wintools > .green:active { box-shadow: inset 0 0 0 999px rgba(0, 0, 0, .12); }

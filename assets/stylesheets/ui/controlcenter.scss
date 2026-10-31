@@ -922,7 +922,7 @@ body.dark-mode .cc-detail-note {
 }
 
 .cc-detail-action:hover {
-  filter: brightness(1.08);
+  background-image: linear-gradient(rgba(255, 255, 255, .08), rgba(255, 255, 255, .08));
 }
 
 /* 不可用：整体降不透明度 + 去掉蓝色"开启"态，避免看起来仍可切换 */

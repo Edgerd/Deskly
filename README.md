@@ -59,4 +59,4 @@ docs/                   设计对照、代码审查、产品更新信息与知�
 
 ## 许可
 
-本项目基于 [MIT License](LICENSE) 开源：可自由使用、修改、分发与商用，保留版权声明即可。
+本项目基于 [GNU General Public License v3.0](LICENSE)（GPL-3.0）开源：可自由使用、修改、分发，但衍生作品须同样以 GPL-3.0 开源并提供源码。Copyright (c) 2026 Edgerd。

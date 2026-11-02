@@ -42,6 +42,29 @@
     cursor: var(--deskly-cursor, default);
 }
 
+/* 勾选项：所有可勾选行统一预留一个 ✓ 列，未选中时只隐藏勾、不改变行宽，
+   切换状态时文字不会左右跳动。 */
+.menu.contextmenu p.menu-check::before {
+    content: "✓";
+    display: inline-block;
+    width: 14px;
+    margin-right: 2px;
+    visibility: hidden;
+    font-weight: 600;
+}
+.menu.contextmenu p.menu-check[data-checked="true"]::before {
+    visibility: visible;
+}
+
+/* 二级菜单入口：右侧 › 与文字留出固定间距 */
+.menu.contextmenu p.has-submenu::after {
+    content: "›";
+    float: right;
+    margin-left: 16px;
+    opacity: 0.65;
+    font-weight: 600;
+}
+
 /* 菜单标题（如「排列窗口」）：不可点击，仅作分区说明 */
 .menu.contextmenu p.menu-header {
     color: var(--surface-text-secondary);

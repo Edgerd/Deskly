@@ -21,6 +21,14 @@ function detachMenu(menu) {
         document.removeEventListener("click", menu._closeListener);
         menu._closeListener = null;
     }
+    if (menu._keyListener) {
+        document.removeEventListener("keydown", menu._keyListener);
+        menu._keyListener = null;
+    }
+    if (menu._pointerListener) {
+        document.removeEventListener("pointerdown", menu._pointerListener, true);
+        menu._pointerListener = null;
+    }
 }
 
 function removeMenu(menu) {
@@ -29,10 +37,34 @@ function removeMenu(menu) {
 }
 
 /**
+ * 清理分隔符：去掉开头、结尾以及连续出现的分隔符。
+ *
+ * 调用方按「打开 / 退出 → 保留 → 选项」分组拼菜单，不同状态下中间组可能整个为空，
+ * 手写分隔符很容易留下首尾悬空或两条连在一起。渲染前统一收敛一次，
+ * 所有右键菜单（不只程序坞）都得到同一套干净的分隔线。
+ * @param {Array<object>} items 原始菜单项
+ * @returns {Array<object>} 清理后的菜单项
+ */
+function normalizeMenuItems(items) {
+    const out = [];
+    (Array.isArray(items) ? items : []).forEach((item) => {
+        if (!item) return;
+        if (item.type === "separator") {
+            if (!out.length || out[out.length - 1].type === "separator") return;
+            out.push(item);
+            return;
+        }
+        out.push(item);
+    });
+    while (out.length && out[out.length - 1].type === "separator") out.pop();
+    return out;
+}
+
+/**
  * 在指定坐标创建右键菜单。
  * @param {number} x 视口横坐标
  * @param {number} y 视口纵坐标
- * @param {Array<object>} items 菜单项（{label, action, disabled, type:"separator"|"header"}）
+ * @param {Array<object>} items 菜单项（{label, action, disabled, checked, hasSubmenu, type:"separator"|"header"}）
  * @returns {HTMLElement} 菜单元素
  */
 export function createContextMenu(x, y, items) {
@@ -47,7 +79,7 @@ export function createContextMenu(x, y, items) {
     // INT_MAX，再被 zindex.js 的 9499 封顶拉回 Dock 之下 —— 菜单两头都不对。
     menu.style.zIndex = String(Z.CONTEXT);
 
-    items.forEach((item) => {
+    normalizeMenuItems(items).forEach((item) => {
         if (item.type === "separator") {
             const hr = document.createElement("hr");
             menu.appendChild(hr);
@@ -62,12 +94,22 @@ export function createContextMenu(x, y, items) {
             const menuItem = document.createElement("p");
             menuItem.textContent = item.label;
             if (item.disabled) menuItem.setAttribute("disabled", "");
+            // 勾选项：左侧统一预留 ✓ 列，未选中时隐藏勾，避免行文本左右跳。
+            if (item.checked !== undefined) {
+                menuItem.classList.add("menu-check");
+                menuItem.dataset.checked = item.checked ? "true" : "false";
+                menuItem.setAttribute("aria-checked", item.checked ? "true" : "false");
+            }
+            // 子菜单入口：右侧显示 ›，点击后由 action 在相同坐标弹出下一级菜单。
+            if (item.hasSubmenu) menuItem.classList.add("has-submenu");
             // 置灰项只由 CSS 变淡，不禁用点击的话点一下照样执行（如「取消平铺」灰着却能触发）。
             if (item.action && !item.disabled) {
                 menuItem.addEventListener("click", () => {
                     removeMenu(menu);
                     try {
-                        item.action();
+                        // 把菜单打开坐标传给 action：「选项 → 位置」这类二级菜单
+                        // 需要在同一位置继续弹出，旧实现收到 undefined 会算出 NaN 定位。
+                        item.action(x, y);
                     } catch (err) {
                         console.error("[contextMenu] 菜单项执行失败:", item.label, err);
                     }
@@ -92,7 +134,19 @@ export function createContextMenu(x, y, items) {
         if (!menu.contains(e.target)) removeMenu(menu);
     };
     menu._closeListener = closeMenu;
-    // 延后一拍注册，忽略触发本次菜单的那次点击
+    // Esc 立即关闭：菜单可能盖住触发它的图标，点空白处不一定能点到
+    // （菜单栏 / 窗口会截走 click），键盘退出是稳定通路。
+    menu._keyListener = (e) => {
+        if (e.key === "Escape") removeMenu(menu);
+    };
+    document.addEventListener("keydown", menu._keyListener);
+    // 捕获阶段监听 pointerdown：菜单栏 / 窗口常会拦截 click，气泡阶段收不到，
+    // 捕获阶段先于任何目标处理器，点菜单外一定关得上。
+    menu._pointerListener = (e) => {
+        if (!menu.contains(e.target)) removeMenu(menu);
+    };
+    document.addEventListener("pointerdown", menu._pointerListener, true);
+    // 延后一拍注册点击监听，忽略触发本次菜单的那次点击
     menu._closeTimeout = setTimeout(() => {
         menu._closeTimeout = null;
         if (menu._removed || !document.body.contains(menu)) return;

@@ -3,7 +3,7 @@
   height: 24px !important;
   /* 启动台打开时整条菜单栏淡出（html.deskly-launchpad-open），
      过渡放在基础规则上，关闭并卸载启动台样式后仍能淡回来。 */
-  transition: opacity 0.18s ease;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   /* M2+ MacBook 35px, normal Mac 24px */
   /* 最高固定层级：菜单栏永远在最上层，防止桌面窗口（z-index 最高 9000）遮挡顶栏 */
   z-index: 9999;

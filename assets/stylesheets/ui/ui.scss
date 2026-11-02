@@ -1,3 +1,9 @@
+/* 图片不是可拖拽资源：原生拖拽会把图片/链接带出窗口变成文件。
+   行为兜底见 src/javascripts/image-drag-guard.js（动态插入的图片也覆盖）。 */
+img {
+    -webkit-user-drag: none;
+}
+
 .menu {
     width: auto;
     height: auto;
@@ -85,7 +91,7 @@
    否则 Chrome 会将其提为 3D 合成层并禁用 backdrop-filter，导致亚克力闪烁/不全屏失效。
    这里仅使用 opacity，不引入缩放进入感，以从源头保证所有 backdrop-filter 窗口稳定。 */
 .window {
-    animation: window-fade-in 0.22s ease-out;
+    animation: window-fade-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 
     /* 新窗口入场前的隐藏态（window-manager.prepareOpen）：等真实尺寸与居中落实，
        避免先按默认 680×570 画一帧再跳。关闭态不命中，保证关闭淡出不被压住。 */
@@ -95,15 +101,22 @@
         animation: none !important;
     }
 
+    /* Dock 神奇效果还原会先把真窗 display:none，再在落点显示；display 切换会让
+       window-fade-in 从头重播，表现为形变完成后多出一段淡入。 */
+    &.wm-shown {
+        animation: none;
+    }
+
     &.closing {
-        animation: window-fade-out 0.18s ease-in forwards;
+        animation: window-fade-out 0.16s cubic-bezier(0.4, 0, 1, 1) forwards;
         pointer-events: none;
     }
 }
 
 @keyframes window-fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+    0%   { opacity: 0; }
+    55%  { opacity: 0.94; }
+    100% { opacity: 1; }
 }
 
 @keyframes window-fade-out {

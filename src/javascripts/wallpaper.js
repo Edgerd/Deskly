@@ -553,15 +553,56 @@ function isSamplable(url) {
  * @returns {Promise<[number, number, number]>} 平均色通道值
  */
 async function sampleAverageColor(url) {
+    const { image, release } = await decodeForSampling(url);
+    try {
+        const canvas = document.createElement("canvas");
+        canvas.width = SAMPLE_EDGE;
+        canvas.height = SAMPLE_EDGE;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        // 关掉平滑缩放：这里要的是「16x16 个点的平均」，插值只会把相邻像素糊进采样集
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(image, 0, 0, SAMPLE_EDGE, SAMPLE_EDGE);
+        return averageRgb(ctx.getImageData(0, 0, SAMPLE_EDGE, SAMPLE_EDGE).data);
+    } finally {
+        // 位图占的是解码后的内存，取完平均色就立刻还给浏览器
+        release();
+    }
+}
+
+/**
+ * 解码一张用于采样的位图，尽量在缩小阶段就解码。
+ *
+ * 为什么不用 img 走全程：`new Image()` 会先把整张 4K 壁纸按原尺寸解码进内存，之后
+ * drawImage 才缩到 16x16 —— 首屏多出来的几百 MB 与一次全尺寸解码都是白花的。
+ * fetch 成 Blob 再 `createImageBitmap(blob, { resizeWidth, resizeHeight })`，浏览器
+ * 可以在解码时直接产出 16x16 位图，内存与耗时都只与采样尺寸相关。
+ *
+ * 兼容性：resize 选项不是所有环境都认（旧版会忽略或直接抛错）。抛错、或拿回来的
+ * 位图尺寸没被缩小（说明选项被忽略），都释放位图并回退到原来的 img + drawImage
+ * 路径，采样结果与失败回退语义完全不变。
+ * @param {string} url 图片地址
+ * @returns {Promise<{image: CanvasImageSource, release: Function}>} 采样源与释放函数
+ */
+async function decodeForSampling(url) {
+    if (typeof fetch === "function" && typeof createImageBitmap === "function") {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const blob = await response.blob();
+            const bitmap = await createImageBitmap(blob, {
+                resizeWidth: SAMPLE_EDGE,
+                resizeHeight: SAMPLE_EDGE,
+            });
+            if (bitmap.width === SAMPLE_EDGE && bitmap.height === SAMPLE_EDGE) {
+                return { image: bitmap, release: () => bitmap.close() };
+            }
+            if (typeof bitmap.close === "function") bitmap.close();
+        } catch (err) {
+            // fetch 被拒 / Blob 解码失败：交给 img 路径复现原来的错误判定与日志
+        }
+    }
     const img = await loadForSampling(url);
-    const canvas = document.createElement("canvas");
-    canvas.width = SAMPLE_EDGE;
-    canvas.height = SAMPLE_EDGE;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    // 关掉平滑缩放：这里要的是「16x16 个点的平均」，插值只会把相邻像素糊进采样集
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, 0, 0, SAMPLE_EDGE, SAMPLE_EDGE);
-    return averageRgb(ctx.getImageData(0, 0, SAMPLE_EDGE, SAMPLE_EDGE).data);
+    return { image: img, release: () => {} };
 }
 
 /**

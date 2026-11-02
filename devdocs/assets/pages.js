@@ -24,6 +24,7 @@ window.DOCPAGES = [
     { id: "osfs",     title: "文件存储 OSFS",             href: "api/osfs.html" },
     { id: "events",   title: "事件与全局接口",            href: "api/events.html" },
     { id: "surface",  title: "表面：模糊与可读文字",      href: "api/surface.html" },
+    { id: "trafficlights", title: "窗口红绿灯",           href: "api/trafficlights.html" },
     { id: "trash",    title: "废纸篓闭环 trash.js",       href: "api/trash.html" },
     { id: "menubar",  title: "菜单栏状态项",              href: "api/menubar.html" },
   ]},

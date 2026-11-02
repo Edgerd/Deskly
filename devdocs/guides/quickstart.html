@@ -34,14 +34,18 @@
 }</code></pre>
 
 <h2>index.html（HTML 片段，不是完整文档）</h2>
-<pre><code>&lt;div class="window" data-window="size:420x560;resizable:false" data-titlebar="compact"&gt;
-  &lt;header class="titlebar"&gt;…红绿灯…&lt;/header&gt;
+<pre><code>&lt;div class="window" data-window="size:420x560;resizable:false"&gt;
+  &lt;header class="titlebar" data-titlebar&gt;
+    &lt;deskly-traffic-lights class="wintools" placement="titlebar"&gt;&lt;/deskly-traffic-lights&gt;
+    &lt;span&gt;我的插件&lt;/span&gt;
+  &lt;/header&gt;
   &lt;section class="content"&gt;
     &lt;p data-i18n="myPlugin.title" data-i18n-fallback="我的插件"&gt;我的插件&lt;/p&gt;
   &lt;/section&gt;
 &lt;/div&gt;</code></pre>
 <p><code>data-window</code> 的键（size / min / max / aspect / center / resizable / titlebar / snap / blur）
-以 <code>window-manager.js</code> 为准；与 <code>manifest.window</code> 冲突时<b>以 data-window 为准</b>。</p>
+以 <code>window-manager.js</code> 为准；与 <code>manifest.window</code> 冲突时<b>以 data-window 为准</b>。
+红绿灯的位置、能力开关与 JS 挂载 API 见<a href="../api/trafficlights.html">窗口红绿灯</a>。</p>
 
 <h2>script.js（ES Module，顶层直接 init）</h2>
 <pre><code>import { i18n } from '../../src/javascripts/i18n.js';

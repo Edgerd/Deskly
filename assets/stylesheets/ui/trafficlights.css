@@ -7,6 +7,8 @@
  * 8/12/14/16/17/18/19px 七种、上偏移 8/12/13px 三种。
  * 这里把「容器 + 圆点 + 内缩」收敛为令牌驱动的单一来源：
  * 应用只允许覆盖 --traffic-* 令牌，不再重写几何。
+ * 标题栏内联形态的左内缩由组件按父级 padding-left 自动补齐
+ * （placement="titlebar"，见 trafficLights.js 的 _syncPlacement）。
  *
  * 引入顺序必须在 window.css 之后、windowtraffic.css（符号绘制）之前。
  * ============================================================ */
@@ -48,6 +50,13 @@ html[data-theme="dark"] {
   align-items: center;
   gap: var(--traffic-gap);
   flex: 0 0 auto;
+}
+
+/* 标题栏内联形态：左内缩由组件按父级 padding-left 自动补到 --traffic-inset
+   （见 trafficLights.js 的 _syncPlacement），这里只保证它在 flex 标题栏里
+   不被拉伸。应用不再写第二份 margin 算术。 */
+.wintools[placement="titlebar"] {
+  align-self: center;
 }
 
 /* 无独立标题栏的界面（照片 / 记事本 / 关于本机）：

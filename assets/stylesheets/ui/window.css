@@ -68,7 +68,7 @@ html[data-theme="dark"][data-wallpaper-tint="on"] .window > .right {
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
-  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+  transition: opacity 0.24s cubic-bezier(0.4, 0, 1, 1), visibility 0s linear 0.24s;
 }
 
 /* 窗口缩放手柄：由 window.js 的 resetWindowListeners 统一注入到每个窗口。

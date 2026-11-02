@@ -10,11 +10,17 @@
  * 全部封在 Shadow DOM 里 —— 应用样式表在结构上就再也碰不到它们，
  * 漂移不再可能（而不是靠"大家都记得写对"）。
  *
- * 用法（应用 index.html）：
- *   <deskly-traffic-lights class="wintools"></deskly-traffic-lights>            常规窗口
+ * 用法（应用 index.html，推荐把灯放进标题栏）：
+ *   <header class="app-titlebar" data-titlebar>
+ *     <deskly-traffic-lights class="wintools" placement="titlebar"></...>
+ *   </header>
  *   <deskly-traffic-lights class="wintools" overlay></...>                      无标题栏界面，悬浮定位
  *   <deskly-traffic-lights class="wintools" variant="dialog"></...>             对话框：最小化/缩放禁用
  *   <deskly-traffic-lights class="wintools" no-zoom></...>                      单独禁用某一颗
+ *
+ * 位置由组件自己保证：placement="titlebar"（缺省）时读取父级 padding-left，
+ * 把 margin-left 补到 --traffic-inset，应用不再需要写「减去自身 padding」的补偿；
+ * 这正是手册窗口此前漂在标题栏上方、左内缩为 0 的根因。
  *
  * 动作以 ACTION_EVENT 冒泡给宿主所在窗口，由 window.js 统一接管；
  * 组件自身不碰窗口状态，避免与 window.js 形成第二套实现。
@@ -100,13 +106,16 @@ const SHADOW_CSS = `
 
 /**
  * 生成一个游离的红绿灯宿主（供 mount 复用，也便于测试直接量几何）。
- * @param {{variant?: 'window'|'dialog', noMinimize?: boolean, noZoom?: boolean, overlay?: boolean}} [opts]
+ * @param {{variant?: 'window'|'dialog', noMinimize?: boolean, noZoom?: boolean,
+ *          overlay?: boolean, placement?: 'titlebar'|'overlay'}} [opts]
  * @returns {HTMLElement}
  */
 export function createTrafficLights(opts = {}) {
     const host = document.createElement(TAG);
     host.className = "wintools";
-    if (opts.overlay) host.setAttribute("overlay", "");
+    const placement = opts.placement || (opts.overlay ? "overlay" : "titlebar");
+    host.setAttribute("placement", placement);
+    if (placement === "overlay") host.setAttribute("overlay", "");
     if (opts.variant) host.setAttribute("variant", opts.variant);
     if (opts.noMinimize || opts.variant === "dialog") host.setAttribute("no-minimize", "");
     if (opts.noZoom || opts.variant === "dialog") host.setAttribute("no-zoom", "");
@@ -114,18 +123,64 @@ export function createTrafficLights(opts = {}) {
 }
 
 /**
- * 把组件挂进窗口（幂等）。用于 legacy create() 路径与手写 .wintools 的第三方 ZIP 兜底。
+ * 取挂载锚点：显式元素 > 选择器 > 窗口内第一个 [data-titlebar]。
  * @param {HTMLElement} win 窗口根元素
- * @param {object} [opts] 同 createTrafficLights
+ * @param {HTMLElement|string} [anchor]
+ * @returns {HTMLElement|null}
+ */
+function resolveAnchor(win, anchor) {
+    if (anchor && anchor.nodeType === 1) return anchor;
+    if (typeof anchor === "string") {
+        try { return win.querySelector(anchor); } catch { return null; }
+    }
+    return win.querySelector("[data-titlebar]");
+}
+
+/**
+ * 把红绿灯挂到指定标题栏（推荐入口，幂等）。
+ *
+ * 与 mountTrafficLights 的区别只在「挂哪儿」：本函数会把灯插成标题栏的第一个
+ * 子节点，让标题栏的 flex 布局负责垂直居中；找不到标题栏（或显式要求 overlay）
+ * 才退回窗口根并悬浮定位。已有的 overlay 灯不会被误搬进标题栏。
+ * @param {HTMLElement} win 窗口根元素
+ * @param {{anchor?: HTMLElement|string, placement?: 'titlebar'|'overlay',
+ *          variant?: string, noMinimize?: boolean, noZoom?: boolean, overlay?: boolean}} [opts]
  * @returns {HTMLElement|null} 宿主；窗口不是 .window 时返回 null
  */
-export function mountTrafficLights(win, opts = {}) {
+export function attachTrafficLights(win, opts = {}) {
     if (!win || !win.classList || !win.classList.contains("window")) return null;
-    const existing = getTrafficLights(win);
-    if (existing) return existing;
-    const host = createTrafficLights(opts);
-    win.insertBefore(host, win.firstChild);
+    const anchor = resolveAnchor(win, opts.anchor);
+    let host = getTrafficLights(win);
+    const current = host && (host.getAttribute("placement") || (host.hasAttribute("overlay") ? "overlay" : ""));
+    let placement = opts.placement
+        || (current === "overlay" ? "overlay" : "")
+        || (opts.overlay ? "overlay" : "titlebar");
+    // 声明了 titlebar 但窗口没有标题栏：悬浮定位至少不会把灯排成独立一行。
+    if (placement === "titlebar" && !anchor) placement = "overlay";
+    if (!host) host = createTrafficLights({ ...opts, placement });
+
+    host.setAttribute("placement", placement);
+    if (placement === "overlay") host.setAttribute("overlay", "");
+    else host.removeAttribute("overlay");
+    if (opts.variant) host.setAttribute("variant", opts.variant);
+    if (opts.noMinimize || opts.variant === "dialog") host.setAttribute("no-minimize", "");
+    if (opts.noZoom || opts.variant === "dialog") host.setAttribute("no-zoom", "");
+
+    const parent = placement === "overlay" || !anchor ? win : anchor;
+    if (host.parentElement !== parent || parent.firstElementChild !== host) {
+        parent.insertBefore(host, parent.firstChild);
+    }
     return host;
+}
+
+/**
+ * 兼容入口：window-manager 在第三方窗口缺灯时调用。
+ * @param {HTMLElement} win 窗口根元素
+ * @param {object} [opts] 同 attachTrafficLights
+ * @returns {HTMLElement|null}
+ */
+export function mountTrafficLights(win, opts = {}) {
+    return attachTrafficLights(win, opts);
 }
 
 /**
@@ -214,10 +269,38 @@ export function defineTrafficLights() {
             }
         }
 
-        connectedCallback() { this._syncFromAttrs(); }
+        connectedCallback() {
+            this._syncFromAttrs();
+            this._syncPlacement();
+        }
 
-        static get observedAttributes() { return ["no-minimize", "no-zoom", "no-close", "variant", "disabled"]; }
-        attributeChangedCallback() { this._syncFromAttrs(); }
+        static get observedAttributes() {
+            return ["no-minimize", "no-zoom", "no-close", "variant", "disabled", "overlay", "placement"];
+        }
+
+        attributeChangedCallback() {
+            this._syncFromAttrs();
+            this._syncPlacement();
+        }
+
+        /**
+         * 标题栏形态的左内缩：组件自己把「到窗口左缘的距离」补到 --traffic-inset。
+         * 父级已经有 padding-left 时只补差值，所以标题栏改内边距不会把灯推歪，
+         * 应用也不必再写 calc(var(--traffic-inset) - 12px) 这类第二份算术。
+         * overlay 形态由 trafficlights.css 绝对定位，不写 margin。
+         */
+        _syncPlacement() {
+            const overlay = this.hasAttribute("overlay") || this.getAttribute("placement") === "overlay";
+            if (overlay) {
+                this.style.removeProperty("margin-left");
+                return;
+            }
+            const parent = this.parentElement;
+            if (!parent) return;
+            const inset = parseFloat(getComputedStyle(this).getPropertyValue("--traffic-inset")) || 20;
+            const padding = parseFloat(getComputedStyle(parent).paddingLeft) || 0;
+            this.style.marginLeft = `${Math.max(0, Math.round((inset - padding) * 100) / 100)}px`;
+        }
 
         _disabledFor(action) {
             if (this.hasAttribute("disabled")) return true;

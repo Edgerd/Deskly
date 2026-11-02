@@ -5,27 +5,40 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deskly</title>
+    <link rel="icon" type="image/png" href="./Logo.png" />
 
     <!-- 首帧壁纸：必须是同步经典脚本，且排在所有样式表之前。
          模块脚本是 deferred，等它执行时默认壁纸已经画上屏；MV3 CSP 又禁止内联脚本。
          该文件只读 localStorage 的壁纸配置并写一个 CSS 变量，见文件头说明。 -->
     <script src="./src/javascripts/wallpaper-boot.js"></script>
 
-    <link rel="stylesheet" href="./assets/stylesheets/main/main.css?v=0.3.0" />
-    <link rel="stylesheet" href="./assets/stylesheets/finderbar/finderbar.css?v=0.3.0" />
-    <link rel="stylesheet" href="./assets/stylesheets/dock/dock.css?v=0.3.0" />
-    <link rel="stylesheet" href="./assets/stylesheets/main/desktop.css?v=0.3.0" />
-    <link rel="stylesheet" href="./assets/stylesheets/cursor/cursor.css?v=0.3.0" />
-    <link rel="stylesheet" href="./assets/stylesheets/ui/ui.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/contextMenu.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/window.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/windowframe.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/trafficlights.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/windowtraffic.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/datetime-popover.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/controlcenter.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/alert.css?v=0.3.0">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/popover.css?v=0.3.0">
+    <!-- 程序坞默认收藏图标预加载：dock.js 求值时就能命中真实 PNG，
+         首帧不出现通用占位图；与 manifest.icon 指向同一张位图，不引入新资源。
+         这里只列「必然被渲染」的五个应用图标：下载条目允许用户从程序坞移除，
+         移除后启动期没有任何 <img> 会消费它（它的下载栈图标只在展开时才创建），
+         预加载就成了永不消费的资源并触发「preloaded but not used」告警；
+         需要时由 dock 自己的 <img> 请求同一 URL，缓存照样命中。 -->
+    <link rel="preload" as="image" href="./mods/finder/Finder.png" fetchpriority="high" />
+    <link rel="preload" as="image" href="./mods/launchpad/Launchpad.png" fetchpriority="high" />
+    <link rel="preload" as="image" href="./mods/safari/Safari.png" fetchpriority="high" />
+    <link rel="preload" as="image" href="./mods/system-settings/Reglages systeme.png" fetchpriority="high" />
+    <link rel="preload" as="image" href="./mods/app-store/App Store.png" fetchpriority="high" />
+
+    <link rel="stylesheet" href="./assets/stylesheets/main/main.css?v=0.3.6" />
+    <link rel="stylesheet" href="./assets/stylesheets/finderbar/finderbar.css?v=0.3.6" />
+    <link rel="stylesheet" href="./assets/stylesheets/dock/dock.css?v=0.3.6" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/desktop.css?v=0.3.6" />
+    <link rel="stylesheet" href="./assets/stylesheets/cursor/cursor.css?v=0.3.6" />
+    <link rel="stylesheet" href="./assets/stylesheets/ui/ui.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/contextMenu.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/window.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/windowframe.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/trafficlights.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/windowtraffic.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/datetime-popover.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/controlcenter.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/alert.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/popover.css?v=0.3.6">
 </head>
 
 <body class="cursor-default">

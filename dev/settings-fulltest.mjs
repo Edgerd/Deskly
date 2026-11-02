@@ -198,6 +198,7 @@ const LEGACY_SLOTS = {
     "dock.size": "dock-size",
     "dock.position": "dock-position",
     "dock.zoom.amount": "dock-zoom-amount",
+    "dock.minimize.effect": "dock-minimize-effect",
     "dock.show.indicators": "dock-show-indicators",
     "dock.show.recent": "dock-show-recent",
     "dock.order": "webstartos_dock_order",
@@ -332,18 +333,20 @@ DEFAULT_OFF.forEach((key) => {
 
 // ── 旧事件兼容：detail 必须是 owner 现读法能直接用的字符串形态 ────────────
 const seenEvents = {};
-["dock-size-change", "dock-autohide-change", "dock-position-change", "dock-zoom-amount-change", "siri-orb-size-change", "trash-icon-change"].forEach((name) => {
+["dock-size-change", "dock-autohide-change", "dock-position-change", "dock-minimize-effect-change", "dock-zoom-amount-change", "siri-orb-size-change", "trash-icon-change"].forEach((name) => {
     window.addEventListener(name, (e) => { seenEvents[name] = e.detail; });
 });
 settings.set("dock.size", 96, { source: "fulltest" });
 settings.set("dock.autohide", true, { source: "fulltest" });
 settings.set("dock.position", "left", { source: "fulltest" });
+settings.set("dock.minimize.effect", "scale", { source: "fulltest" });
 settings.set("dock.zoom.amount", 2.4, { source: "fulltest" });
 settings.set("siri.orb.size", 222, { source: "fulltest" });
 settings.set("trash.icon", "dark_full", { source: "fulltest" });
 check("dock-size-change detail 为字符串", seenEvents["dock-size-change"] === "96", `实得 ${JSON.stringify(seenEvents["dock-size-change"])} (${typeof seenEvents["dock-size-change"]})`);
 check("dock-autohide-change detail 为 on/off", seenEvents["dock-autohide-change"] === "on", `实得 ${JSON.stringify(seenEvents["dock-autohide-change"])}`);
 check("dock-position-change detail 为位置串", seenEvents["dock-position-change"] === "left");
+check("dock-minimize-effect-change detail 为效果串", seenEvents["dock-minimize-effect-change"] === "scale", `实得 ${JSON.stringify(seenEvents["dock-minimize-effect-change"])}`);
 check("dock-zoom-amount-change detail 可被 parseFloat", parseFloat(seenEvents["dock-zoom-amount-change"]) === 2.4, `实得 ${JSON.stringify(seenEvents["dock-zoom-amount-change"])}`);
 check("siri-orb-size-change detail 是数字（siri 侧按数字读）", seenEvents["siri-orb-size-change"] === "222" || seenEvents["siri-orb-size-change"] === 222, `实得 ${JSON.stringify(seenEvents["siri-orb-size-change"])}`);
 check("trash-icon-change detail 是变体键", seenEvents["trash-icon-change"] === "dark_full", `实得 ${JSON.stringify(seenEvents["trash-icon-change"])}`);
@@ -395,6 +398,7 @@ const LEGACY_SEED = {
     "dock-autohide": "on",
     "dock-zoom": "off",
     "dock-position": "left",
+    "dock-minimize-effect": "scale",
     "dock-zoom-amount": "2.4",
     "dock-show-indicators": "off",
     "dock-show-recent": "off",
@@ -420,6 +424,7 @@ const LEGACY_READS = {
     "dock.autohide": true,
     "dock.zoom": false,
     "dock.position": "left",
+    "dock.minimize.effect": "scale",
     "dock.zoom.amount": 2.4,
     "dock.show.indicators": false,
     "dock.show.recent": false,

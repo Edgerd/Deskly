@@ -1,7 +1,7 @@
 /**
- * panes/dock.js — 「桌面与程序坞」面板：程序坞 7 项布局设置、废纸篓图标、原生右键菜单与恢复默认顺序
+ * panes/dock.js — 「桌面与程序坞」面板：程序坞 8 项布局设置、废纸篓图标、原生右键菜单与恢复默认顺序
  *
- * 这 7 项在设置定义里走的是 event 通道（定义只有 event 没有 apply）：设置中枢按旧格式
+ * 这 8 项在设置定义里走的是 event 通道（定义只有 event 没有 apply）：设置中枢按旧格式
  * 在 window 上补发 dock-size-change 一类事件，dock.js 侧零改动即可实时生效。
  * 因此本面板只需要老实调用 settings.set —— 由 ui.js 的 bind() 完成 —— 不再自己拼事件。
  *
@@ -31,6 +31,7 @@ export const messages = {
                 zoom: "程序坞放大",
                 size: "图标大小", amount: "放大倍数", position: "位置",
                 left: "左侧", bottom: "底部", right: "右侧",
+                minimize: "最小化窗口使用", genie: "神奇效果", scale: "缩放淡出",
                 indicators: "显示应用指示灯",
                 recent: "显示最近使用的应用",
                 trash: "废纸篓图标",
@@ -56,6 +57,7 @@ export const messages = {
                 zoom: "Magnification",
                 size: "Icon size", amount: "Magnification level", position: "Position",
                 left: "Left", bottom: "Bottom", right: "Right",
+                minimize: "Minimize windows using", genie: "Genie Effect", scale: "Scale fade",
                 indicators: "Show indicators for open applications",
                 recent: "Show recent applications in Dock",
                 trash: "Trash icon",
@@ -81,6 +83,7 @@ export const messages = {
                 zoom: "Dockを拡大",
                 size: "アイコンサイズ", amount: "拡大率", position: "位置",
                 left: "左", bottom: "下", right: "右",
+                minimize: "しまうときの効果", genie: "ジニーエフェクト", scale: "スケールフェード",
                 indicators: "開いているアプリに表示をつける",
                 recent: "最近使用したアプリを表示",
                 trash: "ゴミ箱のアイコン",
@@ -106,6 +109,7 @@ export const messages = {
                 zoom: "湊近就變大喵",
                 size: "圖標多大喵", amount: "放大幾倍喵", position: "待在哪一邊喵",
                 left: "左邊喵", bottom: "底下喵", right: "右邊喵",
+                minimize: "縮小用邊種喵", genie: "神奇效果喵", scale: "縮放淡出喵",
                 indicators: "開著的應用给個小點點喵",
                 recent: "最近用過的也擱在程序塢喵",
                 trash: "紙簍的模樣喵",
@@ -180,6 +184,14 @@ export function build(ctx) {
     const positionOptions = (positionDefinition.values || ["left", "bottom", "right"])
         .map((value) => ({ value, label: positionLabels[value] || value }));
 
+    const minimizeLabels = {
+        genie: t("ss.dock.genie", "神奇效果"),
+        scale: t("ss.dock.scale", "缩放淡出"),
+    };
+    const minimizeDefinition = settings.info("dock.minimize.effect") || {};
+    const minimizeOptions = (minimizeDefinition.values || ["genie", "scale"])
+        .map((value) => ({ value, label: minimizeLabels[value] || value }));
+
     const trashOptions = (trashIcon.TRASH_KEYS || []).map((key) => {
         const nameKey = `ss.dock.trashName.${key}`;
         return {
@@ -223,6 +235,10 @@ export function build(ctx) {
             controlSegmented("dock.position", {
                 label: t("ss.dock.position", "位置"),
                 options: positionOptions,
+            }),
+            controlSegmented("dock.minimize.effect", {
+                label: t("ss.dock.minimize", "最小化窗口使用"),
+                options: minimizeOptions,
             }),
             controlSlider("dock.zoom.amount", {
                 label: t("ss.dock.amount", "放大倍数"),

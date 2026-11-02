@@ -51,7 +51,7 @@ const KERNEL_MODULES = new Set([
     "app-registry", "appearance", "audio", "bootstrap", "client", "contextMenuSettings",
     "controlcenter", "cursor", "datetime_popover", "debug", "desktop", "dock", "finderbar", "i18n",
     "lock", "main", "paths", "permissions", "plugin-manager", "session", "settings", "settings-definitions",
-    "sortable", "sound", "spotlight", "store-api", "trashIcon", "version", "vfs", "wallpaper", "window", "zindex",
+    "sound", "spotlight", "store-api", "trashIcon", "version", "vfs", "wallpaper", "window", "zindex",
     "alert", "contextMenu", "desktopItems", "menu", "menuCommands", "notification", "trafficLights",
     // 0.2.85 起的新内核模块：osfs/surface 是先前补文件时漏登记的，
     // 漏了会让它们的日志被归成 plugin/osfs（按程序分类这一维就废了）。

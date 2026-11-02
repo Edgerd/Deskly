@@ -45,6 +45,14 @@ const memory = new Map();
 let storageBroken = false;
 
 /**
+ * get 的解析结果缓存：key -> { raw, value, slots }。
+ * 启动期同一个键会被几十个模块各读一次，而 JSON.parse / decode 对同一段原始文本是纯函数；
+ * getItem 本身很便宜，所以命中条件用「raw 是否仍相同」而不是脏标记 ——
+ * 调用方绕过 settings.set 直接改 localStorage 时也能自然察觉（raw 一变即不命中）。
+ */
+const valueCache = new Map();
+
+/**
  * 取存储后端；不可用时返回 null，由调用方走内存替身。
  * @returns {Storage|null} localStorage 或 null
  */
@@ -108,6 +116,30 @@ function removeSlot(slot) {
         console.warn(`[settings] 删除 ${slot} 失败：`, err);
         return false;
     }
+}
+
+/** 按存储槽清缓存：jsonPath 会让多个键共享同一个槽，改槽就得把相关条目一起丢掉。 */
+function invalidateSlot(slot) {
+    valueCache.forEach((entry, key) => {
+        if (entry.slots.includes(slot)) valueCache.delete(key);
+    });
+}
+
+/** 清空整表缓存（跨标签页 clear() 时使用）。 */
+function clearValueCache() {
+    valueCache.clear();
+}
+
+/**
+ * 缓存命中时的返回值：对象/数组给出浅拷贝。
+ * get 的调用方并非全都只读（store.meta 的 putMeta 就是「取出后就地改键再写回」），
+ * 直接交出缓存本体的话，这次修改会发生在 settings.set 读取 previous 之前，
+ * 让变更被判定成「没变」而丢掉广播。浅拷贝的开销远低于重新 JSON.parse。
+ */
+function shareValue(value) {
+    if (Array.isArray(value)) return value.slice();
+    if (value && typeof value === "object") return { ...value };
+    return value;
 }
 
 /** 宽容的布尔解析：认 on/true/1 与 off/false/0，其余视为无效。 */
@@ -249,9 +281,15 @@ function readRawForUndefined(key) {
     return readSlot(key.split(".").join("-")) ?? readSlot(key);
 }
 
-/** 读已注册键的原始值；jsonPath 时把子字段还原成可 decode 的字符串形态。 */
-function readStored(key, def) {
-    const raw = readSlot(slotOf(key, def));
+/**
+ * 读已注册键的原始值；jsonPath 时把子字段还原成可 decode 的字符串形态。
+ * @param {string} key 设置键
+ * @param {object} def 定义
+ * @param {string|null} [slotRaw] 已读到的槽原始值，避免 get 为拿缓存键再读一次
+ * @returns {string|null} 可直接交给 decode 的原始形态
+ */
+function readStored(key, def, slotRaw = readSlot(slotOf(key, def))) {
+    const raw = slotRaw;
     if (!def.jsonPath || !raw) return raw;
     try {
         const found = readPath(JSON.parse(raw), def.jsonPath);
@@ -313,6 +351,8 @@ const settings = {
             merged.default = type === "boolean" ? false : type === "number" ? 0 : type === "json" ? null : "";
         }
         defs.set(merged.key, merged);
+        // 同名重定义可能改掉 default / type / values / jsonPath，同一段 raw 的解码结果随之改变。
+        valueCache.delete(merged.key);
         return { ...merged };
     },
 
@@ -335,9 +375,27 @@ const settings = {
         const def = defOf(key);
         if (!def) {
             const raw = readRawForUndefined(key);
-            return raw === null || raw === undefined ? fallback : parseLoose(raw);
+            // 未注册键的槽名无法从定义里取，按推导槽与原名两处都登记，改哪个都能失效。
+            const slots = [key.split(".").join("-"), key];
+            if (raw === null || raw === undefined) {
+                valueCache.delete(key);
+                return fallback;
+            }
+            const hit = valueCache.get(key);
+            if (hit && hit.raw === raw) return shareValue(hit.value);
+            const value = parseLoose(raw);
+            valueCache.set(key, { raw, value, slots });
+            return shareValue(value);
         }
-        return decode(key, def, readStored(key, def));
+        const slot = slotOf(key, def);
+        const raw = readSlot(slot);
+        const hit = valueCache.get(key);
+        // 命中只看原始字符串：设置值本身变了（raw 不同）就必然重算，
+        // 而定义（default / values / jsonPath）变化由 define() 主动清条目兜住。
+        if (hit && hit.raw === raw) return shareValue(hit.value);
+        const value = decode(key, def, readStored(key, def, raw));
+        valueCache.set(key, { raw, value, slots: [slot] });
+        return shareValue(value);
     },
 
     /**
@@ -397,6 +455,8 @@ const settings = {
         } else {
             persisted = writeSlot(slot, encode(type, next, typed));
         }
+        // 写后立刻失效：jsonPath 共享同一槽的其它键也要跟着重算。
+        invalidateSlot(slot);
 
         if (def && typeof def.apply === "function") {
             try {
@@ -440,7 +500,10 @@ const settings = {
             return { ok: false, key, value: settings.get(key), persisted: false, changed: false, reason: "未注册的定义，无法恢复默认" };
         }
         if (def.jsonPath) return settings.set(key, cloneDefault(def.default), { ...opts, source: opts.source || "reset" });
-        removeSlot(slotOf(key, def));
+        const slot = slotOf(key, def);
+        removeSlot(slot);
+        // 先失效再读 previous：否则会拿缓存里的旧值当「恢复前值」广播出去。
+        invalidateSlot(slot);
         const previous = settings.get(key);
         if (typeof def.apply === "function") {
             try { def.apply(cloneDefault(def.default), { previous, persisted: true, source: "reset" }); }
@@ -604,6 +667,16 @@ const settings = {
         return slotOf(key, defOf(key));
     },
 };
+
+// 跨标签页同步：另一个标签页改完存储后，本页缓存里的 raw 已经过期。
+// storage 事件只给槽名、不给新值（key 为 null 表示对方 clear() 了整个 localStorage），
+// 所以按槽失效 / 整表清空是最省事且不会漏的做法。
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("storage", (event) => {
+        if (event.key === null) clearValueCache();
+        else if (typeof event.key === "string") invalidateSlot(event.key);
+    });
+}
 
 export { settings, KEY_PATTERN };
 

@@ -163,11 +163,18 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
+        /* 程序坞图标是按钮，但光标保持 macOS 的普通箭头，不使用抓手。
+           Pointer 拖拽由 dock/drag.js 接管，触摸上也不再触发页面滚动。 */
+        cursor: var(--deskly-cursor, default);
+        touch-action: none;
 
         img {
             width: var(--dock-size, 50px);
             height: var(--dock-size, 50px);
-            transition: filter 0.05s;
+            transition: filter 0.05s, opacity 0.12s ease;
+            cursor: var(--deskly-cursor, default);
+            -webkit-user-drag: none;
+            user-select: none;
             /* 亚克力禁忌（0.2.50 固化）：移除非必要的 will-change:width 和 transform-origin，
                避免子元素被提升为 GPU 合成层后干扰 .dock 父元素 backdrop-filter 渲染。
                hover 放大通过 width/height 过渡即可，transform 全部交给父链承担。 */
@@ -183,6 +190,19 @@
 
             &.openingwithscale {
                 animation: parabola 0.9s 1, scale 0.9s ease forwards;
+            }
+            /* 加载态：不画通用占位图，先给低对比骨架，真实图片到达后淡入 */
+            &.is-loading,
+            &.is-pending {
+                opacity: 0.32;
+                border-radius: 22%;
+                background: rgba(255, 255, 255, 0.2);
+                animation: dock-icon-loading 1.4s ease-in-out infinite;
+            }
+
+            &.is-loaded {
+                opacity: 1;
+                background: transparent;
             }
 
             &:active {
@@ -368,16 +388,100 @@
     background: none;
 }
 
-/* 拖拽排序：被拖拽图标半透明，其余图标轻微让位预览 */
-.dock .container.sortable-dragging {
-    opacity: 0.45;
+/* 指针拖拽：原位图标降到半透明，影子在 body 上跟随指针 */
+.dock .container.dock-dragging {
+    opacity: 0.35;
 }
-.dock .container.sortable-dragging img {
+.dock .container.dock-dragging img {
     filter: brightness(0.85);
 }
-.dock .container img {
-    cursor: grab;
+/* 拖拽影子：z-index = Z.DOCK_DRAG（src/javascripts/zindex.js） */
+.dock-drag-ghost {
+    position: fixed;
+    z-index: 9505;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transform-origin: center;
+    scale: 1.08;
+    opacity: 0.92;
+    filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.35));
+    transition: scale 0.16s ease, opacity 0.16s ease;
 }
-.dock .container.sortable-dragging img {
-    cursor: grabbing;
+.dock-drag-ghost.is-outside {
+    scale: 0.72;
+    opacity: 0.45;
+}
+.dock-drag-ghost img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+.dock-drag-ghost .light {
+    display: none;
+}
+/* 拖拽全程保持普通箭头：覆盖光标组件注入的手指 / 抓手形状 */
+body.dock-dragging,
+body.dock-dragging * {
+    cursor: var(--deskly-cursor, default) !important;
+}
+
+/* 拖出隐藏的噗散粒子 */
+.dock-poof {
+    position: fixed;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+.dock-poof i {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: var(--size, 7px);
+    height: var(--size, 7px);
+    margin: calc(var(--size, 7px) / -2);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+    animation: dock-poof-dot 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+    animation-delay: var(--delay, 0ms);
+}
+html[data-theme="dark"] .dock-poof i {
+    background: rgba(210, 210, 215, 0.9);
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+}
+html[data-theme="dark"] .dock .container img.is-loading,
+html[data-theme="dark"] .dock .container img.is-pending {
+    background: rgba(255, 255, 255, 0.12);
+}
+@keyframes dock-icon-loading {
+    0%, 100% { opacity: 0.22; }
+    50% { opacity: 0.42; }
+}
+@keyframes dock-poof-dot {
+    0% { transform: translate(0, 0) scale(1); opacity: 0.95; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+}
+/* 减少动态效果：不做骨架脉冲与噗散粒子 */
+html[data-reduce-motion="on"] .dock .container img.is-loading,
+html[data-reduce-motion="on"] .dock .container img.is-pending {
+    animation: none;
+}
+html[data-reduce-motion="on"] .dock-poof {
+    display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .dock .container img.is-loading,
+    .dock .container img.is-pending,
+    .dock-poof i {
+        animation: none;
+    }
+    .dock-poof {
+        display: none;
+    }
 }

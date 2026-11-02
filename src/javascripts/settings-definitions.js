@@ -154,6 +154,12 @@ function initSettingsSchema() {
             label: "位置", event: "dock-position-change",
         },
         {
+            key: "dock.minimize.effect", type: "string", default: "genie",
+            values: ["genie", "scale"], valuesLabel: ["神奇效果", "缩放淡出"],
+            control: "segmented", pane: "dock", group: "程序坞", order: 45,
+            label: "最小化窗口使用", event: "dock-minimize-effect-change",
+        },
+        {
             key: "dock.zoom.amount", slot: "dock-zoom-amount", type: "number", default: 1.8, min: 1.1, max: 3, step: 0.1,
             control: "slider", units: "倍", pane: "dock", group: "程序坞", order: 50,
             label: "放大倍数", event: "dock-zoom-amount-change",

@@ -1,9 +1,10 @@
 <!-- 窗口尺寸由应用自己声明（data-window），manifest.window 只是缺省。
      三栏结构：章 / 节 / 正文；搜索命中时中栏切换成结果列表。 -->
 <div class="manual window" data-window="size:980x640 resizable:true centered">
-    <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
-
-    <div class="manual__bar">
+    <!-- 红绿灯是标题栏的一部分：组件按父级 padding-left 自动补到 20px 左内缩，
+         放进 .manual__bar 后随 44px 高的工具栏垂直居中，不再单独占一行。 -->
+    <div class="manual__bar" data-titlebar>
+        <deskly-traffic-lights class="wintools" placement="titlebar"></deskly-traffic-lights>
         <span class="manual__badge" data-i18n="manual.badge" data-i18n-fallback="使用手册">使用手册</span>
         <label class="manual__searchbox">
             <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -23,6 +24,6 @@
 
     <div class="manual__footer">
         <span class="manual__source"></span>
-        <span class="manual__note" data-i18n="manual.imageNote" data-i18n-fallback="图片以图注形式呈现，原图见 docs/iMac-2024-macOS15-知识库">图片以图注形式呈现，原图见 docs/iMac-2024-macOS15-知识库</span>
+        <span class="manual__note" data-i18n="manual.imageNote" data-i18n-fallback="插图随手册本地打包 · 内容镜像自本地知识库">插图随手册本地打包 · 内容镜像自本地知识库</span>
     </div>
 </div>

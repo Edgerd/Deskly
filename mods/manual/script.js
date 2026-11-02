@@ -1,18 +1,20 @@
 /**
  * script.js — 「Mac 使用手册」插件
  *
- * 内容来自构建脚本 dev/build-manual-content.mjs 生成的 content/*.md 与 index.json：
- * 图片已在构建期降级成「图：说明」引用块，运行时不会请求任何图片。
+ * 内容来自构建脚本 dev/build-manual-content.mjs 生成的 content/*.md 与 index.json。
+ * 插图随插件打包在 images/*.webp（知识库原图 43MB，构建期压缩到约 6MB），
+ * 运行时按需懒加载；正文里的 `![说明](images/x.webp)` 渲染为 figure + img。
  *
  * 结构：章列表 → 小节列表 → 正文；顶部搜索在 index.search 上做子串匹配。
  * 外部入口：document 上的 `manual-open` 事件（detail: {chapter, section, h}），
  * 由帮助菜单与聚焦派发；本模块负责解析章节/小节并滚动到对应标题。
  *
  * 安全：正文用 DOM 构建（textContent / createElement），不把 Markdown 直接塞进 innerHTML；
- * 链接只允许 http(s)。
+ * 图片只允许插件 images/ 下的单层文件名，链接只允许 http(s)。
  */
 
 import { i18n } from "../../src/javascripts/i18n.js";
+import { attachTrafficLights } from "../../src/javascripts/ui/trafficLights.js";
 
 const root = document.querySelector(".manual.window");
 
@@ -27,6 +29,7 @@ const state = {
     cache: new Map(),
     query: "",
     headingEls: [],
+    releaseSurface: null,
 };
 
 const els = {};
@@ -38,6 +41,11 @@ async function init() {
     els.search = root.querySelector(".manual__search");
     els.meta = root.querySelector(".manual__meta");
     els.source = root.querySelector(".manual__source");
+
+    // 红绿灯统一走组件 API：锚到带 data-titlebar 的工具栏，位置由组件补到
+    // --traffic-inset；磨砂面登记到表面系统，文字色随壁纸/主题自动取黑或白。
+    attachTrafficLights(root, { anchor: root.querySelector("[data-titlebar]"), placement: "titlebar" });
+    state.releaseSurface = globalThis.__surface?.apply?.(root, { role: 3 }) || null;
 
     localize();
     bind();
@@ -97,6 +105,8 @@ function onUnload() {
     document.removeEventListener("manual-open", onManualOpen);
     document.removeEventListener("languagechange", onLanguageChange);
     state.cache.clear();
+    state.releaseSurface?.();
+    state.releaseSurface = null;
 }
 
 function onLanguageChange() {
@@ -281,8 +291,42 @@ function onContentScroll() {
 
 // ---------------- Markdown → DOM ----------------
 
+/** 独占一行的图片；只接受构建脚本产出的 images/<file>.webp，杜绝路径穿越。 */
+const IMAGE_LINE = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/;
+const IMAGE_FILE = /^images\/[A-Za-z0-9][A-Za-z0-9._-]*\.webp$/;
+
 /**
- * 渲染 Markdown 子集：H1–H3、段落、有序/无序列表、引用块、表格、分隔线、行内强调。
+ * 渲染一张插图：图片本体走懒加载，说明文字放 figcaption（同时是 alt）。
+ * 路径不合法或文件缺失时只保留图注，不把破图图标留在正文里。
+ * @param {string} alt 说明文字
+ * @param {string} src 相对插件目录的路径（images/x.webp）
+ * @returns {HTMLElement}
+ */
+function createFigure(alt, src) {
+    const figure = document.createElement("figure");
+    figure.className = "manual__figure";
+    const caption = (alt || "").trim();
+    if (IMAGE_FILE.test(src)) {
+        const img = new Image();
+        img.src = new URL("./" + src, import.meta.url).href;
+        img.alt = caption;
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.addEventListener("error", () => figure.classList.add("is-missing"), { once: true });
+        figure.appendChild(img);
+    } else {
+        figure.classList.add("is-missing");
+    }
+    if (caption) {
+        const note = document.createElement("figcaption");
+        note.textContent = caption;
+        figure.appendChild(note);
+    }
+    return figure;
+}
+
+/**
+ * 渲染 Markdown 子集：H1–H3、段落、图片、有序/无序列表、引用块、表格、分隔线、行内强调。
  * 只处理本手册实际用到的语法；不引入第三方解析器。
  * @param {string} md Markdown 文本
  * @param {HTMLElement} container 输出容器
@@ -309,6 +353,14 @@ function renderMarkdown(md, container) {
             if (level <= 2) node.dataset.h = String(headingSeq++);
             appendInline(node, heading[2]);
             container.appendChild(node);
+            list = null;
+            i += 1;
+            continue;
+        }
+
+        const image = IMAGE_LINE.exec(line.trim());
+        if (image) {
+            container.appendChild(createFigure(image[1], image[2]));
             list = null;
             i += 1;
             continue;
@@ -370,6 +422,7 @@ function isBlockStart(line) {
     return /^(#{1,3})\s+/.test(line)
         || /^\s*---+\s*$/.test(line)
         || line.startsWith(">")
+        || IMAGE_LINE.test(line.trim())
         || /^(\s*)([-*]|\d+\.)\s+/.test(line)
         || line.trim().startsWith("|");
 }

@@ -4,19 +4,21 @@
  * 输入：docs/iMac-2024-macOS15-知识库/ 的 8 章 Markdown（含 209 张图的引用）
  * 输出：mods/manual/content/*.md + index.json
  *
- * 为什么不直接引用 docs/：docs/ 里图片共 43MB，扩展包与商店 ZIP 都装不下；
- * 这里把图片引用降级成「图：说明」引用块，正文保留，体积只剩约 260KB。
- * 图片本身仍留在知识库目录，需要看原图时按图注去 docs/ 里查。
+ * 图片：知识库原图共 43MB，而商店 ZIP 上限是 10MB，所以插件里放的是压缩后的
+ * WebP 副本 mods/manual/images/*.webp（约 6MB）。正文保留图片引用并改指 WebP，
+ * 渲染端直接出 <img>；构建期缺图会直接报错，不会把破图带进包里。
+ * 重新生成 WebP：python dev/optimize-manual-images.py
  *
  * 用法：node dev/build-manual-content.mjs
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 
 const ROOT = resolve(import.meta.url.replace(/^file:\/\/\/?/, ""), "..", "..");
 const SRC = join(ROOT, "docs/iMac-2024-macOS15-知识库");
 const OUT = join(ROOT, "mods/manual/content");
+const IMG_OUT = join(ROOT, "mods/manual/images");
 
 mkdirSync(OUT, { recursive: true });
 
@@ -24,7 +26,16 @@ const files = readdirSync(SRC).filter((f) => /^0[1-8]-.*\.md$/.test(f)).sort();
 
 const chapters = [];
 const search = [];
-const plain = (s) => s.replace(/[*`>#|]/g, "").replace(/\s+/g, " ").trim();
+const missingImages = new Set();
+const usedImages = new Set();
+// 搜索正文只保留可读文字：图片取 alt、链接取锚文本，别把 Markdown 路径塞进索引。
+const plain = (s) => s
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*`>#|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+const escapeAlt = (s) => String(s || "").replace(/[[\]]/g, " ").replace(/\s+/g, " ").trim();
 
 for (const file of files) {
     const id = file.slice(0, 2);
@@ -34,13 +45,23 @@ for (const file of files) {
     // 1. 去掉抓取时写入的两行来源引用（App 里由「关于」统一说明来源）
     text = text.replace(/^> 来源：.*\n?/m, "").replace(/^> 章节：.*\n?/m, "").trim();
 
-    // 2. 图片 + 紧随其后的图注 → 一条引用块（只保留文字，避免 404 与包体膨胀）
-    text = text.replace(/!\[([^\]]*)\]\(images\/[^)]+\)\s*\n+\*图：([^\n]*)\*\s*\n?/g, (m, alt, caption) => {
-        const label = (caption || alt || "").trim();
-        return label ? `> 图：${label}\n\n` : "";
+    // 2. 图片 + 紧随其后的图注 → 保留图片引用，改指插件里的 WebP 副本；
+    //    图注并入 alt（渲染端同时用作 figcaption）。
+    const toWebp = (base) => {
+        const file = `${base}.webp`;
+        usedImages.add(file);
+        if (!existsSync(join(IMG_OUT, file))) missingImages.add(file);
+        return file;
+    };
+    text = text.replace(/!\[([^\]]*)\]\(images\/([^)]+)\.(?:png|jpe?g)\)\s*\n+\*图：([^\n]*)\*\s*\n?/g, (m, alt, base, caption) => {
+        const label = escapeAlt(caption || alt);
+        return `![${label}](images/${toWebp(base)})\n\n`;
     });
     // 兼容没有图注行的图片
-    text = text.replace(/!\[([^\]]*)\]\(images\/[^)]+\)\s*\n?/g, (m, alt) => (alt ? `> 图：${alt}\n\n` : ""));
+    text = text.replace(/!\[([^\]]*)\]\(images\/([^)]+)\.(?:png|jpe?g)\)\s*\n?/g, (m, alt, base) => {
+        const label = escapeAlt(alt);
+        return `![${label}](images/${toWebp(base)})\n\n`;
+    });
 
     // 3. 压缩多余空行
     text = text.replace(/\n{3,}/g, "\n\n").trim() + "\n";
@@ -96,6 +117,12 @@ for (const file of files) {
     }));
 }
 
+if (missingImages.size) {
+    console.error(`缺少 ${missingImages.size} 张 WebP 插图，先运行 python dev/optimize-manual-images.py：`);
+    [...missingImages].sort().forEach((file) => console.error(` - ${file}`));
+    process.exit(1);
+}
+
 const index = {
     generated: new Date().toISOString().slice(0, 10),
     source: "《iMac 入门指南》2024 年款 · macOS Sequoia 15（本地知识库镜像）",
@@ -105,4 +132,4 @@ const index = {
 
 writeFileSync(join(OUT, "index.json"), JSON.stringify(index, null, 0) + "\n");
 const total = chapters.reduce((n, c) => n + c.sections.length, 0);
-console.log(`生成完成：${chapters.length} 章 / ${total} 节 / 搜索条目 ${search.length}`);
+console.log(`生成完成：${chapters.length} 章 / ${total} 节 / ${usedImages.size} 张插图 / 搜索条目 ${search.length}`);

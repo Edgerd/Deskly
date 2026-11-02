@@ -8,7 +8,15 @@
     width: 100%;
     height: 100%;
     min-width: 560px;
-    background: var(--window-bg, rgba(246, 246, 246, 0.92));
+    /* 磨砂玻璃走表面系统：模糊半径来自 --surface-blur（script.js 里
+       __surface.apply(root, {role:3}) 按用户的「模糊等级」分配），
+       底色的透明度只决定透出多少壁纸，不再写死 blur 像素。 */
+    --manual-bg: rgba(246, 246, 246, 0.72);
+    background: var(--manual-bg);
+    -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
+    /* 亚克力稳定层：与 notepad 同配方，避免祖先叠加层把采样面截断。 */
+    isolation: isolate;
     color: var(--surface-text, #1d1d1f);
     overflow: hidden;
 }
@@ -207,6 +215,34 @@ html[data-reduce-motion="on"] .manual__content {
     text-decoration: underline;
 }
 
+/* 插图来自插件目录 images/*.webp（构建期从知识库 PNG 压缩），
+   按正文宽度等比缩放；图注只是补充说明，不承担「图片本身」的职责。 */
+.manual__figure {
+    margin: 14px 0 16px;
+}
+
+.manual__figure img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+    border-radius: 8px;
+    background: rgba(127, 127, 127, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+.manual__figure figcaption {
+    margin-top: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--surface-text-tertiary, rgba(60, 60, 67, 0.45));
+}
+
+.manual__figure.is-missing img {
+    display: none;
+}
+
 .manual__content blockquote {
     margin: 0 0 10px;
     padding: 6px 10px;
@@ -282,5 +318,17 @@ html[data-reduce-motion="on"] .manual__content {
 
 html[data-theme="dark"] .manual,
 body.dark-mode .manual {
-    background: var(--window-bg, rgba(28, 28, 30, 0.92));
+    --manual-bg: rgba(28, 28, 30, 0.72);
+}
+
+/* 「降低透明度」：关掉模糊，换同色调实色面板，正文对比度不依赖壁纸。
+   文字令牌必须跟着换回主题色：__surface.apply 写的是内联值，只有 !important 能盖住，
+   否则开着墙纸着色 + 深壁纸时会留下「浅色实心面板 + 白字」。 */
+html[data-transparency="off"] .manual {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--surface-panel, #f4f4f6);
+    --surface-text: var(--text-primary, #1d1d1f) !important;
+    --surface-text-secondary: var(--text-secondary, rgba(60, 60, 67, 0.6)) !important;
+    --surface-text-tertiary: var(--text-tertiary, rgba(60, 60, 67, 0.45)) !important;
 }

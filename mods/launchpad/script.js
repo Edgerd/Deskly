@@ -42,8 +42,13 @@ const pageDots = launchpad.querySelector(".page-dots");
 // 旧版只存应用名数组（webstartos_launchpad_order），读到时迁移
 const LAYOUT_KEY = "webstartos_launchpad_layout_v2";
 const LEGACY_ORDER_KEY = "webstartos_launchpad_order";
-// 关闭动画时长（ms）：与 style.css 的 launchpad-out / launchpad-fade-out 保持一致
-const CLOSE_MS = 300;
+// 开关动画节奏：进入 ease-out、退出 ease-in，数值与 style.css 的默认动画一致。
+const OPEN_FADE_MS = 240;
+const OPEN_GRID_MS = 320;
+const CLOSE_MS = 260;
+const EASE_ENTER = "cubic-bezier(0.22, 1, 0.36, 1)";
+const EASE_GRID_ENTER = "cubic-bezier(0.22, 1, 0.36, 1)";
+const EASE_EXIT = "cubic-bezier(0.4, 0, 1, 1)";
 // 指针位移超过该值才判定为拖拽（否则是点击）
 const DRAG_THRESHOLD = 6;
 // 让位场：以指针为中心的"海水让开"。横向半径大、纵向半径小 → 指针处开出一条竖缝，
@@ -1091,6 +1096,11 @@ function setDockLight(on) {
     if (light) light.classList.toggle("on", on);
 }
 
+function prefersReducedMotion() {
+    if (document.documentElement.getAttribute("data-reduce-motion") === "on") return true;
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
 function closeLaunchpad() {
     if (LP_STATE.isClosing) return;
     if (!launchpad || !launchpad.isConnected) {
@@ -1111,11 +1121,7 @@ function closeLaunchpad() {
     searchInput.value = "";
     keyword = "";
 
-    // 独立 keyframes 保证关闭动画可重启（见 style.css 注释）
-    launchpad.style.animation = `launchpad-fade-out ${CLOSE_MS}ms ease-in forwards`;
-    grid.style.animation = `launchpad-out ${CLOSE_MS}ms ease-in-out forwards`;
-
-    launchpad._closeTimer = setTimeout(() => {
+    const finishClose = () => {
         launchpad._closeTimer = null;
         // 统一交给核心卸载：unload() 广播 plugin-unload 并移除根节点/样式/脚本
         unload("launchpad");
@@ -1123,7 +1129,18 @@ function closeLaunchpad() {
         if (window.__dock && typeof window.__dock.syncRunningApps === "function") {
             window.__dock.syncRunningApps();
         }
-    }, CLOSE_MS + 60);
+    };
+
+    if (prefersReducedMotion()) {
+        finishClose();
+        return;
+    }
+
+    // 独立 keyframes 保证关闭动画可重启（见 style.css 注释）。
+    launchpad.style.pointerEvents = "none";
+    launchpad.style.animation = `launchpad-fade-out ${CLOSE_MS}ms ${EASE_EXIT} forwards`;
+    grid.style.animation = `launchpad-out ${CLOSE_MS}ms ${EASE_EXIT} forwards`;
+    launchpad._closeTimer = setTimeout(finishClose, CLOSE_MS + 40);
 }
 
 function reopenLaunchpad() {
@@ -1138,9 +1155,15 @@ function reopenLaunchpad() {
     applySizes();
     buildState();
     renderRoot();
-    launchpad.style.animation = "";
-    grid.style.animation = "";
     launchpad.style.display = "";
+    launchpad.style.pointerEvents = "";
+    if (prefersReducedMotion()) {
+        launchpad.style.animation = "";
+        grid.style.animation = "";
+    } else {
+        launchpad.style.animation = `launchpad-fade-in ${OPEN_FADE_MS}ms ${EASE_ENTER} both`;
+        grid.style.animation = `grid-in ${OPEN_GRID_MS}ms ${EASE_GRID_ENTER} both`;
+    }
     return true;
 }
 

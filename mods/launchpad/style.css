@@ -15,18 +15,22 @@
    .search-input / .folder-panel 的 backdrop-filter 退化为不透明色块） */
 @keyframes launchpad-fade-in {
   0% { opacity: 0; }
+  55% { opacity: 0.9; }
   100% { opacity: 1; }
 }
-/* 网格缩放入场（grid 无 backdrop-filter 子元素，可用 transform） */
+/* 网格缩放入场（grid 无 backdrop-filter 子元素，可用 transform）。
+   进入用 ease-out：先快后慢，内容很快可读，尾段稳稳落位。 */
 @keyframes grid-in {
-  0% { opacity: 0; transform: scale(1.08); }
-  100% { opacity: 1; transform: scale(1); }
+  0% { opacity: 0; transform: scale(1.055) translate3d(0, 12px, 0); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1) translate3d(0, 0, 0); }
 }
 /* 关闭动画必须是独立 keyframes：复用进入动画名 + reverse 不会重启动画，
-   fill-forwards 会直接翻到 0% 关键帧（瞬间消失） */
+   fill-forwards 会直接翻到 0% 关键帧（瞬间消失）。
+   退出用 ease-in：先慢后快，像内容被抽离而不是同时散掉。 */
 @keyframes launchpad-out {
-  0% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.06); }
+  0% { opacity: 1; transform: scale(1) translate3d(0, 0, 0); }
+  100% { opacity: 0; transform: scale(1.035) translate3d(0, -6px, 0); }
 }
 @keyframes launchpad-fade-out {
   0% { opacity: 1; }
@@ -90,11 +94,11 @@
   backdrop-filter: blur(var(--surface-blur)) saturate(1.4);
   -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(1.4);
   background: rgba(0, 0, 0, 0.24);
-  animation: launchpad-fade-in 0.25s ease-out forwards;
+  animation: launchpad-fade-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   user-select: none;
   -webkit-user-select: none;
   cursor: var(--deskly-cursor, default);
-  transition: backdrop-filter 0.22s ease, background 0.22s ease;
+  transition: backdrop-filter 0.22s cubic-bezier(0.4, 0, 0.2, 1), background 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 /* 文件夹展开时：底衬更糊更暗，浮层的磨砂才读得出层次。
    常态 4 档、展开态 5 档，保住「展开比常态更糊」这一步。 */
@@ -131,7 +135,7 @@
   scrollbar-width: none;
   scroll-snap-type: x mandatory;
   overscroll-behavior-x: contain;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .launchpad .grid-scroll::-webkit-scrollbar {
   display: none;
@@ -148,7 +152,7 @@
   display: flex;
   width: 100%;
   height: 100%;
-  animation: grid-in 0.3s ease-out forwards;
+  animation: grid-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 .launchpad .grid-page {
   flex: 0 0 100%;
@@ -272,7 +276,7 @@
   justify-content: center;
   /* 亚克力禁忌：子元素 .search-input 带 backdrop-filter，祖先禁止 transform
      （会提升祖先合成层导致毛玻璃失效退化为白色矩形），居中用 left/right + margin auto */
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .launchpad .searchbar .search-icon {
   position: absolute;
@@ -335,7 +339,7 @@
   gap: 8px;
   z-index: 2;
   padding: 4px 6px;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .launchpad .page-dots[hidden] {
   display: none;
@@ -526,4 +530,12 @@ html.deskly-launchpad-open .dockcontainer {
 html.deskly-launchpad-open .dock-stack {
   /* = Z.LAUNCHPAD_DOCK_STACK（src/javascripts/zindex.js） */
   z-index: 9602;
+}
+
+/* 系统级减少动态效果：启动台取消入场/退场动画，直接显隐。 */
+@media (prefers-reduced-motion: reduce) {
+  .launchpad,
+  .launchpad .grid {
+    animation: none;
+  }
 }

@@ -231,6 +231,21 @@ function isActivated(pluginId, permission) {
 }
 
 /**
+ * 账本行签名：permission + granted + activated 的排序串，用于判断一次 grantAll
+ * 到底有没有改动。启动期 13 个内置插件注册都会走 grantAll，绝大多数重复声明
+ * 只是「把已经是 true 的字段再写一遍」，为它们各开一次 readwrite 事务纯属浪费。
+ * 排序是必须的：grants 的追加顺序不稳定，不排序会把「集合相同」误判成变化。
+ * @param {{grants: Array<object>}} row 账本行
+ * @returns {string} 授权状态签名
+ */
+function signatureOf(row) {
+    return row.grants
+        .map((g) => `${g.permission}|${Boolean(g.granted)}|${Boolean(g.activated)}`)
+        .sort()
+        .join(",");
+}
+
+/**
  * 安装时全量授权：并集合并，**绝不撤销**已有条目。
  * ZIP 覆盖安装会用新的 manifest 再走一次这里，若改成覆盖，
  * 用户上次「始终允许」的记录会静默消失，下次调用又弹一遍。
@@ -242,6 +257,8 @@ function isActivated(pluginId, permission) {
 async function grantAll(pluginId, permissions) {
     const names = Array.isArray(permissions) ? permissions : [];
     const row = rowOf(pluginId);
+    // 改动前的签名：内存在循环里就地改，事后只有拿它才能判断是否真的变了。
+    const before = signatureOf(row);
     for (const permission of names) {
         if (!isKnownPermission(permission)) {
             log("warn", `插件 ${pluginId} 声明了未知权限：${permission}`);
@@ -260,6 +277,9 @@ async function grantAll(pluginId, permissions) {
             });
         }
     }
+    // 没有任何权限位发生变化就不落盘：重复注册（同一插件被覆盖安装、内置插件
+    // 清单没改）不该产生写事务。返回 true 与成功落盘一致——内存镜像已经是对的。
+    if (signatureOf(row) === before) return true;
     try {
         await putRow({ ...row, grants: row.grants.map((g) => ({ ...g })) });
         return true;
@@ -417,28 +437,63 @@ function escapeHtml(text) {
 }
 
 /**
- * 启动时读回账本，并接上注册表现有的生命周期广播。
+ * 把 IndexedDB 读回的一行并进内存镜像。**并集**语义，不能直接 set 覆盖。
  *
- * 授权写入挂在 `plugin-registered` 上而不是改 registerPlugin 内部：内置插件
- * （plugin-manager.js init 拉 manifest）与 ZIP 插件（store-api.js 安装）最终都走
- * app-registry.js registerPlugin 这一个调用点，挂广播就天然同漏斗，
- * 而注册表本身保持纯数据层。
+ * 读账本是异步的，期间内置插件可能已经注册并走了 grantAll：那些条目只存在于
+ * 内存里、还没来得及落盘。直接 `ledger.set(id, DB行)` 会把它们连同刚写进去的
+ * granted 一起抹掉，下次敏感调用又会重弹。
+ *
+ * 合并规则：granted / activated 取逻辑或（DB 有或内存有都算有，绝不撤销）；
+ * grantedAt / activatedAt 取较小值——时间戳越早越接近「用户第一次同意」，
+ * 两个来源都缺时保留 undefined，不编造时间。
+ * @param {object} row IndexedDB 里的账本行
+ */
+function mergeRowFromDb(row) {
+    const grants = Array.isArray(row.grants) ? row.grants : [];
+    const current = ledger.get(row.pluginId);
+    if (!current) {
+        ledger.set(row.pluginId, {
+            pluginId: row.pluginId,
+            grants: grants.map((g) => ({ ...g })),
+        });
+        return;
+    }
+    for (const dbEntry of grants) {
+        if (!dbEntry || !dbEntry.permission) continue;
+        const inMemory = current.grants.find((g) => matches(g.permission, dbEntry.permission));
+        if (!inMemory) {
+            current.grants.push({ ...dbEntry });
+            continue;
+        }
+        inMemory.granted = Boolean(inMemory.granted || dbEntry.granted);
+        inMemory.activated = Boolean(inMemory.activated || dbEntry.activated);
+        if (dbEntry.grantedAt !== undefined) {
+            inMemory.grantedAt = inMemory.grantedAt === undefined
+                ? dbEntry.grantedAt
+                : Math.min(inMemory.grantedAt, dbEntry.grantedAt);
+        }
+        if (dbEntry.activatedAt !== undefined) {
+            inMemory.activatedAt = inMemory.activatedAt === undefined
+                ? dbEntry.activatedAt
+                : Math.min(inMemory.activatedAt, dbEntry.activatedAt);
+        }
+    }
+}
+
+/**
+ * 启动时接上注册表生命周期广播，并读回历史账本。
+ *
+ * 顺序：**先同步挂监听，再异步读账本**。授权写入挂在 `plugin-registered` 上而不是
+ * 改 registerPlugin 内部：内置插件（plugin-manager.js init 拉 manifest）与 ZIP 插件
+ * （store-api.js 安装）最终都走 app-registry.js registerPlugin 这一个调用点，挂广播就
+ * 天然同漏斗，而注册表本身保持纯数据层。
+ *
+ * 不能把读账本放在监听器之前：registerPlugin 广播可能在同一轮微任务里就发生，
+ * 监听器晚挂一步，内置插件的安装授权就漏记。读回只是补历史，不是前置条件，
+ * 所以 bootstrap 不再 await 它，IndexedDB 全量读取不再充当启动硬屏障。
  * @returns {Promise<boolean>} 账本是否成功读回（失败时内存为空表，不阻塞启动）
  */
 async function initGrants() {
-    try {
-        const rows = await getAllRows();
-        for (const row of Array.isArray(rows) ? rows : []) {
-            if (!row || !row.pluginId) continue;
-            ledger.set(row.pluginId, {
-                pluginId: row.pluginId,
-                grants: Array.isArray(row.grants) ? row.grants.map((g) => ({ ...g })) : [],
-            });
-        }
-    } catch (err) {
-        log("error", "授权账本读取失败，本次会话所有敏感能力会重新询问：", err);
-    }
-
     document.addEventListener("plugin-registered", (event) => {
         const manifest = event.detail;
         if (!manifest || !manifest.id) return;
@@ -448,6 +503,16 @@ async function initGrants() {
         const id = event.detail && event.detail.id;
         if (id) clearGrants(id);
     });
+
+    try {
+        const rows = await getAllRows();
+        for (const row of Array.isArray(rows) ? rows : []) {
+            if (!row || !row.pluginId) continue;
+            mergeRowFromDb(row);
+        }
+    } catch (err) {
+        log("error", "授权账本读取失败，本次会话所有敏感能力会重新询问：", err);
+    }
 
     return true;
 }

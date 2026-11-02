@@ -31,7 +31,6 @@ import {
     unregisterPlugin,
     getPlugins,
     getPlugin,
-    hasPlugin,
     isReady,
     whenReady,
     resolveName,
@@ -236,38 +235,246 @@ function resolveManifestIcon(manifest, id) {
 }
 
 /**
+ * 插件 HTML 文本缓存：`<id>/<file>` → Promise<string>。
+ *
+ * 程序坞悬停预取与正式打开共用同一个 Promise，点击时如果预取已完成就能直接注入，
+ * 不再等一次 fetch；同一插件的第二个窗口也能复用 HTML 文本。ZIP 插件被覆盖安装 /
+ * 卸载时由 invalidatePluginCaches 清掉，不会拿到旧界面。
+ */
+const htmlCache = new Map();
+
+/**
+ * 拉取插件 HTML（带内存缓存，失败自动从缓存移除以便重试）。
+ * @param {string} id 插件 id
+ * @param {string} file 插件目录内的 HTML 文件名
+ * @param {string|number} stamp 缓存参数
+ * @returns {Promise<string>} HTML 原文
+ */
+function fetchPluginHtml(id, file, stamp) {
+    const key = `${id}/${file}`;
+    let task = htmlCache.get(key);
+    if (!task) {
+        task = fetch(modUrl(id, file, stamp)).then(async (res) => {
+            if (!res.ok) throw new Error(`加载插件 ${id} 的 ${file} 失败：HTTP ${res.status}`);
+            return res.text();
+        });
+        // 失败不能留在缓存里：否则下一次打开会立刻复现同一次网络错误。
+        task.catch(() => htmlCache.delete(key));
+        htmlCache.set(key, task);
+    }
+    return task;
+}
+
+/** 脚本预取表：插件 id → { url, promise }。URL 在真正注入时才消费，保证模块仍会求值。 */
+const scriptPrefetch = new Map();
+/** 已经作为 <script> 求值过的 URL。模块缓存命中后不会再执行，必须换一个未求值的 URL。 */
+const evaluatedScripts = new Set();
+/** 脚本 URL 自增序号：同一毫秒内多次打开也必须拿到不同 URL。 */
+let scriptSeq = 0;
+
+/**
+ * 取本次注入要用的脚本 URL。
+ * 悬停时预取的 URL 如果尚未求值，直接复用（浏览器 HTTP 缓存可命中预取响应）；
+ * 否则生成全新的 Date.now 参数，确保模块脚本重新求值。
+ * @param {string} id 插件 id
+ * @param {string} file 脚本文件名
+ * @param {boolean} allowPrefetch 是否允许消费预取 URL（ZIP 插件 no-store，预取无意义）
+ * @returns {string}
+ */
+function nextScriptUrl(id, file, allowPrefetch = true) {
+    if (allowPrefetch) {
+        const hit = scriptPrefetch.get(id);
+        if (hit) {
+            scriptPrefetch.delete(id);
+            if (!evaluatedScripts.has(hit.url)) return hit.url;
+        }
+    }
+    // 只生成不登记：调用方在 <script> 真正 load 之后才标记已求值，
+    // 否则注入失败/抛错会被误标，下次仍必须换新 URL（这里用自增序号保证唯一）。
+    scriptSeq += 1;
+    return modDateUrl(id, file, scriptSeq);
+}
+
+/**
+ * 预取插件入口脚本（只下载不解码、不执行）。
+ * 与 nextScriptUrl 配对：预取生成的 URL 会被下一次打开直接使用。
+ * @param {string} id 插件 id
+ * @param {string} file 脚本文件名
+ */
+function prefetchScript(id, file) {
+    if (scriptPrefetch.has(id)) return;
+    const url = modDateUrl(id, file);
+    const record = { url, promise: null };
+    record.promise = new Promise((resolve) => {
+        queuePrefetch(() => fetch(url).catch(() => { }).then(resolve));
+    });
+    scriptPrefetch.set(id, record);
+}
+
+/** 预取并发上限：鼠标快速扫过整条程序坞时，按图标各发一轮请求会打满连接池。 */
+const MAX_PREFETCH_CONCURRENCY = 4;
+const prefetchQueue = [];
+let prefetchActive = 0;
+
+/**
+ * 把一次预取排进全局并发槽（最多 4 个在飞）。只用于纯预热请求，
+ * 点击路径上的 fetchPluginHtml 不入队，避免慢网络下反而拖慢真正的首次打开。
+ * @param {() => Promise<unknown>} run
+ */
+function queuePrefetch(run) {
+    if (prefetchActive < MAX_PREFETCH_CONCURRENCY) {
+        prefetchActive += 1;
+        run().catch(() => { }).finally(() => {
+            prefetchActive -= 1;
+            const next = prefetchQueue.shift();
+            if (next) queuePrefetch(next);
+        });
+        return;
+    }
+    // 队列设上限，狂扫时丢弃多余预热即可，预热本身不是必需能力。
+    if (prefetchQueue.length < 64) prefetchQueue.push(run);
+}
+
+/** 预取冷却：避免鼠标划过整条程序坞时对每个图标都发一轮请求。 */
+const PREFETCH_COOLDOWN_MS = 3000;
+const prefetchedApps = new Map();
+
+/**
+ * 悬停 / 键盘聚焦程序坞图标时预取该应用的启动资源。
+ *
+ * 只预取内置插件（磁盘资源可缓存）：
+ * - HTML 进入 htmlCache，点击时零等待；
+ * - CSS 先落入 HTTP 缓存，正式打开时 ensurePluginStyle 直接命中；
+ * - 入口脚本先生成并下载一个尚未求值的 URL，正式打开时复用它。
+ * 失败一律静默——预取只是加速，绝不能影响正常打开。
+ * @param {string} nameOrId 应用名 / 插件 id / appId
+ * @returns {boolean} 是否发起（或跳过了冷却）预取
+ */
+export function prefetchApp(nameOrId) {
+    const rec = resolveAppRecord(nameOrId);
+    if (!rec || !rec.manifest || rec.manifest._installed) return false;
+    if (!isPluginEnabled(rec.id)) return false;
+    const stampKey = rec.appId || rec.id;
+    const now = Date.now();
+    const last = prefetchedApps.get(stampKey) || 0;
+    if (now - last < PREFETCH_COOLDOWN_MS) return false;
+    prefetchedApps.set(stampKey, now);
+
+    const { id, manifest } = rec;
+    try {
+        const styleFile = safeAssetName(manifest.style, "style.css", id);
+        if (!document.getElementById(`plugin-style-${id}`)) {
+            queuePrefetch(() => fetch(modUrl(id, styleFile, VERSION)));
+        }
+        if (isMultiApp(manifest)) {
+            if (!liveShells.has(id)) {
+                prefetchScript(id, safeAssetName(manifest.script, "script.js", id));
+            }
+            if (rec.app) {
+                const mainFile = safeAssetName(rec.app.main, `${rec.app.id}.html`, id);
+                fetchPluginHtml(id, mainFile, VERSION).catch(() => { });
+            }
+        } else {
+            prefetchScript(id, safeAssetName(manifest.script, "script.js", id));
+            const mainFile = safeAssetName(manifest.main, "index.html", id);
+            fetchPluginHtml(id, mainFile, VERSION).catch(() => { });
+        }
+        return true;
+    } catch (err) {
+        return false;
+    }
+}
+
+/**
+ * 让某个插件的预取与 HTML 缓存失效。
+ * 覆盖安装 / 卸载后必须调用，否则下一次打开会拿到旧版本的界面文本。
+ * @param {string} id 插件 id
+ */
+function invalidatePluginCaches(id) {
+    for (const key of htmlCache.keys()) {
+        if (key === id || key.startsWith(`${id}/`)) htmlCache.delete(key);
+    }
+    scriptPrefetch.delete(id);
+    for (const key of prefetchedApps.keys()) {
+        if (key === id || key.startsWith(`${id}.`)) prefetchedApps.delete(key);
+    }
+}
+
+/** 清单预取 Promise：bootstrap 会在等待授权账本的同一段时间里提前启动它。 */
+let manifestPrefetchPromise = null;
+
+/**
+ * 预取全部内置插件的 manifest.json（并行）。
+ * init() 会复用同一批结果：启动关键路径上只剩注册，不再排队等磁盘 / 网络。
+ * @returns {Promise<Array<object|null>>}
+ */
+export function prefetchManifests() {
+    if (!manifestPrefetchPromise) {
+        manifestPrefetchPromise = Promise.all(BUILTIN_IDS.map(async (id) => {
+            try {
+                const res = await fetch(modUrl(id, "manifest.json", VERSION));
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } catch (err) {
+                console.warn(`[plugin-manager] 加载插件清单失败: ${id}`, err);
+                return null;
+            }
+        }));
+    }
+    return manifestPrefetchPromise;
+}
+
+/** init 幂等句柄：bootstrap 与潜在的早启动调用都只会建一次注册表。 */
+let initPromise = null;
+
+/**
  * 启动插件管理器：逐个拉取内置插件的 manifest.json 建立注册表。
  * 仅注册清单，不加载任何界面内容（冷加载）。
  * @returns {Promise<void>}
  */
 export async function init() {
-    const tasks = BUILTIN_IDS.map(async (id) => {
-        try {
-            const res = await fetch(modUrl(id, "manifest.json", VERSION));
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const manifest = await res.json();
-            registerPlugin(manifest);
-        } catch (err) {
-            console.warn(`[plugin-manager] 加载插件清单失败: ${id}`, err);
-        }
-    });
-    await Promise.all(tasks);
+    if (initPromise) return initPromise;
+    initPromise = (async () => {
+        const manifestsPromise = prefetchManifests();
+        // 优先同步读「已安装清单索引」：localStorage 没有 I/O 等待，不必与清单 fetch 排队，
+        // 也不必再对每个 ZIP 插件执行 getAll 把 files（Blob）整包读回内存。
+        // 返回 null 表示索引缺失或解析失败（升级前装过插件、还没写过索引的老用户），
+        // 此时才回退到 IndexedDB 全量读取，保证不丢插件。
+        const indexed = _readInstalledIndex();
+        const installedPromise = indexed
+            ? null
+            : _getAllInstalled().catch((err) => {
+                console.warn("[plugin-manager] 还原已安装插件失败", err);
+                return [];
+            });
 
-    // 还原已安装（ZIP）插件：从 IndexedDB 读取清单并注册，
-    // 使其刷新/重开后仍出现在应用商店且可被打开（持久化的关键步骤）。
-    try {
-        for (const rec of await _getAllInstalled()) {
+        const manifests = await manifestsPromise;
+        manifests.forEach((manifest) => {
+            if (manifest) registerPlugin(manifest);
+        });
+
+        const installed = indexed || await installedPromise;
+        // 老用户走完回退后补写一次索引；否则这批人每次启动都要全量读 Blob，优化对他们永不生效。
+        if (!indexed && installed.length) _replaceInstalledIndex(installed);
+
+        // 还原已安装（ZIP）插件，使其刷新/重开后仍出现在应用商店且可被打开。
+        // 已安装记录优先于内置清单：同 id（覆盖安装）时必须用 ZIP 版覆盖，旧写法
+        // `if (!hasPlugin(...))` 会让覆盖版静默丢失、用户跑的仍是内置旧版。
+        // registerPlugin 对同 id 是 Map.set 覆盖（不抛错、无需先注销），所以直接注册即可；
+        // 内置清单只在本轮注册一次（prefetch 结果只有一份），覆盖后不会被改回。
+        for (const rec of installed) {
             if (!rec?.id) continue;
             const { files, ...manifest } = rec;
+            // _installed 必须保留：商店「已安装」分类、资源走 SW 回源、
+            // sanitizePluginHtml、脚本 stamp=Date.now 都依赖这个标记。
             manifest._installed = true;
-            if (!hasPlugin(manifest.id)) registerPlugin(manifest);
+            registerPlugin(manifest);
         }
-    } catch (err) {
-        console.warn("[plugin-manager] 还原已安装插件失败", err);
-    }
 
-    markReady();
-    broadcast("plugins-ready", { plugins: getPlugins() });
+        markReady();
+        broadcast("plugins-ready", { plugins: getPlugins() });
+    })();
+    return initPromise;
 }
 
 // 注册表读写（registerPlugin / unregisterPlugin / getPlugins / getPlugin /
@@ -473,12 +680,13 @@ async function doLoadApp(appId, rec, opts) {
     const preWins = new Set(document.querySelectorAll("body > .window"));
     let htmlText;
     try {
-        // 外壳（样式 + 脚本）：首个应用打开时注入，脚本必须等它执行完，
-        // 否则紧随的 plugin-app-load 事件会派发到还没监听的状态。
+        // 外壳与界面并行：外壳（样式 + 脚本）和 app HTML 互不依赖，
+        // 串行 await 会让两次本地往返叠加在「点击到窗口出现」的关键路径上。
+        // HTML 先发起，外壳就绪后再取结果；会与悬停预取共用同一个 Promise。
+        const mainFile = safeAssetName(app.main, `${app.id}.html`, id);
+        const htmlPromise = fetchPluginHtml(id, mainFile, stamp);
         await ensureShell(id, manifest, stamp);
-        const htmlRes = await fetch(modUrl(id, safeAssetName(app.main, `${app.id}.html`, id), stamp));
-        if (!htmlRes.ok) throw new Error(`加载应用 ${appId} 的界面失败：HTTP ${htmlRes.status}`);
-        htmlText = await htmlRes.text();
+        htmlText = await htmlPromise;
     } catch (err) {
         // 注入界面之前任一步失败：若此刻该插件没有任何存活窗口，回滚外壳，
         // 否则 liveShells / 样式 / 脚本永久残留，unloadApp 再也不会触发，该套件再也打不开。
@@ -540,7 +748,9 @@ async function ensureShell(id, manifest, stamp) {
     const old = document.querySelector(`script[plugin="${id}"]`);
     if (old) old.remove();
     const script = document.createElement("script");
-    script.src = modDateUrl(id, safeAssetName(manifest.script, "script.js", id));
+    // 悬停预取过就用它的 URL，否则生成新 URL；多应用外壳只求值一次。
+    const shellUrl = nextScriptUrl(id, safeAssetName(manifest.script, "script.js", id), !manifest._installed);
+    script.src = shellUrl;
     script.type = "module";
     script.setAttribute("plugin", id);
     // 并列提示当前正在注入哪个插件，供 os-api.js 的调用者识别兜底用。
@@ -549,6 +759,8 @@ async function ensureShell(id, manifest, stamp) {
     window.__currentPluginId = id;
     await new Promise((resolve, reject) => {
         script.addEventListener("load", () => {
+            // 真正求值成功后才登记，加载失败则保留可重试的新 URL。
+            evaluatedScripts.add(shellUrl);
             if (window.__currentPluginId === id) window.__currentPluginId = null;
             resolve();
         }, { once: true });
@@ -608,10 +820,13 @@ async function doLoad(id, manifest, opts) {
         }
     }
 
-    // 注入样式（去重：同一插件不重复注入）并等它可用。
-    // 缓存参数用发布版本号而非 Date.now()：Date.now() 让每次打开都重新下载整份 CSS，
-    // 而按版本缓存既能随发布失效、又能在同一次发布内复用。
-    await ensurePluginStyle(id, modUrl(id, safeAssetName(manifest.style, "style.css", id), stamp));
+    // 样式与 HTML 并行：两者互不依赖，串行 await 只会把两次本地往返叠在
+    // 「点击到窗口出现」的关键路径上。HTML 走内存缓存，悬停预取命中时零等待；
+    // 注入仍需等样式可用，否则首帧会按无样式块级流排版再跳一次。
+    const styleFile = safeAssetName(manifest.style, "style.css", id);
+    const mainFile = safeAssetName(manifest.main, "index.html", id);
+    const stylePromise = ensurePluginStyle(id, modUrl(id, styleFile, stamp));
+    const htmlPromise = fetchPluginHtml(id, mainFile, stamp);
 
     // 注入前记录「真窗口」集合，注入后取本次新增的那一个。
     // 两条都不能省：
@@ -625,11 +840,8 @@ async function doLoad(id, manifest, opts) {
     const preWins = new Set(document.querySelectorAll("body > .window"));
 
     // 注入 HTML
-    const htmlRes = await fetch(modUrl(id, safeAssetName(manifest.main, "index.html", id), stamp));
-    if (!htmlRes.ok) {
-        throw new Error(`加载插件 ${id} 的 index.html 失败：HTTP ${htmlRes.status}`);
-    }
-    let htmlText = await htmlRes.text();
+    const [, htmlTextRaw] = await Promise.all([stylePromise, htmlPromise]);
+    let htmlText = htmlTextRaw;
     // 用户安装的 ZIP 属于不可信输入：insertAdjacentHTML 不会执行 <script>，
     // 但会执行 <img onerror=...> 这类内联事件处理器，因此先剥离。内置插件是我们自己的代码，不处理。
     if (manifest._installed) htmlText = sanitizePluginHtml(htmlText);
@@ -665,14 +877,16 @@ async function doLoad(id, manifest, opts) {
     const script = document.createElement("script");
     // 入口脚本必须每次打开都用全新 URL：插件都在脚本顶层执行 init()，
     // 稳定 URL 会让 ES module 缓存命中、第二次打开不再运行任何逻辑。
-    // 副作用是模块表不会回收旧实例 —— 因此插件必须在 plugin-unload 里自清全局监听。
-    script.src = modDateUrl(id, safeAssetName(manifest.script, "script.js", id));
+    // 悬停预取过的 URL 尚未求值，可以安全复用（并命中 HTTP 缓存）。
+    const entryUrl = nextScriptUrl(id, safeAssetName(manifest.script, "script.js", id), !manifest._installed);
+    script.src = entryUrl;
     script.type = "module";
     script.setAttribute("plugin", id);
     // 与 ensureShell 同一套并列提示：模块求值发生在 appendChild 之后，
     // 所以只能在 load 回调里清，不能在下一行同步清。
     window.__currentPluginId = id;
     script.addEventListener("load", () => {
+        evaluatedScripts.add(entryUrl);
         if (window.__currentPluginId === id) window.__currentPluginId = null;
         // 单应用插件的脚本在窗口 HTML 注入之后才求值：等 load 再派发文件事件，
         // 插件注册在模块顶层的 plugin-app-open 监听才能收到。
@@ -807,13 +1021,94 @@ export async function registerInstalledPlugin(manifest, files) {
     if (!manifest || !manifest.id) return false;
     // 标记为 ZIP 安装插件，供应用商店「已安装」分类识别与还原时区分
     manifest._installed = true;
+    invalidatePluginCaches(manifest.id);
+    let persisted = false;
     try {
         await _tx("readwrite", (store) => store.put({ ...manifest, files }));
+        persisted = true;
     } catch (err) {
         console.warn("[plugin-manager] 写入 IndexedDB 失败，仅内存注册", err);
     }
+    // 只有真正落库成功才更新索引：索引代表「库里确实有这条记录」，
+    // 落库失败还写索引会让下次启动还原出一个没有资源的插件。
+    if (persisted) _updateInstalledIndex(manifest.id, manifest);
     await notifyInstalledChanged();
     return registerPlugin(manifest);
+}
+
+/* ─────────────────── 已安装清单索引（localStorage） ─────────────────── */
+
+// 单个键存 { [id]: manifest }。启动时同步读它即可还原 ZIP 插件，
+// 不必再 getAll 把每个文件的 Blob 读回内存；它只是 IndexedDB 的加速缓存，不是权威数据。
+const INSTALLED_INDEX_KEY = "deskly.installed.plugins";
+
+/**
+ * 读取索引原始映射；键不存在、值损坏或 localStorage 不可用都返回 null，
+ * 由调用方回退到 IndexedDB（老用户升级前装的插件不能因索引缺失而丢失）。
+ * @returns {Record<string, object>|null}
+ */
+function _readInstalledIndexMap() {
+    try {
+        const raw = localStorage.getItem(INSTALLED_INDEX_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+        return parsed;
+    } catch (err) {
+        console.warn("[plugin-manager] 读取已安装插件索引失败，回退 IndexedDB", err);
+        return null;
+    }
+}
+
+/**
+ * 读取索引并摊平成 manifest 列表；索引不可用时返回 null（区别于「索引存在但为空」）。
+ * @returns {Array<object>|null}
+ */
+function _readInstalledIndex() {
+    const map = _readInstalledIndexMap();
+    if (!map) return null;
+    return Object.values(map).filter((m) => m && typeof m === "object" && m.id);
+}
+
+/** 整表写回索引；失败只告警，绝不影响安装/卸载主流程。 */
+function _writeInstalledIndex(map) {
+    try {
+        localStorage.setItem(INSTALLED_INDEX_KEY, JSON.stringify(map));
+    } catch (err) {
+        console.warn("[plugin-manager] 写入已安装插件索引失败（不影响安装/卸载）", err);
+    }
+}
+
+/**
+ * 增量维护索引中的单条记录。
+ * @param {string} id 插件 id
+ * @param {object|null} manifest 传 null 表示删除
+ */
+function _updateInstalledIndex(id, manifest) {
+    const map = _readInstalledIndexMap() || {};
+    if (manifest) {
+        // files 是每个文件的 Blob：localStorage 存不下（配额），而且真写进去就等于
+        // 把「启动不读二进制」的目标反过来变成「每次启动都解析一大坨」。
+        const { files, ...rest } = manifest;
+        map[id] = rest;
+    } else {
+        delete map[id];
+    }
+    _writeInstalledIndex(map);
+}
+
+/**
+ * 用 IndexedDB 回退结果重建整张索引（老用户首次升级后的补写）。
+ * @param {Array<object>} records IndexedDB 记录（含 files）
+ */
+function _replaceInstalledIndex(records) {
+    const map = {};
+    for (const rec of records) {
+        if (!rec?.id) continue;
+        const { files, ...rest } = rec;
+        map[rest.id] = rest;
+    }
+    _writeInstalledIndex(map);
 }
 
 /**
@@ -831,11 +1126,16 @@ async function _getAllInstalled() {
  * @returns {Promise<boolean>}
  */
 export async function unregisterInstalledPlugin(id) {
+    invalidatePluginCaches(id);
+    let removed = false;
     try {
         await _tx("readwrite", (store) => store.delete(id));
+        removed = true;
     } catch (err) {
         console.warn("[plugin-manager] 删除已安装插件记录失败", err);
     }
+    // 删除成功才摘索引：库删失败时保持索引与库一致，下次启动仍会照旧还原它（同现状）。
+    if (removed) _updateInstalledIndex(id, null);
     await notifyInstalledChanged();
     return unregisterPlugin(id);
 }

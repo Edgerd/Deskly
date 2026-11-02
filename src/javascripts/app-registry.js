@@ -18,7 +18,13 @@
 
 import { settings } from "./settings.js";
 import { i18n } from "./i18n.js";
-import { brandLabel } from "./office-brand.js";
+import { brandLabel, getBrandPack } from "./office-brand.js";
+
+// 显示名 memo：(语言, 品牌包, appId, 中文原名) -> 结果。
+// 每个应用的名字对同一组入参是纯函数，但 listApps 每次重建都会逐条重跑 i18n 字典查找；
+// 语言与品牌包直接进键，切换语言或换办公品牌包后自然命中新键，不必再挂变更监听。
+// 品牌包只影响 office.*，非办公应用不为此多读一次设置。
+const displayNameCache = new Map();
 
 /**
  * 应用显示名的 i18n 解析：内核身份永远是清单里的 `name`（中文、跨语言不变，
@@ -32,14 +38,24 @@ import { brandLabel } from "./office-brand.js";
  * @returns {string} 当前语言的显示名
  */
 function displayAppName(appId, canonical) {
+    const office = String(appId || "").startsWith("office.");
+    const key = `${i18n.getLanguage()}\u0000${office ? getBrandPack() : ""}\u0000${appId}\u0000${canonical}`;
+    if (displayNameCache.has(key)) return displayNameCache.get(key);
     // 办公子应用可被品牌包改名（iWork ↔ Microsoft Office）；返回 null 时沿用 i18n。
-    const branded = String(appId || "").startsWith("office.") ? brandLabel(appId) : null;
-    if (branded) return branded;
-    const direct = i18n.t(`apps.${appId}`, null);
-    if (typeof direct === "string" && direct) return direct;
-    const named = i18n.t(`apps.${appId}.name`, null);
-    if (typeof named === "string" && named) return named;
-    return canonical;
+    const branded = office ? brandLabel(appId) : null;
+    let name;
+    if (branded) {
+        name = branded;
+    } else {
+        const direct = i18n.t(`apps.${appId}`, null);
+        if (typeof direct === "string" && direct) name = direct;
+        else {
+            const named = i18n.t(`apps.${appId}.name`, null);
+            name = (typeof named === "string" && named) ? named : canonical;
+        }
+    }
+    displayNameCache.set(key, name);
+    return name;
 }
 
 /**
@@ -56,6 +72,13 @@ export function displayNameFor(nameOrId) {
 
 // 插件注册表：id -> manifest 对象
 const registry = new Map();
+
+// listApps 的视图缓存与索引：启动期 dock / 启动台 / 访达 / 聚焦会反复问同一份注册表，
+// 每次重建数组并逐条跑 i18n 是纯浪费。注册表一变就整体置空、下次查询按需重建 ——
+// 比维护「增量更新哪几条」简单得多，也避免漏更新。
+let appsCache = null;
+let byAppId = null;      // appId -> 应用级记录（getApp / resolveAppRecord 第一级）
+let byPluginId = null;   // 插件 id -> 插件级记录（resolveAppRecord 第二级）
 
 // 是否已完成初始化 + 就绪 Promise：bootstrap/launchpad 等需要在注册表建好后才能查询插件
 let ready = false;
@@ -112,6 +135,8 @@ export function registerPlugin(manifest) {
         });
     }
     registry.set(id, manifest);
+    // 先失效再广播：监听者在事件里查 listApps 时必须看到新清单。
+    invalidateIndex();
     broadcast("plugin-registered", manifest);
     return true;
 }
@@ -124,6 +149,7 @@ export function registerPlugin(manifest) {
 export function unregisterPlugin(id) {
     const existed = registry.delete(id);
     if (existed) {
+        invalidateIndex();
         broadcast("plugin-unregistered", { id });
     }
     return existed;
@@ -201,19 +227,39 @@ export function resolveName(name) {
 }
 
 /**
- * 展开为应用级（appId）记录。
- * 单应用插件：appId === 插件 id；
- * 多应用插件（manifest.apps: [{id,name,...}]）：appId = 插件id.appId，逐条展开。
- * @returns {Array<{appId,id,app,manifest,name,windowName}>}
+ * 插件级记录（app 为 null）：多应用套件在 listApps 里只有子应用记录，
+ * 「套件整体」这条记录只在这里现造一次，供 resolveAppRecord 第二级命中。
+ * @param {object} manifest 插件清单
+ * @returns {object} 插件级应用记录
  */
-export function listApps() {
+function pluginRecord(manifest) {
+    const name = manifest.name;
+    return {
+        appId: manifest.id,
+        id: manifest.id,
+        app: null,
+        manifest,
+        name,
+        windowName: manifest.windowName || name,
+        displayName: displayAppName(manifest.id, name),
+    };
+}
+
+/**
+ * 重建 listApps 视图与索引。
+ * byAppId 对重复 appId 保留第一条：原实现是线性扫描、先到先得，索引不能变成后到先得。
+ * 记录对象跨调用共享（调用方只读），不做拷贝。
+ */
+function rebuildIndex() {
     const apps = [];
+    const appIndex = new Map();
+    const pluginIndex = new Map();
     for (const m of registry.values()) {
         if (Array.isArray(m.apps) && m.apps.length) {
             for (const a of m.apps) {
                 const name = a.name || m.name;
                 const appId = `${m.id}.${a.id}`;
-                apps.push({
+                const rec = {
                     appId,
                     id: m.id,
                     app: a,
@@ -221,10 +267,13 @@ export function listApps() {
                     name,
                     windowName: a.windowName || name,
                     displayName: displayAppName(appId, name),
-                });
+                };
+                apps.push(rec);
+                if (!appIndex.has(appId)) appIndex.set(appId, rec);
             }
+            pluginIndex.set(m.id, pluginRecord(m));
         } else {
-            apps.push({
+            const rec = {
                 appId: m.id,
                 id: m.id,
                 app: null,
@@ -232,10 +281,38 @@ export function listApps() {
                 name: m.name,
                 windowName: m.windowName || m.name,
                 displayName: displayAppName(m.id, m.name),
-            });
+            };
+            apps.push(rec);
+            if (!appIndex.has(rec.appId)) appIndex.set(rec.appId, rec);
+            pluginIndex.set(m.id, rec);
         }
     }
-    return apps;
+    appsCache = apps;
+    byAppId = appIndex;
+    byPluginId = pluginIndex;
+}
+
+/** 注册表 / 启用态变化后的统一失效入口：置空即可，下次查询按需重建。 */
+function invalidateIndex() {
+    appsCache = null;
+    byAppId = null;
+    byPluginId = null;
+}
+
+/** 确保索引可用（空数组也是有效结果，所以用 null 而不是长度做哨兵）。 */
+function ensureIndex() {
+    if (!appsCache) rebuildIndex();
+}
+
+/**
+ * 展开为应用级（appId）记录。
+ * 单应用插件：appId === 插件 id；
+ * 多应用插件（manifest.apps: [{id,name,...}]）：appId = 插件id.appId，逐条展开。
+ * @returns {Array<{appId,id,app,manifest,name,windowName}>}
+ */
+export function listApps() {
+    ensureIndex();
+    return appsCache;
 }
 
 /**
@@ -244,8 +321,8 @@ export function listApps() {
  * @returns {object|undefined}
  */
 export function getApp(appId) {
-    for (const rec of listApps()) if (rec.appId === appId) return rec;
-    return undefined;
+    ensureIndex();
+    return byAppId.get(appId);
 }
 
 /**
@@ -260,25 +337,20 @@ export function getApp(appId) {
  * @returns {object|undefined}
  */
 export function resolveAppRecord(nameOrId) {
-    const records = listApps();
-    for (const rec of records) if (rec.appId === nameOrId) return rec;
-    // 套件级：多应用插件在 listApps() 里只有子应用记录，按插件 id / 插件名命中时
-    // 要现场合成一条 app 为 null 的插件级记录，否则图标与菜单会跟着错位。
-    const manifest = registry.get(nameOrId)
-        || Array.from(registry.values()).find((m) => m.name === nameOrId || displayAppName(m.id, m.name) === nameOrId);
-    if (manifest) {
-        const name = manifest.name;
-        return {
-            appId: manifest.id,
-            id: manifest.id,
-            app: null,
-            manifest,
-            name,
-            windowName: manifest.windowName || name,
-            displayName: displayAppName(manifest.id, name),
-        };
+    ensureIndex();
+    // 一次建索引、三处复用：不再每级都遍历一次 listApps()。
+    const direct = byAppId.get(nameOrId);
+    if (direct) return direct;
+    // 套件级：多应用插件在 listApps 里只有子应用记录，按插件 id / 插件名命中时
+    // 要返回一条 app 为 null 的插件级记录，否则图标与菜单会跟着错位。
+    let manifest = registry.get(nameOrId);
+    if (!manifest) {
+        for (const m of registry.values()) {
+            if (m.name === nameOrId || displayAppName(m.id, m.name) === nameOrId) { manifest = m; break; }
+        }
     }
-    for (const rec of records) {
+    if (manifest) return byPluginId.get(manifest.id) || pluginRecord(manifest);
+    for (const rec of appsCache) {
         if (rec.app && (rec.name === nameOrId || rec.windowName === nameOrId || rec.displayName === nameOrId)) return rec;
     }
     return undefined;
@@ -300,13 +372,23 @@ export function resolveAppId(nameOrId) {
 // 内置插件同样可以禁用（只是不能卸载），故与「已安装/内置」的来源概念正交。
 settings.define({ key: "store.disabled", type: "json", default: [], owner: "store" });
 
+// disabledIds 会被 isPluginEnabled 在「逐个应用」的循环里调用；settings.get 已缓存解码结果，
+// 但每次仍要过滤一遍数组。这里按内容签名复用上一次的结果：settings 返回的是缓存值的浅拷贝，
+// 数组引用每次都变，只有内容签名稳定；raw 一变内容就变，签名也就自动失配。
+let disabledSignature = null;
+let disabledList = [];
+
 /**
  * 被禁用的插件 id 列表。
  * @returns {string[]} id 列表
  */
 export function disabledIds() {
     const list = settings.get("store.disabled", []);
-    return Array.isArray(list) ? list.filter((x) => typeof x === "string") : [];
+    const signature = JSON.stringify(Array.isArray(list) ? list : null);
+    if (signature === disabledSignature) return disabledList;
+    disabledSignature = signature;
+    disabledList = Array.isArray(list) ? list.filter((x) => typeof x === "string") : [];
+    return disabledList;
 }
 
 /**
@@ -329,6 +411,9 @@ export function setPluginEnabled(id, on) {
     if (on) set.delete(id);
     else set.add(id);
     settings.set("store.disabled", [...set], { source: "store" });
+    // 启用态本身不进 listApps 的字段，但变更后界面会整批重查；统一走同一个失效入口，
+    // 免得以后有人给索引加了「按启用态过滤」却漏改这里。
+    invalidateIndex();
     broadcast("plugin-enabled-change", { id, enabled: !set.has(id) });
     return !set.has(id);
 }

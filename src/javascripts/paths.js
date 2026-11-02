@@ -35,8 +35,9 @@ export const modFile = (id, file) => `${modDir(id)}${file}`;
  */
 export const modUrl = (id, file, stamp) => `${modFile(id, file)}?v=${stamp}`;
 
-/** 入口脚本专用：每次注入都是全新 URL。 */
-export const modDateUrl = (id, file) => `${modFile(id, file)}?v=${Date.now()}`;
+/** 入口脚本专用：每次注入都是全新 URL；`seq` 保证同一毫秒内也互不相同。 */
+export const modDateUrl = (id, file, seq) =>
+  `${modFile(id, file)}?v=${Date.now()}${seq ? `-${seq}` : ""}`;
 
 /**
  * 运行时资源 URL 一律用**站点根相对**写法（`./assets/…`、`./mods/<id>/…`），

@@ -484,11 +484,22 @@ const DEBUG_ACTIONS = {
 };
 
 /**
+ * initDebug 幂等守卫。
+ * finderbar.js 顶层已经调用一次，bootstrap.js 的可选模块表又会再调一次 —— 没有守卫时
+ * settings.define 与 __menuActions 的命令会被注册两遍（同一项设置两份定义、菜单动作
+ * 表被重复写入），纯属重复工作。用模块级布尔短路，重复调用只返回同一份摘要。
+ */
+let debugInitialized = false;
+
+/**
  * 初始化调试后端：注册设置项，并把命令合并进 window.__menuActions。
  * 合并而非整体赋值：finderbar.js 也往同一张表里写，两侧都用合并才不管谁先求值都不丢命令。
  * @returns {{commands:number, developerMode:boolean}} 注册结果摘要
  */
 export function initDebug() {
+    const commands = Object.keys(DEBUG_ACTIONS).length;
+    if (debugInitialized) return { commands, developerMode: isDeveloperMode() };
+    debugInitialized = true;
     defineSettings();
     const table = globalThis.__menuActions || (globalThis.__menuActions = {});
     const names = Object.keys(DEBUG_ACTIONS);

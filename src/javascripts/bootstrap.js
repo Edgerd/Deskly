@@ -27,6 +27,8 @@
 import "./log.js";
 import "./settings.js";
 import { initSettingsSchema } from "./settings-definitions.js";
+// 全局图片拖拽守卫：捕获阶段兜底，应用与系统各处动态插入的 <img> 都覆盖。
+import "./image-drag-guard.js";
 
 import { clickMenuItem } from "./ui/menu.js";
 // 红绿灯组件注册（window.js / plugin-manager.js 也各自导入，此处显式声明：
@@ -35,7 +37,7 @@ import "./ui/trafficLights.js";
 import { parentMenuStates, updateMenu } from "./finderbar.js";
 import { create, resetWindowListeners } from "./window.js";
 import { createDesktopFile } from "./ui/contextMenu.js";
-import { init as initPlugins, whenReady as pluginsReady } from "./plugin-manager.js";
+import { init as initPlugins, prefetchManifests, whenReady as pluginsReady } from "./plugin-manager.js";
 import { getPlugins } from "./app-registry.js";
 import { i18n } from "./i18n.js";
 import { wallpaper } from "./wallpaper.js";
@@ -72,6 +74,9 @@ const OPTIONAL_KERNEL_MODULES = [
     { specifier: "./debug.js", label: "调试" },
     { specifier: "./scrollWatch.js", label: "滚动条活动监听" },
 ];
+
+/** sessionStorage 里「本会话已做过版本自检」的标记键。 */
+const VERSION_CHECKED_KEY = "webstartos_version_checked";
 
 /** 引导期告警出口：优先写运行日志（可按来源检索），日志未就绪时退回 console。 */
 function warn(message, data) {
@@ -132,10 +137,36 @@ function ensureImgAlt(root) {
         if (!node.hasAttribute("alt")) node.setAttribute("alt", "");
     });
 }
+// 新增节点先入队、空闲时一次性处理：启动期插件与界面模块会成批插 DOM，
+// 每次突变回调里同步遍历子树会把主线程切成碎片（回调本身也可能被同一批插入触发多次）。
+// 合批只改变「何时遍历」，语义不变：仍然只给缺 alt 的 img 补 alt=""。
+let imgAltQueue = [];
+let imgAltScheduled = false;
+function flushImgAltQueue() {
+    imgAltScheduled = false;
+    const queue = imgAltQueue;
+    imgAltQueue = [];
+    queue.forEach((node) => ensureImgAlt(node));
+}
+function scheduleImgAltFlush() {
+    if (imgAltScheduled) return;
+    imgAltScheduled = true;
+    if (typeof requestIdleCallback === "function") {
+        // 与可选模块同一套兜底：空闲回调被超时强制触发，不会因为页面一直忙而漏处理。
+        requestIdleCallback(flushImgAltQueue, { timeout: 2000 });
+    } else {
+        // 无空闲 API 时退到微任务：仍在当前任务末尾处理，比同步遍历省，又不拖延到下一帧。
+        Promise.resolve().then(flushImgAltQueue);
+    }
+}
 const imgAltObserver = new MutationObserver((mutations) => {
+    let added = false;
     mutations.forEach((m) => m.addedNodes.forEach((node) => {
-        if (node.nodeType === 1) ensureImgAlt(node);
+        if (node.nodeType !== 1) return;
+        imgAltQueue.push(node);
+        added = true;
     }));
+    if (added) scheduleImgAltFlush();
 });
 imgAltObserver.observe(document.body, { childList: true, subtree: true });
 ensureImgAlt(document.body);
@@ -167,30 +198,78 @@ function ensureServiceWorker() {
     wallpaper.init();
     // initCursor 是异步的（读取并内联光标资源）；不等待它，避免光标问题阻塞整个桌面。
     initCursor().catch?.((err) => warn("光标初始化失败：", err));
+    // 插件清单 fetch 与授权账本的 IndexedDB 读取并行：initPlugins() 之后会复用
+    // 这批已下载的清单，注册表就绪时间不再叠加在网络往返后面。
+    prefetchManifests();
     // 权限账本读回 + 默认应用钩子接线都必须在插件注册之前完成：
     // 插件清单一经 registerPlugin 就广播 plugin-registered，api-grants 靠它记授权。
-    await initGrants();
+    // 但「监听器已同步挂好」不等于「必须等账本读完」：initGrants() 内部先挂监听再读
+    // IndexedDB，所以这里不再 await —— 全量读取不再充当启动硬屏障。读取失败只在
+    // 内存里表现成空账本，本次会话敏感能力会重新询问，不必拖住插件注册。
+    initGrants().catch((err) => warn("授权账本初始化失败，本次会话按空账本继续：", err));
     initDefaultApps();
     // 办公套件品牌包：探测 MS 图标是否已补齐，并订阅切换（Dock 图标/名称随之刷新）
     initOfficeBrand();
     // 全局快捷键分发：键位表的唯一真源，必须在任何应用开始监听之前就位
     initKeyboard();
     initPlugins();
-    await pluginsReady();
-    i18n.init(i18n.getLanguage());
-    // 可选内核模块并行初始化且各自吞异常：一个没就绪不影响其它三个，更不能拖垮桌面。
-    const optional = await Promise.all(OPTIONAL_KERNEL_MODULES.map(initOptionalModule));
-    window.__log?.info("bootstrap",
-        `桌面就绪：设置定义 ${defined} 项、插件 ${getPlugins().length} 个、可选模块 ${optional.filter(Boolean).length}/${OPTIONAL_KERNEL_MODULES.length} 个已初始化`);
+    // 多语言与插件注册互不依赖，并行起来：语言包是一次网络往返，串行执行等于把它
+    // 叠在插件清单加载之后。init 是 async 的，但公开 API 没承诺一定返回 Promise，
+    // 包一层 Promise.resolve 兜住同步实现（同步实现被包进 Promise 后仍然会执行）。
+    const i18nPromise = Promise.resolve(i18n.init(i18n.getLanguage()));
+    await Promise.all([pluginsReady(), i18nPromise]);
+    // 可选内核模块不占启动关键路径：此时桌面已可绘制与交互，把它们挪到空闲帧再并行点亮。
+    whenIdle(() => startOptionalModules(defined));
 })();
 
-// 版本一致性自检：manifest.json / version.js / index.html 的版本号在发布时必须一致，
-// 历史上多次出现「version.py 已改但 index.html 缓存参数没改」的漂移。
-fetch("./manifest.json")
-    .then((res) => (res.ok ? res.json() : null))
-    .then((manifest) => {
-        if (manifest && manifest.version !== VERSION) {
-            warn(`版本漂移：manifest.json=${manifest.version} version.js=${VERSION}`);
-        }
-    })
-    .catch(() => { /* 非扩展环境下取不到 manifest，不影响启动 */ });
+/**
+ * 在浏览器空闲时执行：requestIdleCallback 带 2s 超时，保证再忙也会轮到；
+ * 不支持该 API 的环境（旧版 Chromium / 非扩展页面）退回 setTimeout。
+ * 超时值取 2000ms 是「桌面可交互后最多等两秒」的体感上限，不算启动关键路径。
+ * @param {Function} callback 待执行函数
+ */
+function whenIdle(callback) {
+    if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(callback, { timeout: 2000 });
+    } else {
+        setTimeout(callback, 300);
+    }
+}
+
+/**
+ * 空闲期点亮可选内核模块，并在全部结束后输出就绪汇总。
+ * 各模块的初始化函数由 initOptionalModule 各自吞异常，Promise.all 不会因单个失败中断；
+ * 汇总日志放在这里而不是启动链里：它的意义是「全部可选模块有结论了」，提前打印就是假消息。
+ * @param {number} defined 设置定义项数
+ */
+function startOptionalModules(defined) {
+    // 版本一致性自检与可选模块同属空闲期杂务，一起调度，不抢桌面首帧。
+    runVersionCheck();
+    Promise.all(OPTIONAL_KERNEL_MODULES.map(initOptionalModule)).then((optional) => {
+        window.__log?.info("bootstrap",
+            `桌面就绪：设置定义 ${defined} 项、插件 ${getPlugins().length} 个、可选模块 ${optional.filter(Boolean).length}/${OPTIONAL_KERNEL_MODULES.length} 个已初始化`);
+    });
+}
+
+/**
+ * 版本一致性自检：manifest.json / version.js / index.html 的版本号在发布时必须一致，
+ * 历史上多次出现「version.py 已改但 index.html 缓存参数没改」的漂移。
+ * 每个标签页都会打开这个页面，用 sessionStorage 记「本会话已校验」避免每个新标签页
+ * 都发一次请求；存储不可用（隐私模式 / 被策略禁用）时按未校验处理，多一次请求而已。
+ */
+function runVersionCheck() {
+    try {
+        if (sessionStorage.getItem(VERSION_CHECKED_KEY) === "1") return;
+    } catch (err) { /* 会话存储读不到：继续校验，不因存储异常跳过自检 */ }
+    fetch("./manifest.json")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((manifest) => {
+            if (manifest && manifest.version !== VERSION) {
+                warn(`版本漂移：manifest.json=${manifest.version} version.js=${VERSION}`);
+            }
+            try {
+                sessionStorage.setItem(VERSION_CHECKED_KEY, "1");
+            } catch (err) { /* 写不进就算了：下次最多重复一次自检 */ }
+        })
+        .catch(() => { /* 非扩展环境下取不到 manifest，不影响启动 */ });
+}

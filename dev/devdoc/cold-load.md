@@ -10,13 +10,14 @@
 
 ### 阶段一：启动注册（仅清单）
 
-启动时 `plugin-manager.init()`（`src/javascripts/plugin-manager.js:149`，由 `bootstrap.js:79` 调用）
-按 `BUILTIN_IDS` 逐个 `fetch('./mods/{id}/manifest.json?v=<VERSION>')`（`:152`）建立注册表 `registry`，
-再从 IndexedDB 还原已安装的 ZIP 插件（`:165`），最后派发 `plugins-ready`（`:177`）。
+启动时 `plugin-manager.init()`（`src/javascripts/plugin-manager.js:408`，由 `bootstrap.js:215` 调用）
+按 `BUILTIN_IDS` 逐个 `fetch('./mods/{id}/manifest.json?v=<VERSION>')`（`:411`）建立注册表 `registry`，
+再从 localStorage 的已安装清单索引还原 ZIP 插件（索引缺失时回退 IndexedDB，`:417`），最后派发 `plugins-ready`（`:448`）。
 
-- `BUILTIN_IDS` 当前是 **14 个**内置 id：calculator、finder、launchpad、system-settings、about、
-  app-store、notepad、photos、image-viewer、video-player、vs_code、siri、safari、office。
-  刷新首屏的 Network 面板因此应看到 **14 个 `manifest.json` 请求**。
+- `BUILTIN_IDS` 当前是 **13 个**内置 id：calculator、finder、launchpad、system-settings、about、
+  app-store、notepad、photos、vs_code、siri、safari、office、manual。
+  刷新首屏的 Network 面板因此应看到 **13 个 `manifest.json` 请求**。
+  （图片 / 视频查看能力已并入「照片」，不再单独发布查看器插件。）
   （`office` 是**多应用插件**：一份清单里声明文稿 / 表格 / 演示三个应用，注册表会展开成
   `office.word` / `office.excel` / `office.ppt` 三条应用记录，见 [插件包格式](plugin-format.md)。）
 - 清单请求带 `?v=<VERSION>`：`VERSION` 来自 `version.js`，同一发布内可复用 HTTP 缓存，随发布自动失效。
@@ -99,7 +100,7 @@ if (plugin) {
 ## 验证方法
 
 1. 打开 DevTools 的 Network 面板。
-2. 刷新页面：应只看到 **14 个** `mods/*/manifest.json` 请求（IndexedDB 还原不产生网络请求）。
+2. 刷新页面：应只看到 **13 个** `mods/*/manifest.json` 请求（已安装插件的还原走本地索引，不产生网络请求）。
 3. 点击程序坞「计算器」：此时才出现 `mods/calculator/index.html`、`style.css`、`script.js` 请求。
 4. 关闭计算器再打开：`index.html` / `style.css` 命中缓存（URL 相同），`script.js` 必然重新请求
    （URL 带新时间戳）—— 这是设计行为，不是泄漏。

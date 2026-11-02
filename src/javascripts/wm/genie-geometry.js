@@ -7,9 +7,10 @@
  *   - daniate《细说如何完美实现 macOS 中的神奇效果》（片元着色器同型模型，
  *     左右边界 = A·sin(π·v ± π/2) + D，与上式的余弦收口等价）。
  *
- * 把着色器的逐顶点位移翻译成「条带矩形」后，用 Canvas 2D 逐帧 drawImage 即可
- * 复现同一形变：条带沿缩放轴向 gather 点收拢，整体沿移动轴刚性平移进程序坞，
- * 越靠近坞线的条带按余弦曲线收得越窄。相对参考实现刻意做了两处取舍：
+ * WebGL 片元着色器按同一公式做逐像素逆映射；没有 WebGL2 时，才退回把公式翻译成
+ * 「条带矩形」的 Canvas 2D 绘制。两种后端共用本模块的阶段、行程与收口参数，
+ * 避免各写一套数学后漂移。条带沿缩放轴向 gather 点收拢，整体沿移动轴刚性平移
+ * 进程序坞，越靠近坞线的条带按余弦曲线收得越窄。相对参考实现刻意做了两处取舍：
  *   1) 滑过坞线的条带不再像 shader 那样重新展宽（反正被坞条遮住），改为线性淡出，
  *      视觉上「没入坞内」；
  *   2) 阶段内加入缓动（捏颈 easeOutCubic、倾倒 easeInCubic）——shader 是线性，
@@ -27,8 +28,11 @@ export const GENIE_STAGE_SPLIT = 0.4;
 /** 吸入全程时长（ms）。macOS 实测约 0.5s，略放慢让两阶段都读得清。 */
 export const GENIE_MS = 620;
 
-/** 条带基准厚度（px）。越小曲线越顺滑、drawImage 越多；8px 对 4K 窗口也只有一百余次。 */
-export const GENIE_BAND_SIZE = 8;
+/**
+ * Canvas 2D 兜底条带厚度（px）。WebGL 正常路径逐像素采样，不切条带；
+ * 这条只服务于没有 WebGL2 的环境，2px 已能把阶梯压到接近一像素。
+ */
+export const GENIE_BAND_SIZE = 2;
 
 /** 条带越过坞线后残余可见的距离（px）：这段里透明度线性归零。 */
 export const GENIE_FADE_PX = 26;
@@ -89,7 +93,75 @@ export function buildGenieModel(rect, gather, dockSide) {
 }
 
 function splitBands(span) {
-  return Math.max(12, Math.min(120, Math.ceil(span / GENIE_BAND_SIZE)));
+  return Math.max(12, Math.min(720, Math.ceil(span / GENIE_BAND_SIZE)));
+}
+
+/**
+ * 两阶段进度。让渲染器与几何断言共用同一组缓动，避免两边各算一套缓动后漂移。
+ * @param {number} progress 原始进度 [0,1]
+ * @returns {{pinch:number,pour:number,translation:number}} pinch 为第一阶段完成度，pour 为第二阶段倾倒比例
+ */
+export function genieParams(model, progress) {
+  const p = clamp01(progress);
+  if (p <= GENIE_STAGE_SPLIT) {
+    return {
+      pinch: easeOutCubic(p / GENIE_STAGE_SPLIT),
+      pour: 0,
+      translation: 0,
+    };
+  }
+  const pour = easeInCubic((p - GENIE_STAGE_SPLIT) / (1 - GENIE_STAGE_SPLIT));
+  return { pinch: 1, pour, translation: model.travel * pour };
+}
+
+/**
+ * 某进度、某源条带处的横向缩放。
+ * @param {object} model buildGenieModel 的产物
+ * @param {number} f0 源条带到坞线的距离比，[0,1]（未钳制）
+ * @param {{pinch:number,pour:number}} stage genieParams 的产物
+ * @returns {number}
+ */
+export function bandScale(model, f0, stage) {
+  if (stage.pour > 0) return pinchScale(f0 - stage.pour);
+  return 1 + (pinchScale(f0) - 1) * stage.pinch;
+}
+
+/**
+ * 逆映射：由屏幕上的目标像素反算窗口快照中的源坐标。
+ *
+ * WebGL 片元着色器实现的是同一公式，本函数用于无浏览器的往返断言：
+ * 目标像素必须能精确反推回生成它的源条带，否则边缘会漂、内容会错位。
+ * @param {object} model buildGenieModel 的产物
+ * @param {number} progress 原始进度 [0,1]
+ * @param {number} dx 目标视口横坐标
+ * @param {number} dy 目标视口纵坐标
+ * @returns {{x:number,y:number,f0:number,scale:number,alpha:number,inside:boolean}}
+ */
+export function genieSourceAt(model, progress, dx, dy) {
+  const stage = genieParams(model, progress);
+  const { rect, gather, dockLine, distSign, travel, dir } = model;
+  const translation = stage.translation;
+
+  let srcX;
+  let srcY;
+  let f0;
+  if (model.axis === "v") {
+    srcY = dy - translation;
+    f0 = (srcY - dockLine) * distSign / travel;
+    const sc = bandScale(model, f0, stage);
+    srcX = gather.x + (dx - gather.x) / sc;
+  } else {
+    srcX = dx - translation * dir;
+    f0 = (srcX - dockLine) * distSign / travel;
+    const sc = bandScale(model, f0, stage);
+    srcY = gather.y + (dy - gather.y) / sc;
+  }
+
+  const dist = (f0 - stage.pour) * travel;
+  const alpha = dist < 0 ? 1 - clamp01(-dist / GENIE_FADE_PX) : 1;
+  const inside = srcX >= rect.x && srcX <= rect.x + rect.w
+    && srcY >= rect.y && srcY <= rect.y + rect.h;
+  return { x: srcX, y: srcY, f0, scale: bandScale(model, f0, stage), alpha, inside };
 }
 
 /**
@@ -100,7 +172,7 @@ function splitBands(span) {
  *          sx..sh 为快照采样区（窗口原始位置），dx..dh 为本帧绘制区，alpha 为该条带透明度
  */
 export function genieBands(model, progress) {
-  const p = clamp01(progress);
+  const stage = genieParams(model, progress);
   const { rect, gather, travel, dir, dockLine, distSign } = model;
   const n = model.bands;
   const alongSpan = model.axis === "v" ? rect.h : rect.w;
@@ -110,37 +182,27 @@ export function genieBands(model, progress) {
   for (let i = 0; i < n; i++) {
     const along0 = (model.axis === "v" ? rect.y : rect.x) + i * thick;
     const dist0 = distSign > 0 ? along0 - dockLine : dockLine - along0;
-    const f0 = clamp01(dist0 / travel);
-
-    let sc;
-    // dist = 条带到坞线的实时距离（起点为 dist0，随倾倒线性递减；两坞向的
-    // 符号差已在 dist0 里归一，正方向恒为「靠近坞线」）。
-    let dist = dist0;
-    if (p <= GENIE_STAGE_SPLIT) {
-      sc = 1 + (pinchScale(f0) - 1) * easeOutCubic(p / GENIE_STAGE_SPLIT);
-    } else {
-      const pour = easeInCubic((p - GENIE_STAGE_SPLIT) / (1 - GENIE_STAGE_SPLIT));
-      dist = dist0 - travel * pour;
-      sc = pinchScale(clamp01(dist / travel));
-    }
+    const f0 = dist0 / travel;
+    const sc = bandScale(model, f0, stage);
+    const dist = (f0 - stage.pour) * travel;
     const alpha = dist < 0 ? 1 - clamp01(-dist / GENIE_FADE_PX) : 1;
-    const moved = dist0 - dist;
+    const moved = stage.translation;
 
     const band = {
-      sx: rect.x, sy: rect.y,
+      sx: 0, sy: 0,
       sw: rect.w, sh: rect.h,
       dx: rect.x, dy: rect.y,
       dw: rect.w, dh: rect.h,
       alpha,
     };
     if (model.axis === "v") {
-      band.sx = rect.x; band.sy = along0; band.sh = thick + 0.5;
+      band.sy = i * thick; band.sh = thick + 0.5;
       band.dx = gather.x + (rect.x - gather.x) * sc;
       band.dy = along0 + moved * dir;
       band.dw = rect.w * sc;
       band.dh = thick + 0.5;
     } else {
-      band.sy = rect.y; band.sx = along0; band.sw = thick + 0.5;
+      band.sx = i * thick; band.sw = thick + 0.5;
       band.dy = gather.y + (rect.y - gather.y) * sc;
       band.dx = along0 + moved * dir;
       band.dh = rect.h * sc;

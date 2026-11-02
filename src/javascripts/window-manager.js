@@ -34,7 +34,7 @@ import {
 } from "./ui/trafficLights.js";
 import {
   visibleFrame, frameOf, applyFrame, limitsOf, clampFrame, clampDrag, edgeAt, resizeFrame,
-  tileFrame, zoomFrame, displayFrame, snapZoneAt,
+  tileFrame, zoomFrame, displayFrame, snapZoneAt, WM_ANIM_MS,
 } from "./wm/frame.js";
 // 门面（window.js）以旧名 getDesktopRect 再导出它，这里必须把它透出到模块边界。
 export { visibleFrame };
@@ -80,7 +80,7 @@ const CASCADE_STEP = 24;
 const CLOSE_FALLBACK_MS = 300;
 
 /**
- * 开窗入场：先隐藏到几何稳定，再显示并从下方 10px 处上浮。
+ * 开窗入场：先隐藏到几何稳定，再显示并从下方 6px 处上浮。
  * 只动 top 与 opacity，绝不使用 transform / filter —— 带 backdrop-filter 的窗口
  * 一旦被提升为 3D 合成层，亚克力会退化成色块（见 ui.css / windowframe.css 的禁忌）。
  * 时长与 ui.css 的 window-fade-in 对齐，位移只是给纯淡入补一点方向感。
@@ -90,8 +90,8 @@ const CLOSE_FALLBACK_MS = 300;
  * 脚本到位后再填充内容即可；正常路径仍由脚本 load 事件提前触发。
  */
 const OPEN_REVEAL_FALLBACK_MS = 250;
-const OPEN_ANIM_MS = 220;
-const OPEN_RISE = 10;
+const OPEN_ANIM_MS = 160;
+const OPEN_RISE = 6;
 /** 显示前要求连续这么多帧几何不变；最多等 12 帧（约 200ms）避免插件迟迟不收敛。 */
 const OPEN_SETTLE_FRAMES = 2;
 const OPEN_SETTLE_MAX_FRAMES = 12;
@@ -665,6 +665,9 @@ export function setMinimized(el, minimize = true) {
   const dock = window.__dock;
   if (minimize) {
     el._minimized = true;
+    import("./wm/genie-capture.js")
+      .then((m) => m.cancelWarmWindow(el))
+      .catch(() => {});
     if (dock && dock.minimizeToDock) dock.minimizeToDock(el, name);
     else el.classList.add("minimized");
     const i = stack.indexOf(el);
@@ -715,6 +718,13 @@ export function close(el) {
   rec.closing = true;
   // 关闭优先于入场：提前按停上浮并摘掉隐藏态，淡出动画才能正常跑。
   cancelOpenAnimation(el);
+  import("./wm/genie-capture.js")
+    .then((m) => m.cancelWarmWindow(el))
+    .catch(() => {});
+  if (el._wmRevealAnim) {
+    el._wmRevealAnim.cancel();
+    el._wmRevealAnim = null;
+  }
   let done = false;
   const name = rec.name || el.id;
   const finish = () => {
@@ -1000,6 +1010,21 @@ function endInteraction(rec) {
 }
 
 /**
+ * 拖动/缩放结束后刷新快照。拖动只改位置，旧快照仍可复用；这里主要处理
+ * 尺寸变化与吸附动画：原生截图可用时立即换新，不可用时重新排一次空闲预热。
+ */
+function refreshGenieAfterGeometry(el, delay = 0, sizeChanged = false) {
+  const run = () => {
+    if (!el.isConnected) return;
+    import("./wm/genie-capture.js")
+      .then((m) => (sizeChanged ? m.geometryChanged(el) : m.refreshWindow(el)))
+      .catch(() => {});
+  };
+  if (delay > 0) setTimeout(run, delay);
+  else requestAnimationFrame(run);
+}
+
+/**
  * 统一的按下入口：边带 → 缩放，标题栏 → 拖动，其余只置顶取焦点。
  * 缩放不再靠坐标猜（那正是 iframe 场景下失效的根因）：命中窗口自己的边带元素即算。
  * 放在捕获阶段，是为了让边框压过内容自己绑的按下处理。
@@ -1114,6 +1139,8 @@ function startDrag(rec, e) {
     window.removeEventListener("blur", finish);
     if (rec.mode !== DRAG) return;
     hidePreview();
+    const snapped = !!rec.snap;
+    const changed = rec.moved || snapped;
     if (rec.snap) {
       if (rec.snap.region === "zoom") setZoom(el, { on: true });
       else tile(el, rec.snap.region);
@@ -1123,6 +1150,7 @@ function startDrag(rec, e) {
     rec.pending = null;
     rec.moved = false;
     endInteraction(rec);
+    if (changed) refreshGenieAfterGeometry(el, snapped ? WM_ANIM_MS : 0, snapped);
   }
   // 监听挂在 document：拖动途中指针会跑到遮罩上、别的窗口上、甚至浏览器外面，
   // 挂在窗口自己身上会漏事件（旧实现的 mousemove 就是这么断线的）。
@@ -1166,8 +1194,10 @@ function startResize(rec, edge, e) {
   e.preventDefault();
   e.stopPropagation();
 
+  let changed = false;
   const move = (ev) => {
     if (rec.mode !== RESIZE || !el.isConnected) return finish();
+    changed = true;
     const to = { x: ev.clientX - off.x, y: ev.clientY - off.y };
     const next = resizeFrame(base, edge, to, limits, { keepAspect: ev.altKey });
     // 左右下三边允许越出可视区（macOS 允许），但顶边不许钻进菜单栏底下，
@@ -1186,6 +1216,7 @@ function startResize(rec, edge, e) {
     if (rec.mode !== RESIZE) return;
     rec.normal = frameOf(el);
     endInteraction(rec);
+    if (changed) refreshGenieAfterGeometry(el, 0, true);
   }
   document.addEventListener("pointermove", move);
   document.addEventListener("pointerup", finish);
@@ -1272,6 +1303,9 @@ function bindTitleBarControls(rec) {
     });
     // 悬停绿键 = macOS 15 的窗口排列入口。禁用位（对话框 / no-zoom）不弹。
     lights.addEventListener("pointerenter", () => {
+      import("./wm/genie-capture.js")
+        .then((m) => m.refreshWindow(el))
+        .catch(() => {});
       const zoomOff = lights.hasAttribute("no-zoom") || lights.getAttribute("variant") === "dialog"
         || lights.classList.contains("inactive");
       if (zoomOff) return;
@@ -1298,6 +1332,11 @@ function bindTitleBarControls(rec) {
   }
   if (yellow && !rec._minBound) {
     rec._minBound = true;
+    yellow.addEventListener("pointerenter", () => {
+      import("./wm/genie-capture.js")
+        .then((m) => m.refreshWindow(el))
+        .catch(() => {});
+    });
     yellow.addEventListener("click", () => setMinimized(el, !isMinimized(el)));
   }
   if (green && !rec._zoomBound) {
@@ -1392,6 +1431,9 @@ export function revealOpen(el) {
     if (window.__dock && typeof window.__dock.syncRunningApps === "function") {
       window.__dock.syncRunningApps();
     }
+    import("./wm/genie-capture.js")
+      .then((m) => m.warmWindow(el))
+      .catch(() => {});
   };
   requestAnimationFrame(step);
 }
@@ -1406,7 +1448,7 @@ function playOpenMotion(el) {
   const f = frameOf(el);
   const anim = el.animate(
     [{ top: `${f.y + OPEN_RISE}px` }, { top: `${f.y}px` }],
-    { duration: OPEN_ANIM_MS, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+    { duration: OPEN_ANIM_MS, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
   );
   el._wmOpenAnim = anim;
   anim.addEventListener("finish", () => {

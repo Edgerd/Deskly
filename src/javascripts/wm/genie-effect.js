@@ -1,10 +1,8 @@
 /**
  * wm/genie-effect.js — 「神奇效果」的快照采集、覆盖层播放与状态衔接
  *
- * 分层：genie-geometry.js 只算矩形（纯函数），本模块负责所有会碰 DOM 的部分 ——
- * 用 modern-screenshot（assets/vendor，SVG foreignObject 管线，浏览器原生渲染，
- * 保真度高于逐属性重画的 html2canvas 一系）把窗口拍成离屏 canvas，再在一张
- * pointer-events:none 的覆盖层 canvas 上逐帧条带绘制，播完即拆。
+ * 分层：genie-geometry.js 只算矩形（纯函数），genie-capture.js 负责快照与预热，
+ * genie-renderer.js 负责 WebGL/Canvas 覆盖层；本模块只编排状态与播放。
  *
  * 两条铁律（违反任何一条就退回 dock.js 的 fallBackFadeOut 缩放淡出）：
  *   1) 绝不给 .window 写 transform / filter / clip-path —— backdrop-filter
@@ -12,25 +10,16 @@
  *      发生在覆盖层上，真实窗口只做 display 显隐；
  *   2) 任何一步失败（快照超时 / 几何不成立 / 减少动态效果开启 / 图标缺失）
  *      都必须 resolve(false)，由调用方走兜底，绝不吞掉最小化动作本身。
- *
- * 快照在最小化时采集并按窗口缓存（WeakMap）：还原动画直接复用，避免「先显示
- * 再截图」的一帧闪烁；窗口内容在最小化期间发生变化则以下次最小化重新采集为准。
  */
 
-import { domToCanvas } from "../../../assets/vendor/modern-screenshot.mjs";
-import { Z } from "../zindex.js";
-import { buildGenieModel, genieBands, GENIE_MS } from "./genie-geometry.js";
-
-/** 快照硬预算：超时走兜底。正常窗口几十毫秒，给慢机留余量但不许卡住交互。 */
-const SNAP_TIMEOUT_MS = 400;
-/** 快照缩放上限：覆盖层动画只有 0.6s，2x 足够，省下大窗的序列化时间。 */
-const SNAP_SCALE_MAX = 2;
-
-/** 窗口 → 最近一次最小化时的快照与几何，供还原动画复用。 */
-const snapshotCache = new WeakMap();
+import { buildGenieModel, GENIE_MS } from "./genie-geometry.js";
+import { cachedSnapshot, snapshotFor } from "./genie-capture.js";
+import { createGenieStage } from "./genie-renderer.js";
 
 function reduceMotionOn() {
-  return document.documentElement.getAttribute("data-reduce-motion") === "on";
+  if (document.documentElement.getAttribute("data-reduce-motion") === "on") return true;
+  // 与 drag / capture 保持同源：站内开关与系统偏好任一开启都不播逐像素动画。
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 }
 
 function dockEl() {
@@ -58,75 +47,57 @@ function gatherOf(iconEl, side) {
   return { x: cx, y: dockRect.top };
 }
 
-/** 窗口快照；失败返回 null（modern-screenshot 的 timeout 只管媒体加载，整体再套一层竞速）。 */
-async function captureWindow(el) {
-  const scale = Math.min(window.devicePixelRatio || 1, SNAP_SCALE_MAX);
-  try {
-    const snap = await Promise.race([
-      domToCanvas(el, { scale, backgroundColor: null }),
-      new Promise((resolve) => setTimeout(() => resolve(null), SNAP_TIMEOUT_MS)),
-    ]);
-    return snap && snap.width > 0 ? snap : null;
-  } catch {
-    return null;
-  }
-}
-
-function createOverlay() {
-  const dpr = Math.min(window.devicePixelRatio || 1, SNAP_SCALE_MAX);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(window.innerWidth * dpr));
-  canvas.height = Math.max(1, Math.round(window.innerHeight * dpr));
-  const style = canvas.style;
-  style.position = "fixed";
-  style.left = "0";
-  style.top = "0";
-  style.width = "100vw";
-  style.height = "100vh";
-  style.pointerEvents = "none";
-  // 高于窗口与普通浮层、低于 Dock（9500）：条带滑过坞线后从坞条底下没入。
-  style.zIndex = String(Z.GENIE);
-  document.body.appendChild(canvas);
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { canvas, ctx };
-}
-
-function drawFrame(ctx, model, snap, srcScale, progress) {
-  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-  for (const b of genieBands(model, progress)) {
-    if (b.alpha <= 0 || b.dw <= 0.25 || b.dh <= 0.25) continue;
-    ctx.globalAlpha = b.alpha;
-    ctx.drawImage(
-      snap,
-      b.sx * srcScale, b.sy * srcScale, b.sw * srcScale, b.sh * srcScale,
-      b.dx, b.dy, b.dw, b.dh,
-    );
-  }
-  ctx.globalAlpha = 1;
+/** 拆掉某窗口遗留的覆盖层。任何新动画开始前先调用，防止上一段异常退出留下孤儿 canvas。 */
+function dropStage(el) {
+  const stage = el && el._genieStage;
+  if (!stage) return;
+  el._genieStage = null;
+  try { stage.dispose(); } catch { /* 已释放 */ }
 }
 
 /**
  * 播放一段形变。reverse=false 吸入（进度 0→1），true 反放（进度 1→0，还原用）。
  * shouldAbort 每帧轮询：播放期间用户把状态翻回去（快速连点 / 还原中再最小化）
  * 就立即拆层收场，宁短勿鬼影。
- * @returns {Promise<void>} 播完（含覆盖层拆除）即 resolve
+ * @returns {Promise<boolean>} 是否成功建立并完整播放了渲染舞台
  */
-function play(model, snap, srcScale, reverse, shouldAbort) {
+async function play(el, model, snap, reverse, shouldAbort, onStart) {
+  dropStage(el);
+  let stage;
+  try {
+    stage = createGenieStage(model, snap);
+  } catch {
+    return false;
+  }
+  if (el) el._genieStage = stage;
   return new Promise((resolve) => {
-    const { canvas, ctx } = createOverlay();
-    const start = performance.now();
+    let start = 0;
     let raf = 0;
-    const finish = () => {
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
       cancelAnimationFrame(raf);
-      canvas.remove();
-      resolve();
+      if (el && el._genieStage === stage) el._genieStage = null;
+      try { stage.dispose(); } catch { /* 已释放 */ }
+      resolve(ok);
     };
+    try {
+      stage.draw(reverse ? 1 : 0);
+      if (onStart) onStart();
+    } catch {
+      // 建层成功但首帧/隐藏步骤抛错：必须立刻拆层并 resolve(false)，
+      // 否则覆盖层留在屏幕上、调用方又以为播放完成。
+      finish(false);
+      return;
+    }
     const tick = (now) => {
-      if (shouldAbort && shouldAbort()) return finish();
+      if (shouldAbort && shouldAbort()) return finish(false);
+      if (stage.isLost && stage.isLost()) return finish(false);
+      if (!start) start = now;
       const raw = Math.min((now - start) / GENIE_MS, 1);
-      drawFrame(ctx, model, snap, srcScale, reverse ? 1 - raw : raw);
-      if (raw >= 1) finish();
+      stage.draw(reverse ? 1 - raw : raw);
+      if (raw >= 1) finish(true);
       else raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -159,16 +130,21 @@ export async function minimizeGenie(el, iconEl) {
   const model = buildGenieModel(rect, gatherOf(iconEl, side), side);
   if (!model) return false;
 
-  const snap = await captureWindow(el);
+  const snap = await snapshotFor(el, rect);
   // 快照是异步的：期间用户可能把窗口还原 / 关掉，状态翻回去就别再抢屏幕。
   if (!snap || !el._minimized || !el.isConnected) return false;
 
-  snapshotCache.set(el, { snap, srcScale: snap.width / rect.w });
-
-  el.classList.add("minimized");
-  el.style.display = "none";
-  await play(model, snap, snap.width / rect.w, false, () => !el._minimized);
-  return true;
+  return play(
+    el,
+    model,
+    snap,
+    false,
+    () => !el._minimized,
+    () => {
+      el.classList.add("minimized");
+      el.style.display = "none";
+    },
+  );
 }
 
 /**
@@ -179,15 +155,21 @@ export async function minimizeGenie(el, iconEl) {
  * @returns {Promise<boolean>}
  */
 export async function restoreGenie(el, iconEl) {
-  const cache = snapshotCache.get(el);
-  if (!el || !iconEl || !cache || reduceMotionOn()) return false;
+  if (!el || !iconEl || reduceMotionOn()) return false;
   const rect = targetRectOf(el);
   if (!rect) return false;
+  const snap = cachedSnapshot(el, rect);
+  if (!snap) return false;
   const side = dockSideOf();
   const model = buildGenieModel(rect, gatherOf(iconEl, side), side);
   if (!model) return false;
 
-  el.style.display = "none";
-  await play(model, cache.snap, cache.srcScale, true, () => el._minimized);
-  return true;
+  return play(
+    el,
+    model,
+    snap,
+    true,
+    () => el._minimized,
+    () => { el.style.display = "none"; },
+  );
 }

@@ -1,8 +1,7 @@
 /* 启动台样式 — 实时模糊背景（backdrop-filter）+ 居中自适应网格 */
 
-/* 全站没有 border-box 重置（只有 .desktop 自己声明了一条），本插件里凡是
-   "定宽 + padding" 的元素都会超尺寸：文件夹预览块因此比应用图标宽出两份内边距。
-   在插件作用域内补一次 border-box，不动全局、不影响其它插件。 */
+/* 全站没有 border-box 重置，本插件里"定宽 + padding"的元素会超尺寸（文件夹预览块比应用图标宽出两份内边距）。
+   在插件作用域内补一次 border-box，不动全局。 */
 .launchpad,
 .launchpad *,
 .launchpad *::before,
@@ -40,7 +39,6 @@
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
   100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
-/* 关闭动画必须是独立 keyframes 名（复用进入动画名不会重启播放） */
 @keyframes folder-pop-out {
   0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
@@ -78,12 +76,9 @@
   --lp-icon: 84px;
   --lp-font: 13px;
   --lp-cell: calc(var(--lp-icon) + 44px);
-  /* 文字色：全屏底衬取样的是墙纸本身，而 --surface-text 的推导在「墙纸着色关闭」时
-     只看主题中性色，读不到墙纸明暗 —— 直接沿用全局令牌会在浅色主题下推出黑字，
-     压在深色墙纸上就是隐形。所以这里按本表面自身的暗场把局部三档钉成白（含
-     secondary/tertiary，保证层级同宗），与锁屏遮罩 src/javascripts/lock.js 同一处理。
-     表面内的文字一律只引用 var(--surface-text*)，不再各写各的 #fff。
-     禁忌照旧：本元素带 backdrop-filter，永远不要加 transform。 */
+  /* 文字色：--surface-text 的全局推导在「墙纸着色关闭」时读不到墙纸明暗，浅色主题会推出黑字压在深色墙纸上。
+     这里按本表面暗场把局部三档钉成白（与锁屏遮罩 src/javascripts/lock.js 同一处理），
+     表面内文字一律只引用 var(--surface-text*)。禁忌照旧：本元素带 backdrop-filter，永远不要加 transform。 */
   --surface-text: #fff;
   --surface-text-secondary: rgba(255, 255, 255, 0.62);
   --surface-text-tertiary: rgba(255, 255, 255, 0.42);
@@ -200,13 +195,21 @@
   height: var(--lp-icon);
   object-fit: contain;
   pointer-events: none;
-  /* 悬浮动画：仅图标轻微放大，一处过渡 */
   transition: transform 0.15s ease;
 }
-.launchpad .container:hover > img {
-  transform: scale(1.07);
+/* 几何契约：App 图标与文件夹磁贴共用同一条主轴尺寸和零外边距，
+   两者都是 .container 的第一个 flex 子项 → 排版矩形（宽高、left、top）逐项相同。
+   flex: none 表示既不放大也不压缩、basis 交给各自的显式尺寸：
+   避免列向容器里 flex-basis 代表「高度」时与 width 语义打架，也杜绝内容撑开。 */
+.launchpad .container > img,
+.launchpad .folder-tile {
+  flex: none;
+  margin: 0;
+  /* 悬停放大绕各自盒中心 → 放大后的外扩量按同一中心对称，不会单向压住邻格 */
+  transform-origin: center center;
 }
-/* 文件夹磁贴整体放大；3×3 迷你图标不单独放大，否则会像在格子里乱跳 */
+/* 文件夹磁贴整体放大；预览里的迷你图标不单独放大，否则会像在格子里乱跳 */
+.launchpad .container:hover > img,
 .launchpad .container:hover .folder-tile {
   transform: scale(1.07);
 }
@@ -231,35 +234,119 @@
   animation: cell-pop 0.25s ease-out;
 }
 
-/* 文件夹预览块：原版是一枚与 App 图标同尺寸的「磨砂玻璃方格」，
-   里面按 3×3 放最多九枚迷你图标。不用 backdrop-filter：每个格子一层会明显拖慢渲染，
-   半透明底 + 渐变高光已经能读到背后的模糊壁纸，视觉上等价。 */
+/* 文件夹磁贴：排版盒与 App 图标严格同尺寸，但「涂装」（可见的圆角浅色方块）只有图标盒的 84.4%。
+   15% 的差不是磁贴过大，而是内置图标 PNG 自带的透明外边距：实测 15 枚图标的不透明内容
+   只占画布 84.0%–84.8%（Finder/Safari/Photos 均为 84.4%）。磁贴若涂满整个盒，就会比图标的
+   肉眼尺寸大一圈（84 盒 → 85 的方块 vs 约 70 的画面）。所以涂装层按同一比例内缩，
+   可见面积与图标内容对齐；排版盒保持不变，标签顶边才能与相邻应用同高。
+   材质：白色低透明度叠在启动台根表面的 4 档模糊上（展开文件夹时是 5 档），
+   不给每格挂 backdrop-filter —— 28 格逐格采样成本高，且磁贴 hover 有 transform，
+   会触发本项目「亚克力元素禁止 transform」的退化。外描边 / 外投影一概不加。 */
 .launchpad .folder-tile {
-  width: var(--lp-icon);
-  height: var(--lp-icon);
-  border-radius: calc(var(--lp-icon) * 0.225);
+  /* 全部由 --lp-icon 推导：任何图标档位下比例不变，不写死 px。 */
+  --lp-folder-artwork: 0.844;                       /* 图标不透明内容占比（实测中位数） */
+  --lp-folder-fill: rgba(247, 248, 252, 0.46);
+  --lp-folder-fill-solid: #eef0f5;
+  /* 涂装层四周各让出的比例 = (1 − 0.844) / 2，与图标 PNG 的透明边等宽 */
+  --lp-folder-paint-inset: calc(var(--lp-icon) * 0.078);
+  /* 涂装方块内的留白 = 涂装边长 × 0.07 ≈ 整盒的 0.137 */
+  --lp-folder-pad: calc(var(--lp-icon) * 0.137);
+  --lp-folder-gap: calc(var(--lp-icon) * 0.05);
+  position: relative;
+  /* 排版盒：显式尺寸 + min/max 钳死，任何内容、flex 或网格轨道都撑不大它。
+     盒模型显式声明 border-box，不依赖上层重置。 */
+  inline-size: var(--lp-icon);
+  block-size: var(--lp-icon);
+  min-inline-size: 0;
+  min-block-size: 0;
+  max-inline-size: var(--lp-icon);
+  max-block-size: var(--lp-icon);
+  aspect-ratio: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  pointer-events: none;
+  transform-origin: center center;
+  transition: transform 0.15s ease;
+}
+/* 涂装层：可见的浅色磨砂方块。绝对定位 + inset，尺寸完全不参与排版盒计算。 */
+.launchpad .folder-tile::before {
+  content: "";
+  position: absolute;
+  inset: var(--lp-folder-paint-inset);
+  border-radius: calc(var(--lp-icon) * 0.19);
   background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08) 46%, rgba(255, 255, 255, 0.03)),
-    rgba(104, 104, 112, 0.58);
-  box-shadow:
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 6px 16px rgba(0, 0, 0, 0.18);
+    linear-gradient(155deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.12) 46%, rgba(255, 255, 255, 0.04)),
+    var(--lp-folder-fill);
+  /* 只有顶部 1px 内高光，不加环状内描边 */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  pointer-events: none;
+}
+/* 预览层绝对定位且 inset: 0：内边距再大也只影响自己，排版盒恒等于 --lp-icon。 */
+.launchpad .folder-preview {
+  position: absolute;
+  inset: 0;
+  padding: var(--lp-folder-pad);
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   place-items: center;
-  padding: calc(var(--lp-icon) * 0.1);
-  gap: calc(var(--lp-icon) * 0.04);
-  pointer-events: none;
+  /* 成员少的档位用 auto 行高，整块预览在磁贴内垂直居中：
+     否则单行会被 1fr 拉满，图标虽不拉伸，上下却各空一大截。 */
+  align-content: center;
+  gap: var(--lp-folder-gap);
   overflow: hidden;
-  transition: transform 0.15s ease;
 }
-.launchpad .folder-tile img {
+/* 迷你图标排布按成员数重算：行数越多格子越小，空位不留成整块留白。
+   1 枚 = 1×1（正常路径不会出现：单成员文件夹会被摊平成普通应用），
+   2 枚 = 2×1，3 枚 = 3×1，4 枚 = 2×2，5–6 枚 = 3×2，7–9 枚 = 3×3。
+   img 用 object-fit:contain，单行时高度富余也只会居中缩放，不会拉伸变形。 */
+.launchpad .folder-preview[data-count="1"] {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto;
+}
+.launchpad .folder-preview[data-count="1"] img {
+  width: 56%;
+  height: 56%;
+}
+.launchpad .folder-preview[data-count="2"] {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: auto;
+}
+.launchpad .folder-preview[data-count="3"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: auto;
+}
+.launchpad .folder-preview[data-count="4"] {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+.launchpad .folder-preview[data-count="5"],
+.launchpad .folder-preview[data-count="6"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, auto);
+}
+.launchpad .folder-preview[data-count="7"],
+.launchpad .folder-preview[data-count="8"],
+.launchpad .folder-preview[data-count="9"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+.launchpad .folder-preview img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   transition: none;
+}
+/* 「降低透明度」：摘掉半透明层，退回实色 —— 但必须是浅色实底，不跟随深色主题变深。
+   启动台根表面此时由 main.css 换成深色 scrim，浅色磁贴正好保持可读。 */
+html[data-transparency="off"] .launchpad .folder-tile::before {
+  background: var(--lp-folder-fill-solid);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 /* ── 搜索栏 ── */
@@ -326,9 +413,7 @@
   pointer-events: none;
 }
 
-/* ── 页码点 ──
-   原版启动台底部的分页指示：只显示总页数与当前页，点击可跳页。
-   位置在程序坞上方；文件夹展开时随根网格一起淡出。 */
+/* ── 页码点：位置在程序坞上方（JS 按 Dock 顶边算）；文件夹展开时随根网格一起淡出 ── */
 .launchpad .page-dots {
   position: absolute;
   left: 50%;
@@ -496,8 +581,8 @@
   object-fit: contain;
 }
 .launchpad .drag-ghost .folder-tile {
-  width: var(--lp-icon);
-  height: var(--lp-icon);
+  inline-size: var(--lp-icon);
+  block-size: var(--lp-icon);
 }
 .launchpad .drag-ghost .folder-tile img {
   width: 100%;
@@ -512,12 +597,10 @@
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 
-/* 原版启动台是「隐藏菜单栏、保留程序坞」的全屏空间。
-   启动期间给 <html> 挂 deskly-launchpad-open：
-   - 菜单栏（z 9999）不能靠抬层级盖住，改为淡出；
-   - 程序坞抬到启动台（9600）之上 1 层，保持可见、可点击。
-   层级数值仍以 src/javascripts/zindex.js 的语义为准，这里只是启动台打开时的临时覆盖。
-   根类留到 unload 才摘，因此关闭动画期间程序坞仍在启动台之上。 */
+/* 原版启动台是「隐藏菜单栏、保留程序坞」的全屏空间，启动期间给 <html> 挂 deskly-launchpad-open：
+   菜单栏（z 9999）不能靠抬层级盖住，改为淡出；程序坞抬到启动台（9600）之上 1 层。
+   层级数值以 src/javascripts/zindex.js 语义为准，这里只是打开时的临时覆盖；
+   根类留到 unload 才摘，关闭动画期间程序坞仍在启动台之上。 */
 html.deskly-launchpad-open .finderbar {
   opacity: 0;
   pointer-events: none;

@@ -1,27 +1,14 @@
 /**
- * script.js — 启动台插件逻辑（重写版）
- *
- * 功能：
- * - 实时模糊背景：根元素 backdrop-filter 直接取样桌面，不再复制壁纸
- * - 搜索：实时过滤应用与文件夹（含文件夹内应用），Enter 打开首个结果
- * - 排序：指针拖拽 + 让位（落点之后的整排腾出一格，空位跟着指针走），位置持久化
- * - 文件夹：应用拖到应用上合并、拖到文件夹上加入、文件夹内拖出还原；3×3 预览
- *   文件夹是 state.items 里的原对象，渲染只过滤禁用成员，禁止返回副本（否则改名/拖拽不落盘）
- * - 重命名：文件夹展开后点标题输入框 / 右键菜单（应用改显示名，文件夹改文件夹名）
- *   编辑模式下双击标签也可进入行内重命名
- * - 打开动画：图标从原位放大飞向屏幕中心，与启动台淡出并行
- * - 光标：引用内核 --deskly-cursor*（style.css），随操作在箭头/手指间切换
- *
- * 兼容约束（勿改）：
- * - 根元素必须是 .launchpad（plugin-manager 的 fullscreen 入口按类名识别）
- * - window.__launchpad / window.specialCloses / appStatus / Dock 指示灯同步
- * - plugin-unload 时自清 window 级监听
+ * script.js — 启动台：全屏应用网格 + 搜索 + 指针拖拽排序/让位 + 文件夹 + 重命名。
+ * 兼容约束（勿改）：根元素必须是 .launchpad（plugin-manager 的 fullscreen 入口按类名识别）；
+ * 同步 window.__launchpad / window.specialCloses / appStatus / Dock 指示灯；plugin-unload 时自清 window 级监听。
  */
 
 import { listApps, openApp, load as loadPlugin, unload, getIconForName, isPluginEnabled, GENERIC_APP_ICON } from '../../src/javascripts/plugin-manager.js';
-import { displayNameFor } from '../../src/javascripts/app-registry.js';
+import { displayNameFor, getAppVisibility } from '../../src/javascripts/app-registry.js';
 import { updateMenu } from '../../src/javascripts/finderbar.js';
 import { addToDock } from '../../src/javascripts/dock.js';
+import { slotToIndex } from '../../src/javascripts/core/visibleOrder.js';
 
 // 取最后一个 .launchpad（最新注入的实例），避免 reopen 时 DOM 中仍残留旧实例导致引用错位
 const _allLaunchpads = document.querySelectorAll(".launchpad");
@@ -37,8 +24,7 @@ const folderGrid = launchpad.querySelector(".folder-grid");
 const ctxMenu = launchpad.querySelector(".ctx-menu");
 const pageDots = launchpad.querySelector(".page-dots");
 
-// 布局持久化：v2 结构 { items: [app 条目 | 文件夹条目], labels: {应用名: 显示名} }
-// 应用条目形如 {type:'app', name}；文件夹条目形如 {type:'folder', name, apps:[应用名]}
+// 布局持久化 v2：{ items: [{type:'app',name} | {type:'folder',name,apps:[应用名]}], labels: {应用名: 显示名} }
 // 旧版只存应用名数组（webstartos_launchpad_order），读到时迁移
 const LAYOUT_KEY = "webstartos_launchpad_layout_v2";
 const LEGACY_ORDER_KEY = "webstartos_launchpad_order";
@@ -51,9 +37,8 @@ const EASE_GRID_ENTER = "cubic-bezier(0.22, 1, 0.36, 1)";
 const EASE_EXIT = "cubic-bezier(0.4, 0, 1, 1)";
 // 指针位移超过该值才判定为拖拽（否则是点击）
 const DRAG_THRESHOLD = 6;
-// 让位场：以指针为中心的"海水让开"。横向半径大、纵向半径小 → 指针处开出一条竖缝，
-// 上下两行只轻让，整屏不会跟着翻。强度用余弦衰减（贴身处最强、到半径边缘平滑归零）。
-// 被指针压住那一格免疫（只留 10%）：它稳住不动，你才瞄得准；邻居让开，才读得出"让地方"。
+// 让位场：以指针为中心的"海水让开"。横向半径大、纵向半径小 → 开出竖缝，整屏不翻；
+// 余弦衰减（贴身最强、边缘平滑归零）。被指针压住那格免疫（只留 10%）稳住瞄准点。
 const PART_RX_K = 2.4;   // 横向影响半径 = 格宽 × 2.4
 const PART_RY_K = 1.6;   // 纵向影响半径 = 格宽 × 1.6
 const PART_MAX_K = 0.6;  // 贴身处位移 = 格宽 × 0.6
@@ -125,7 +110,8 @@ function readRegistryApps() {
         .filter((rec) => {
             const type = (rec.app && rec.app.type) || rec.manifest.type;
             const entry = (rec.app && rec.app.entry) || rec.manifest.entry;
-            return type === "app" && entry === "window";
+            // 可见性 API：manifest.visibility.launchpad === false 的系统应用（聚焦、快看）不进网格
+            return type === "app" && entry === "window" && getAppVisibility(rec.appId).launchpad;
         })
         .map((rec) => ({
             name: rec.windowName,
@@ -203,10 +189,19 @@ function makeCell(item, scope) {
     } else {
         const tile = document.createElement("div");
         tile.className = "folder-tile";
-        // 九枚迷你图标只是「文件夹长什么样」的装饰；可读信息由下方文件夹名承担。
+        // 迷你图标只是「文件夹长什么样」的装饰；可读信息由下方文件夹名承担。
         tile.setAttribute("aria-hidden", "true");
-        // 3×3 预览：最多九枚；禁用成员不参与预览（与展开后的文件夹一致）
-        visibleAppsOf(item).slice(0, 9).forEach((n) => tile.appendChild(makeIconImg(state.apps.get(n))));
+        // 预览放在内层绝对定位容器里：内边距/网格再大也只影响内层，
+        // 外框恒等于 --lp-icon（与旁边 App 图标的渲染矩形逐项相同）。
+        const preview = document.createElement("div");
+        preview.className = "folder-preview";
+        // 成员数决定 CSS 里的行列排布（2 枚 2×1、4 枚 2×2、5–6 枚 3×2…），
+        // 否则固定 3×3 会在成员少时把图标挤在左上、右下留一大片空。
+        // 禁用成员不参与预览（与展开后的文件夹一致）；单成员文件夹已在 visibleItems 摊平成应用。
+        const previews = visibleAppsOf(item).slice(0, 9);
+        preview.dataset.count = String(previews.length);
+        previews.forEach((n) => preview.appendChild(makeIconImg(state.apps.get(n))));
+        tile.appendChild(preview);
         cell.appendChild(tile);
     }
     const p = document.createElement("p");
@@ -402,7 +397,7 @@ function visibleItems(items) {
         // 文件夹必须是 state.items 里的原对象，不能返回副本：
         // 返回副本后，改名 / 拖入拖出 / 解散都只改到副本，saveLayout() 序列化的
         // 仍是旧对象，表现为「文件夹改不了名字」以及成员变更刷新后丢失。
-        if (live.length === 1) out.push({ type: "app", name: live[0] });
+        if (live.length === 1) out.push({ type: "app", name: live[0], source: it });
         else if (live.length > 1) out.push(it);
     }
     return out;
@@ -502,6 +497,28 @@ function beginPress(e, item, scope, cell) {
     }
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    // 系统手势/触摸抢走指针时是 pointercancel 而不是 pointerup：
+    // 不监听它 press 永不清空，启动台整体假死（BUG-58）
+    window.addEventListener("pointercancel", onPointerCancel);
+}
+
+/** 指针会话被系统打断：清理拖拽现场但【不】走 endDrag 落盘（这不是一次有效拖放）。 */
+function onPointerCancel() {
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerCancel);
+    if (!press) return;
+    const d = press;
+    press = null;
+    if (d.longPressTimer) { clearTimeout(d.longPressTimer); d.longPressTimer = null; }
+    clearMergeHint(d.scopeGrid);
+    if (d.moved) {
+        isDragging = false;
+        if (d.ghost) d.ghost.remove();
+        d.cell.classList.remove("dragging");
+        launchpad.classList.remove("drag-cursor");
+        clearDodge();
+    }
 }
 
 function onPointerMove(e) {
@@ -529,6 +546,7 @@ function onPointerMove(e) {
 function onPointerUp(e) {
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerCancel);
     if (!press) return;
     const d = press;
     press = null;
@@ -720,12 +738,18 @@ function endDrag(d, x, y) {
     }
     if (d.scope === "folder" && !inRect(folderPanel.getBoundingClientRect(), x, y)) {
         // 拖出文件夹面板：应用移回根网格。根网格此刻没有躲闪位移，用实时矩形算插入位
-        clearDodge();
         const folder = openFolderItem;
+        // 记住文件夹在根网格里的那一格：拖走后若一个可见成员都不剩，这一格也会消失，
+        // 统计落点时必须把它排除，否则插入位会多算一格。
+        const rootFolderCell = grid.querySelector(`.container[data-kind="folder"][data-name="folder:${CSS.escape(folder.name)}"]`)
+            || grid.querySelector(`.container[data-kind="app"][data-name="${CSS.escape(d.item.name)}"]`);
         folder.apps = folder.apps.filter((n) => n !== d.item.name);
-        const rootIndex = insertionIndex(Array.from(grid.querySelectorAll(".container")), x, y);
-        const at = state.items.indexOf(folder);
-        state.items.splice(at === -1 ? rootIndex : at + 1, 0, { type: "app", name: d.item.name });
+        const stillVisible = visibleAppsOf(folder).length > 0;
+        clearDodge();
+        const cells = Array.from(grid.querySelectorAll(".container"))
+            .filter((c) => c !== rootFolderCell || stillVisible);
+        const slot = insertionIndex(cells, x, y);
+        state.items.splice(slotToIndex(state.items, slot, isItemVisible), 0, { type: "app", name: d.item.name });
         dissolveIfSparse(folder);
         saveLayout();
         if (!state.items.includes(folder)) {
@@ -758,8 +782,13 @@ function endDrag(d, x, y) {
     // 根网格：命中判定用拖拽开始时的基准矩形快照（图标正在躲闪，实时矩形会漂）
     const snap = hitSnap(x, y);
     const tItem = snap ? itemOfCell(snap.el) : null;
+    // 落点必须在 clearDodge() 之前算：躲闪快照就是落点判定的数据源，
+    // 清空后再调 insertionIndexSnap 会恒为 0，图标会莫名其妙跑到本页最前面。
+    const slot = insertionIndexSnap(x, y);
     clearDodge();
-    if (tItem && tItem !== d.item) {
+    // 平铺的单成员文件夹在被拖走时要还原成文件夹本身，否则会在布局里留下一个副本
+    const moving = d.item.source || d.item;
+    if (tItem && tItem !== moving && !d.item.source) {
         if (tItem.type === "folder" && d.item.type === "app") {
             if (!tItem.apps.includes(d.item.name)) {
                 removeItem(d.item);
@@ -790,9 +819,8 @@ function endDrag(d, x, y) {
             return;
         }
     }
-    // 空白处落下 → 本页内插入位换算成全局插入位（跨页拖拽时页起点不同）
-    const idx = insertionIndexSnap(x, y);
-    moveItem(d.item, globalInsertionIndex(d.scopeGrid, idx));
+    // 空白处落下 → 本页内插入位换算成全局可见槽位，再写回保留隐藏项的权威布局
+    moveItemToVisibleSlot(moving, globalVisibleSlot(d.scopeGrid, slot, d.cell));
     saveLayout();
     renderWithFlip(before, renderRoot);
 }
@@ -802,17 +830,36 @@ function inRect(r, x, y) {
 }
 
 /**
- * 把「目标页内的局部插入位」换算成 state.items 的全局插入位。
- * 计数时跳过正在拖拽那格，所以得到的就是「移除原条目之后」的目标下标，
- * 可直接交给 moveItem（它先 remove 再 splice）。
+ * 把「目标页内的局部插入槽」换算成全局可见槽位（跨页拖拽时页起点不同）。
+ * 计数时排除正在拖拽那格；注意不能靠 .dragging 类，指针抬起前该类已被移除。
+ * @param {HTMLElement} targetGrid 目标页
+ * @param {number} localSlot 目标页内的可见插入槽
+ * @param {HTMLElement} draggedCell 正在拖拽的格子
+ * @returns {number} 全局可见槽位
  */
-function globalInsertionIndex(targetGrid, localIdx) {
+function globalVisibleSlot(targetGrid, localSlot, draggedCell) {
     let before = 0;
     for (const pg of grid.querySelectorAll(".page-grid")) {
         if (pg === targetGrid) break;
-        before += pg.querySelectorAll(".container:not(.dragging)").length;
+        before += Array.from(pg.querySelectorAll(".container")).filter((c) => c !== draggedCell).length;
     }
-    return before + localIdx;
+    return before + localSlot;
+}
+
+// 权威条目在界面上是否占一格：应用看启用态，文件夹看是否有可见成员
+function isItemVisible(item) {
+    if (item.type === "app") return appEnabled(item.name);
+    return visibleAppsOf(item).length > 0;
+}
+
+/**
+ * 按可见槽位把条目写回权威布局，隐藏项保留原槽位。
+ * @param {object} item 要移动的权威条目
+ * @param {number} slot 全局可见槽位（已排除被拖拽的格子）
+ */
+function moveItemToVisibleSlot(item, slot) {
+    removeItem(item);
+    state.items.splice(slotToIndex(state.items, slot, isItemVisible), 0, item);
 }
 
 // 行主序插入位：指针所在行之上的整行计入，同行中位于指针左侧的计入
@@ -831,7 +878,16 @@ function insertionIndex(cells, x, y) {
 function itemOfCell(cell) {
     const kind = cell.dataset.kind;
     const raw = cell.dataset.name;
-    if (kind === "app") return state.items.find((it) => it.type === "app" && it.name === raw) || null;
+    if (kind === "app") {
+        const direct = state.items.find((it) => it.type === "app" && it.name === raw);
+        if (direct) return direct;
+        // 单成员文件夹在根网格里平铺成应用格，命中时应回到文件夹本身
+        return state.items.find((it) => {
+            if (it.type !== "folder") return false;
+            const live = visibleAppsOf(it);
+            return live.length === 1 && live[0] === raw;
+        }) || null;
+    }
     const name = raw.startsWith("folder:") ? raw.slice(7) : raw;
     return state.items.find((it) => it.type === "folder" && it.name === name) || null;
 }
@@ -839,11 +895,6 @@ function itemOfCell(cell) {
 function removeItem(item) {
     const i = state.items.indexOf(item);
     if (i !== -1) state.items.splice(i, 1);
-}
-
-function moveItem(item, idx) {
-    removeItem(item);
-    state.items.splice(idx, 0, item);
 }
 
 function uniqueFolderName(base) {
@@ -943,7 +994,8 @@ function findCell(item) {
 
 function startRename(item) {
     if (keyword) return;
-    item = item.source || item;
+    // 平铺的单成员文件夹在界面上是「应用格」，重命名改的是用户看得见的应用显示名，
+    // 不要解包成文件夹对象（否则 findCell 找不到 folder 格，回车后没有任何反馈）。
     const cell = findCell(item);
     if (!cell || cell.querySelector(".rename-input")) return;
     const p = cell.querySelector("p");
@@ -995,6 +1047,27 @@ function openCtxMenu(x, y, item) {
         b.addEventListener("click", () => { closeCtxMenu(); fn(); });
         return b;
     };
+    // 添加到桌面 / 从桌面移除：快捷方式是 /桌面 下的真实 .webloc.json，可重命名可进废纸篓
+    if (item.type === "app") {
+        const name = item.name;
+        ctxMenu.appendChild(mk(desktopShortcutLabel.add, async () => {
+            const { Shortcuts } = await import("../../src/javascripts/core/shortcuts.js");
+            const { resolveAppId } = await import("../../src/javascripts/app-registry.js");
+            const appId = resolveAppId(name);
+            if (!appId) return;
+            if (!(await Shortcuts.findExisting(appId))) {
+                await Shortcuts.add(appId).catch((err) => console.warn("[launchpad] 添加到桌面失败：", err));
+            }
+        }));
+        ctxMenu.appendChild(mk(desktopShortcutLabel.remove, async () => {
+            const { Shortcuts } = await import("../../src/javascripts/core/shortcuts.js");
+            const { resolveAppId } = await import("../../src/javascripts/app-registry.js");
+            const appId = resolveAppId(name);
+            if (!appId) return;
+            const existing = await Shortcuts.findExisting(appId);
+            if (existing) await Shortcuts.remove(existing).catch((err) => console.warn("[launchpad] 移除快捷方式失败：", err));
+        }));
+    }
     ctxMenu.appendChild(mk("重命名", () => startRename(item)));
     if (item.type === "folder") ctxMenu.appendChild(mk("解散文件夹", () => dissolveFolder(item)));
     ctxMenu.hidden = false;
@@ -1002,6 +1075,8 @@ function openCtxMenu(x, y, item) {
     ctxMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
     ctxMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
 }
+
+const desktopShortcutLabel = { add: "添加到桌面", remove: "从桌面移除" };
 
 function closeCtxMenu() {
     ctxMenu.hidden = true;
@@ -1040,10 +1115,13 @@ function zoomLaunch(imgEl) {
 
 // 获取程序坞中对应名称的应用图标，不存在则先加入程序坞再查找
 function getDockImg(name) {
-    let img = document.querySelector(`#dock img[alt="${name}"]`);
+    // 应用名必须 CSS.escape：ZIP 插件 manifest.name 是任意文本，
+    // 含引号/反斜杠时裸拼选择器直接抛 SyntaxError（BUG-61，findCell 已是转义写法）
+    const sel = `#dock img[alt="${CSS.escape(name)}"]`;
+    let img = document.querySelector(sel);
     if (!img) {
         addToDock(name);
-        img = document.querySelector(`#dock img[alt="${name}"]`);
+        img = document.querySelector(sel);
     }
     return img;
 }
@@ -1315,15 +1393,34 @@ function init() {
     const onLanguageChange = () => renderRoot();
     document.addEventListener("languagechange", onLanguageChange);
 
+    // 应用在别的窗口被禁用/重新启用：就地更新可见性并重绘，布局对象保持不动，
+    // 这样重新启用后图标回到原来的页与位置，而不是被重建到末尾。
+    const onPluginEnabledChange = () => {
+        const fresh = new Map(readRegistryApps().map((a) => [a.name, a]));
+        for (const [name, app] of state.apps) {
+            const next = fresh.get(name);
+            if (next) app.disabled = next.disabled;
+        }
+        const before = captureVisual();
+        if (openFolderItem && visibleAppsOf(openFolderItem).length === 0) closeFolder();
+        renderWithFlip(before, () => {
+            renderRoot();
+            if (openFolderItem) renderFolderGrid();
+        });
+    };
+    document.addEventListener("plugin-enabled-change", onPluginEnabledChange);
+
     // 资源释放：启动台卸载时移除自身注册的 window 级监听，并丢弃未结束的会话
     const onLaunchpadUnload = (e) => {
         if (e.detail.id !== "launchpad") return;
         document.documentElement.classList.remove("deskly-launchpad-open");
         window.removeEventListener("plugin-unload", onLaunchpadUnload);
         document.removeEventListener("languagechange", onLanguageChange);
+        document.removeEventListener("plugin-enabled-change", onPluginEnabledChange);
         window.removeEventListener("keydown", onWindowKeydown);
         window.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerCancel);
         window.removeEventListener("launchpad-icon-size-change", onSizeChange);
         window.removeEventListener("launchpad-font-size-change", onSizeChange);
         window.removeEventListener("resize", onSizeChange);

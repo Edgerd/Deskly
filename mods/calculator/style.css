@@ -1,32 +1,4 @@
-/*
- * style.css — 计算器（macOS 风格深色面板）
- *
- * 为什么恒深色：计算器只有「深色毛玻璃 / 深色不透明」两档背景（见 settings.define
- * 里的 calculator.background），浅色主题下它仍是深色面板。内核的 --surface-text* 在
- * 浅色主题下是黑墨，落在这块深底上会读不见，所以在 .calculator 作用域里把它钉成白墨
- * （与 surface.js 对该表面 syncText() 的结果一致）。这里不写 html[data-theme=...] 覆盖，
- * 因为深色是这块表面的固有属性，不该随系统主题翻转。
- *
- * 为什么不用 transform：带 backdrop-filter 的元素一旦被 Chrome 提为 3D 合成层
- * （transform / translateZ / will-change:transform 都会触发），毛玻璃会当场退化成
- * 一块半透明白色矩形 —— 这是仓库里反复踩过的「亚克力禁忌」。所以全文件不使用
- * transform 或 filter，键帽与按钮的悬停/按下反馈一律走 background / box-shadow /
- * color（纯绘制），绝不用 filter: brightness()。filter 会给子元素建独立渲染层，
- * 在毛玻璃根下反复建/拆这层会在窗口里留下横向亮带鬼影（见 .calc-key 的说明）。
- *
- * 令牌从哪来：--accent / --accent-rgb / --surface-blur-* / --surface-saturate /
- * --text-* / --separator / --hairline / --hover-bg / --press-bg / --scrollbar-thumb
- * 由内核写在 <html>（assets/stylesheets/main/main.css），这里只消费不自造；模糊值必须
- * 引用 var(--surface-blur-N)（dev/static-check.mjs 会 lint 裸 blur 字面量）。本文件自己的
- * 私有令牌一律 --calc-* 前缀，且定义在 .calculator（裸类）作用域内 —— 不是 .calculator.window，
- * 因为模式浮层会被内核搬到 body 上的 portal 载体 .os-popover-scope.calculator（见
- * src/javascripts/ui/popover.js），那个载体没有 .window，只有把令牌挂在 .calculator 上，
- * 浮层才继续继承得到白墨与配色。
- *
- * 宽高/定位唯一来源是 index.html 根上的 data-window + JS 的 Deskly.windows.configure
- * （写内联样式），这里不写死 width/height，也不写 top/left（居中是 window.js 的事），
- * 只给 min-* 兜底。
- */
+/* style.css — 计算器样式（macOS 风格恒深色面板）：全文件不用 transform / filter（亚克力禁忌，详见 .calc-key 说明）；私有令牌 --calc-* 挂在 .calculator（浮层 portal 载体才继承得到），其余令牌消费 main.css；宽高由 index.html data-window + JS 内联控制，此处只给 min-* 兜底。 */
 
 /* ===== 私有令牌（挂在 .calculator：窗口根与浮层 portal 载体都带这个类，两边都命中） ===== */
 .calculator {

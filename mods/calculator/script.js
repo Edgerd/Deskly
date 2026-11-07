@@ -1,16 +1,4 @@
-/**
- * script.js — 计算器外壳与交互
- *
- * 分工：所有「按下去算出什么」都在 engine.js / rpn.js / programmer.js / convert.js，
- * 这个文件只做四件事 —— 按键布局、把按键派发给对应内核、把结果显示出来、
- * 跟宿主（设置中枢、顶栏菜单、浮层、窗口尺寸）打交道。
- *
- * 四种模式共用一排键帽容器：基础 4×5、科学 10×5、程序员 7×6，
- * 转换与 RPN 是叠在基础/科学之上的开关（苹果就是这么分的），不是第五种模式。
- *
- * 界面一律深色：浅色主题下计算器仍是深色，这是刻意的（背景只有「毛玻璃 / 不透明」两档，
- * 见 settings.define 里的 calculator.background）。
- */
+/** script.js — 计算器外壳与交互：键帽布局、按键派发、结果显示、与宿主（设置/菜单/浮层/窗口尺寸）打交道；求值语义在 engine.js / rpn.js / programmer.js / convert.js。 */
 
 import { settings } from '../../src/javascripts/settings.js';
 import { openPopover } from '../../src/javascripts/ui/popover.js';
@@ -20,7 +8,6 @@ import * as History from './history.js';
 import * as Prog from './programmer.js';
 import * as Conv from './convert.js';
 
-// 窗口根元素：整份脚本只服务这一个窗口
 const root = document.querySelector(".calculator.window");
 
 /* ───────────────────────── 设置项 ───────────────────────── */
@@ -412,7 +399,10 @@ function renderHistory() {
 
 function copyToClipboard(text) {
     try {
-        navigator.clipboard.writeText(String(text).replace(/,/g, ""));
+        // writeText 返回 Promise：权限被拒/文档失焦是异步拒绝，try/catch 捕不到，
+        // 不挂 .catch 就是 unhandledrejection 噪音（BUG-71）
+        navigator.clipboard.writeText(String(text).replace(/,/g, ""))
+            .catch((err) => console.warn("[calculator] 剪贴板写入被拒：", err));
     } catch (err) {
         console.warn("[calculator] 剪贴板不可用：", err);
     }
@@ -774,7 +764,7 @@ function bindChrome() {
     $("history").addEventListener("click", () => toggleHistory());
     $("historyClear").addEventListener("click", async () => {
         const dialog = window.__dialog;
-        if (dialog && !(await dialog.confirm("清除历史记录", "将删除全部计算记录，无法撤销。"))) return;
+        if (dialog && !(await dialog.confirm("清除历史记录", "将删除全部计算记录，无法撤销。", { danger: true }))) return;
         History.clearHistory();
         renderHistory();
     });
@@ -939,10 +929,8 @@ function setRpn(on) {
 
 function resizeForMode() {
     const width = (MODE_WIDTH[mode] || MODE_WIDTH.basic) + (historyOpen ? HISTORY_WIDTH : 0);
-    // 内联高度临时放开量一次自然高度：窗口是 flex 列，内容自己决定需要多高。
-    // 比按「模式 + 若干开关」拼一张尺寸表可靠 —— 表总会漏掉某个组合。
-    // 键帽行是 `minmax(0,1fr)`：直接放开窗口高度会让它们塌成 min-height，
-    // 量出来永远偏小。所以量之前先给一个真实行高，量完再交还给 1fr 去分摊。
+    // 临时放开内联高度量自然高度：窗口是 flex 列，内容自决高度，比拼「模式+开关」尺寸表可靠。
+    // 键帽行是 minmax(0,1fr)，量前须先给真实行高（否则会塌成 min-height 量偏小），量完再交还 1fr 分摊。
     const keypad = $("keypad");
     const inline = root.style.height;
     const inlineRows = keypad.style.gridAutoRows;
@@ -1000,6 +988,9 @@ function bindKeyboard() {
 
 function onKeyDown(event) {
     if (!root.isConnected || root.classList.contains("minimized")) return;
+    // 捕获阶段挂在 document 上，必须只响应「本窗口是活动窗口」的按键：
+    // 否则开着计算器，别的窗口里 ⌘C/数字键/⌘R 全被它拦下（BUG-65）。
+    if (!root.classList.contains("is-active")) return;
     const target = event.target;
     if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
     const meta = event.metaKey || event.ctrlKey;

@@ -7,6 +7,7 @@
   "author": "Edgerd",
   "description": "基础 / 科学 / 程序员 / 转换 / RPN 计算器",
   "permissions": [],
+  "spotlightProviders": ["spotlight-provider.js"],
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",

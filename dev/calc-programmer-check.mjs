@@ -1,9 +1,6 @@
 /**
- * dev/calc-programmer-check.mjs — 程序员模式纯逻辑（mods/calculator/programmer.js）的 Node 断言
- *
- * 为什么在 Node 里跑：补码回绕、截断除法、位移取模、代理区这些一旦写错，界面上只是
- * 「显示个奇怪的数」，靠手点按钮根本发现不了；磁盘上把 2^64 边界钉死才判得了对错。
- *
+ * dev/calc-programmer-check.mjs — 程序员模式纯逻辑（mods/calculator/programmer.js）的 Node 断言。
+ * 补码回绕、截断除法、位移取模、代理区写错时界面上只是「显示个奇怪的数」，必须在磁盘上把 2^64 边界钉死。
  * 用法：`node dev/calc-programmer-check.mjs`（全绿退出码 0，失败逐条列出并退 1）
  */
 

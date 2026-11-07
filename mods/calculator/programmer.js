@@ -1,14 +1,4 @@
-/**
- * programmer.js — 计算器「程序员模式」纯逻辑（零 import / 零 DOM）
- *
- * 为什么单独成文件：64 位字、补码回绕、截断除法、位网格这些语义必须能在 Node 里直接断言
- * （dev/calc-programmer-check.mjs 就 import 本文件），混进 script.js 就只能靠手点按钮验。
- *
- * 全局约定（UI 侧依赖，改动前先看 dev/calc-programmer-check.mjs）：
- * - 内部值一律 64 位无符号 BigInt，显示恒不补前导零；
- * - 所有函数对非法输入返回 null 或安全值，**绝不抛异常**——本模块的调用点在按键监听里，
- *   抛错会让整块监听器死掉，连「错误」态都显示不出来。
- */
+/** programmer.js — 程序员模式纯逻辑（零 import / 零 DOM，供 dev/calc-programmer-check.mjs 断言）；内部值一律 64 位无符号 BigInt，所有函数绝不抛异常（调用点在按键监听里，抛错会连错误态都显示不出）。 */
 
 export const WORD_BITS = 64;
 export const RADIXES = [8, 10, 16];

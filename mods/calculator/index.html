@@ -1,17 +1,5 @@
-<!--
-    index.html — 计算器外壳（只有静态骨架）
-
-    键帽、位网格、单位菜单、历史纸带全部由 script.js 按当前模式生成：
-    四种模式的键位数量与栅格列数都不同（基础 4×5、科学 10×5、程序员 7×6），
-    静态写死必然与模式表漂移。
-
-    根元素类名与 data-mode 不能改：style.css 按 data-mode 决定栅格列数，
-    window.js 按 .window + .wintools 驱动红绿灯与拖拽，窗口 id 由内核写入。
-    data-window 的基础尺寸是缺省值，切模式时 script.js 用 Deskly.windows.configure 复述，
-    它会写回同一个属性，所以「科学模式」这类记忆不会在下次打开时退回基础尺寸。
--->
-<!-- 尺寸与「不可缩放」由本文件声明（data-window → window-manager.readDeclaration）：
-     计算器是固定面板，边框不响应缩放、绿键随之熄灭、平铺/全屏菜单也不会可用。 -->
+<!-- index.html — 计算器静态骨架：键帽/位网格/单位菜单/历史由 script.js 按模式生成（四种模式键位数与列数不同，静态写死必漂移）；根类名与 data-mode 是 style.css / window.js 的挂钩，勿改 -->
+<!-- 尺寸与「不可缩放」由 data-window 声明（window-manager.readDeclaration）：边框不响应缩放、绿键熄灭、平铺/全屏不可用 -->
 <div class="calculator window" data-mode="basic" data-window="size:248x352 resizable:false centered">
     <div class="calc-titlebar" data-titlebar>
         <deskly-traffic-lights class="wintools"></deskly-traffic-lights>

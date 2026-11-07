@@ -1,10 +1,6 @@
 /**
- * dev/calc-convert-check.mjs — 计算器「转换」纯逻辑层（mods/calculator/convert.js）的 Node 断言
- *
- * 为什么在 Node 里跑而不是在窗口里点：换算表的正确性是磁盘上就能判对错的事，
- * 而 102 个单位 × 13 个类别的组合靠人肉按计算器点不完。温度往返、货币往返、跨类别禁用
- * 这三类是界面最容易出错又最难肉眼发现的，全部在这里钉住。
- *
+ * dev/calc-convert-check.mjs — 换算纯逻辑层（mods/calculator/convert.js）的 Node 断言。
+ * 102 单位 × 13 类别人肉点不完；温度往返、货币往返、跨类别禁用最易错又最难肉眼发现，在此钉住。
  * 用法：`node dev/calc-convert-check.mjs`（全绿退出码 0，失败逐条列出并退出码 1）
  */
 

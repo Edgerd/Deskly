@@ -1,12 +1,6 @@
 /**
- * dev/calc-check.mjs — 计算器内核的 Node 断言（engine / rpn / history）
- *
- * 为什么单独一份：programmer.js 与 convert.js 各有自己的校验
- * （dev/calc-programmer-check.mjs、dev/calc-convert-check.mjs），
- * 这三个文件是计算器的「算得对不对」的全部剩余面积 ——
- * 运算次序、四舍五入显示、Deg/Rad、EE、阶乘、RPN 堆栈滚动、历史纸带落盘。
- * 浏览器里点按键验这些，成本是这里的十倍，而且错了也看不出来。
- *
+ * dev/calc-check.mjs — 计算器内核（engine / rpn / history）的 Node 断言。
+ * programmer.js 与 convert.js 另有 dev/calc-programmer-check.mjs、dev/calc-convert-check.mjs。
  * 用法：`node dev/calc-check.mjs`（全绿退出码 0）
  */
 
@@ -45,7 +39,6 @@ function near(name, actual, expected, eps = 1e-9) {
     check(`${name}（期望 ≈${expected}）`, typeof actual === "number" && Math.abs(actual - expected) <= eps * Math.max(1, Math.abs(expected)), actual);
 }
 
-/** 科学模式跑一串操作，返回模型 */
 function sci(steps, opts) {
     const s = E.createState("scientific", opts);
     steps(s);
@@ -243,7 +236,6 @@ const groups = H.groupByDay();
 eq("今天的记录归一组", groups.length, 1);
 eq("组标题是今天", groups[0].label, "今天");
 eq("组内条数", groups[0].items.length, 1);
-// 造一条昨天的记录，验证分组与排序
 const list = H.listHistory();
 list.push({ id: "old", at: Date.now() - 86400000, expr: "yesterday", result: "1", mode: "basic" });
 store.set("calculator-history", JSON.stringify(list));
@@ -285,7 +277,7 @@ eq("位网格 16 组 × 4 位", P.bitGroups(0xFFFFn).groups.length, 16);
 eq("位网格最低组是 1111", P.bitGroups(0xFFFFn).groups[15], "1111");
 eq("字符框对控制字符给出名字", P.charFor(7n, "ascii").label, "BEL");
 
-/* ───────────────────────── 6. 结果 ───────────────────────── */
+/* ───────────────────────── 7. 结果 ───────────────────────── */
 
 console.log(`  · 断言 ${passed + failures.length} 条`);
 if (failures.length) {

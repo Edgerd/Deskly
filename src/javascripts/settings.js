@@ -26,7 +26,7 @@
  * 对外 API 与元数据字段说明见 dev/devdoc/os-api.md「设置」一节。
  */
 
-import { callerFromStack, withCaller } from "./caller-context.js";
+import { claimCaller, runAs } from "./caller-context.js";
 
 /** 支持的取值类型。 */
 const TYPES = new Set(["boolean", "number", "string", "json"]);
@@ -501,10 +501,12 @@ const settings = {
         }
         if (def.jsonPath) return settings.set(key, cloneDefault(def.default), { ...opts, source: opts.source || "reset" });
         const slot = slotOf(key, def);
-        removeSlot(slot);
-        // 先失效再读 previous：否则会拿缓存里的旧值当「恢复前值」广播出去。
-        invalidateSlot(slot);
+        // previous 必须在删槽之前读：槽删掉后 get() 只会回退默认值，
+        // 广播出去的「恢复前值」永远是 default 而不是真实旧值（BUG-33）。
         const previous = settings.get(key);
+        removeSlot(slot);
+        // 先失效再读：否则会拿缓存里的旧值当「恢复前值」广播出去。
+        invalidateSlot(slot);
         if (typeof def.apply === "function") {
             try { def.apply(cloneDefault(def.default), { previous, persisted: true, source: "reset" }); }
             catch (err) { console.warn(`[settings] ${key} 恢复默认时生效函数抛错：`, err); }
@@ -591,11 +593,11 @@ const settings = {
      */
     subscribe(fn) {
         if (typeof fn !== "function") return () => { };
-        // 归属在**订阅时**认一次并随回调传下去：设置变更由内核派发，派发期的调用栈
-        // 不一定还认得出是谁注册的回调，而 guard() 认不出时现在会拒绝（旧版是放行）。
-        // 订阅这一刻插件帧一定在栈上，是唯一可靠的取证时机。
-        const owner = callerFromStack();
-        const wrapped = (detail) => withCaller(owner, () => fn(detail));
+        // 归属在**订阅时**认领成不可伪造凭证并随回调传下去：设置变更由内核派发，
+        // 派发期的调用栈不一定还认得出是谁注册的回调，而 guard() 认不出时现在会拒绝
+        // （旧版是放行）。订阅这一刻插件帧一定在栈上，是唯一可靠的取证时机。
+        const claim = claimCaller();
+        const wrapped = (detail) => runAs(claim, () => fn(detail));
         subscribers.add(wrapped);
         return () => subscribers.delete(wrapped);
     },
@@ -635,11 +637,28 @@ const settings = {
         let restored = 0;
         const skipped = [];
         Object.entries(data || {}).forEach(([slot, raw]) => {
-            let hit = null;
-            defs.forEach((def) => { if (slotOf(def.key, def) === slot) hit = def; });
-            if (!hit) { skipped.push(slot); return; }
-            const decoded = decode(hit.key, hit, raw);
-            if (settings.set(hit.key, decoded, { source: "restore" }).ok) restored += 1;
+            const hits = [];
+            defs.forEach((def) => { if (slotOf(def.key, def) === slot) hits.push(def); });
+            if (!hits.length) { skipped.push(slot); return; }
+            // 共享槽（webstartos_controlcenter 这类 jsonPath 定义）必须逐字段回放：
+            // raw 是整段容器 JSON，按第一个定义整段 decode 会把布尔/数值字段解码失败、
+            // 回退默认值再写回容器 —— 音量/亮度等其余字段实际值全丢（BUG-34）。
+            const jsonPathHits = hits.filter((def) => def.jsonPath);
+            if (!jsonPathHits.length) {
+                const decoded = decode(hits[0].key, hits[0], raw);
+                if (settings.set(hits[0].key, decoded, { source: "restore" }).ok) restored += 1;
+                return;
+            }
+            let container = null;
+            try { container = JSON.parse(raw); } catch { container = null; }
+            if (!container || typeof container !== "object") { skipped.push(slot); return; }
+            jsonPathHits.forEach((def) => {
+                const found = readPath(container, def.jsonPath);
+                if (found === undefined || found === null) return;
+                const fieldRaw = (typeof found === "object") ? JSON.stringify(found) : String(found);
+                const decoded = decode(def.key, def, fieldRaw);
+                if (settings.set(def.key, decoded, { source: "restore" }).ok) restored += 1;
+            });
         });
         return { restored, skipped };
     },

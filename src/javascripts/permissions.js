@@ -38,7 +38,6 @@ const ROWS = [
     { name: "persistent-storage", label: "持久存储" },
 ];
 
-/** name -> 行定义。 */
 const ROW_BY_NAME = new Map(ROWS.map((row) => [row.name, row]));
 
 /** 本扩展使用的 IndexedDB 库（vfs / 已安装插件 / 照片 / API 授权账本）。 */
@@ -158,7 +157,6 @@ async function acquirePersistentStorage() {
     return { state: ok ? "granted" : "denied", detail: ok ? "已请求持久存储配额" : "浏览器未授予持久存储（可能已被拒绝过）" };
 }
 
-/** name -> 真实获取动作。 */
 const ACQUIRE = {
     "notifications": async () => {
         if (typeof Notification === "undefined") return { state: "unsupported", detail: "此上下文没有 Notification API" };
@@ -251,7 +249,7 @@ function deleteDatabase(name) {
  *
  * 不可逆：必须显式传 `{confirm:true}`，否则本函数什么都不做直接返回。
  * 清除范围 = 扩展页源下的所有 localStorage 键（设置槽、口令摘要与盐、日志留存、
- * 最近使用等全都在内）+ DATABASES 三个 IndexedDB 库。
+ * 最近使用等全都在内）+ DATABASES 四个 IndexedDB 库。
  * @param {object} [opts] 选项
  * @param {boolean} [opts.confirm] 唯一的执行闸门
  * @param {boolean} [opts.reload] 清除后是否 reload（默认 true；测试时传 false）
@@ -291,7 +289,9 @@ async function resetAll(opts = {}) {
         new Promise((resolve) => setTimeout(() => resolve(DATABASES.map((name) => ({ name, deleted: false }))), ACQUIRE_TIMEOUT)),
     ]);
     result.databases = deletes;
-    result.ok = result.keptKeys.length === 0;
+    // ok 必须同时覆盖两层：localStorage 无残留 **且** 每个 IndexedDB 库都真删掉。
+    // deleteDatabase 被阻塞/失败（{deleted:false}）时 Privacy 面板不能向用户报「已清空」（BUG-29）。
+    result.ok = result.keptKeys.length === 0 && deletes.every((d) => d && d.deleted === true);
     if (opts.reload !== false) {
         setTimeout(() => {
             try { window.location.reload(); } catch { /* 单测环境没有 location */ }

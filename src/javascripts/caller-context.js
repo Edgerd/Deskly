@@ -7,8 +7,13 @@
  *
  * 正确做法是把归属**在能认出来的那一刻**记下来，随调用一起传下去：
  *   - `settings.subscribe` / `bus.on` 在**订阅时**认一次（此刻插件帧一定在栈上）；
- *   - 派发时用 `withCaller(owner, fn)` 把归属放进模块内变量；
+ *   - 派发时用 `runAs(claim, fn)` 把归属放进模块内变量；
  *   - `guard()` 先读它，读不到才回落到栈解析。
+ *
+ * 防冒用（BUG-18）：归属凭证只能由 `claimCaller()` 铸造 —— 它按**当前栈**认领，
+ * 插件自己调它拿到的只会是自己的 id；`runAs` 校验凭证真伪（WeakSet 记账），
+ * 传字符串 / 自造对象即伪造路径，抛 `CALLER_FORGED`（可编程识别的错误码）。
+ * 旧版直接导出 `withCaller(pluginId, fn)`，插件 import 后填别人 id 就完成了冒用。
  *
  * 本模块是叶子：不 import 任何东西、不碰 DOM、不写全局。任何模块都能安全引用
  * （包括最早求值的 settings.js），不会引入循环依赖，也不会被插件从 window 上改写。
@@ -45,13 +50,33 @@ export function callerFromStack() {
     return null;
 }
 
-/** 当前通过 withCaller 声明的归属；null 表示没有。 */
+/** 当前通过 runAs 声明的归属；null 表示没有。 */
 export function currentCaller() {
     return ambient;
 }
 
+/** 已铸造的归属凭证。凭证只是普通对象，真实性由这个 WeakSet 背书 —— 插件拿不到它，就造不出能通过校验的对象。 */
+const claims = new WeakSet();
+
+/** 伪造凭证的错误码：插件侧可 `err.code === CALLER_FORGED` 编程识别，不必匹配中文文案。 */
+export const CALLER_FORGED = "CALLER_FORGED";
+
 /**
- * 在指定归属下同步执行 fn；嵌套调用恢复上一层。
+ * 认领当前调用者身份，返回一枚不可伪造的凭证（null = 栈上没有插件帧）。
+ * 凭证只证明「此刻栈上真实是谁」：插件自己也能调，但认领到的只会是它自己的 id，
+ * 无法借此得到他人身份 —— 这是「宿主在调用链内自动注入」的认领端。
+ * @returns {{id: string}|null} 归属凭证（冻结对象）
+ */
+export function claimCaller() {
+    const id = ambient || callerFromStack();
+    if (!id) return null;
+    const claim = Object.freeze({ id });
+    claims.add(claim);
+    return claim;
+}
+
+/**
+ * 在指定归属下同步执行 fn；嵌套调用恢复上一层。模块私有，外部只能走 runAs。
  *
  * 只对**同步**区间生效：fn 若返回 Promise，await 之后的续体不再处于这个归属里。
  * 这正是我们要的语义 —— 归属只在「内核代插件发起」的这一小段里成立，
@@ -62,7 +87,7 @@ export function currentCaller() {
  * @param {() => T} fn 要执行的函数
  * @returns {T} fn 的返回值
  */
-export function withCaller(pluginId, fn) {
+function withCaller(pluginId, fn) {
     const prev = ambient;
     ambient = pluginId || null;
     try {
@@ -70,4 +95,23 @@ export function withCaller(pluginId, fn) {
     } finally {
         ambient = prev;
     }
+}
+
+/**
+ * 在凭证声明的归属下同步执行 fn —— 「宿主在调用链内自动注入」的执行端。
+ * claim 必须是 claimCaller() 的返回值或 null（null = 不声明，回落栈解析）；
+ * 传字符串、自造对象等外来身份一律抛错（code: CALLER_FORGED），归属冒充到此为止。
+ * @template T
+ * @param {{id: string}|null} claim claimCaller() 铸造的凭证
+ * @param {() => T} fn 要执行的函数
+ * @returns {T} fn 的返回值
+ */
+export function runAs(claim, fn) {
+    if (claim == null) return fn();
+    if (typeof claim !== "object" || !claims.has(claim)) {
+        const err = new Error("无效的调用者凭证：归属只能由宿主在调用链内认领，不接受外来身份");
+        err.code = CALLER_FORGED;
+        throw err;
+    }
+    return withCaller(claim.id, fn);
 }

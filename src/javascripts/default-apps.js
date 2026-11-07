@@ -20,7 +20,7 @@
  */
 
 import { settings } from "./settings.js";
-import { broadcast, getApp, listApps, setExtensionResolver, resolveAppRecord } from "./app-registry.js";
+import { broadcast, getApp, listApps, setExtensionResolver, resolveAppRecord, addLifecycleHook, isPluginEnabled } from "./app-registry.js";
 
 // 键名全小写：设置中枢的 KEY_PATTERN 规定首段只允许 [a-z][a-z0-9]*，
 // 写成 defaultApps.bindings 会被 define() 判非法并静默返回 null（界面上一行都不出现）。
@@ -136,22 +136,29 @@ function writeBindings(map) {
  * @param {string} key 扩展名（`.md` 或 `md`）或协议（`http:`）
  * @returns {{appId:(string|undefined), source:(string|undefined), key:(string|null)}}
  */
+/** 命中记录是否可用：插件被禁用时绑定要落到下一级，而不是显示一个打不开的应用（BUG-25）。 */
+function usable(appId) {
+    const rec = appId ? getApp(appId) : null;
+    return !!(rec && isPluginEnabled(rec.id));
+}
+
 function resolve(key) {
     const norm = normalizeKey(key);
     if (!norm) return { key: null, appId: undefined, source: undefined };
     const user = bindings()[norm];
-    if (user && getApp(user)) return { key: norm, appId: user, source: "user" };
+    if (user && usable(user)) return { key: norm, appId: user, source: "user" };
     const system = SYSTEM_DEFAULTS[norm];
-    if (system && getApp(system)) return { key: norm, appId: system, source: "system" };
+    if (system && usable(system)) return { key: norm, appId: system, source: "system" };
     const rec = manifestDeclared(norm);
     if (rec) return { key: norm, appId: rec.appId, source: "manifest" };
     return { key: norm, appId: undefined, source: undefined };
 }
 
-/** 第三级：扫注册表里插件自己声明能打开该类型的记录。 */
+/** 第三级：扫注册表里插件自己声明能打开该类型的记录（已禁用的跳过，与 getAppByExtension 同判据）。 */
 function manifestDeclared(normExt) {
     const bare = normExt.replace(/^\./, "");
     for (const rec of listApps()) {
+        if (!isPluginEnabled(rec.id)) continue;
         const formats = (rec.app && rec.app.formats) || (!rec.app && rec.manifest && rec.manifest.formats);
         if (!Array.isArray(formats)) continue;
         if (formats.some((f) => String(f || "").trim().toLowerCase().replace(/^\./, "") === bare)) return rec;
@@ -244,7 +251,6 @@ function reset(key) {
     return { key: norm, removed: existed, persisted };
 }
 
-/** 批量恢复。 */
 function resetAll() {
     const count = Object.keys(bindings()).length;
     const { persisted } = writeBindings({});
@@ -293,7 +299,9 @@ function resolveExtRecord(bareExt) {
 
 /**
  * 初始化：把钩子接进注册表（赋值式，不 import 回来，避免成环），
- * 并接上插件卸载清理。可重复调用 —— 监听器只挂一次。
+ * 并接上插件卸载清理。可重复调用 —— 钩子只挂一次。
+ * 卸载清理走注册表生命周期钩子而不是 document 的 plugin-unregistered 事件：
+ * 那是开放总线，伪造一个事件就能清掉他人全部默认应用绑定（BUG-17）。
  * @returns {boolean}
  */
 let wired = false;
@@ -302,17 +310,18 @@ function initDefaultApps() {
     setExtensionResolver(resolveExtRecord);
     if (wired) return true;
     wired = true;
-    document.addEventListener("plugin-unregistered", (event) => {
-        const id = event.detail && event.detail.id;
-        if (id) removeApp(id);
+    addLifecycleHook({
+        onUnregistered: (id) => { if (id) removeApp(id); },
     });
     return true;
 }
 
-globalThis.__defaultApps = {
+// 全局只挂**只读**诊断面：set/reset/resetAll/removeApp 一旦全局可达，任何插件都能绕过
+// 敏感权限 default-apps:write 的运行时确认直接改绑（BUG-19）。写入口只保留模块导出。
+globalThis.__defaultApps = Object.freeze({
     SYSTEM_DEFAULTS, SETTINGS_KEY,
-    initDefaultApps, resolve, get, set, getAll, listTypes, reset, resetAll, removeApp, normalizeKey,
-};
+    resolve, get, getAll, listTypes, normalizeKey,
+});
 
 export {
     SYSTEM_DEFAULTS, SETTINGS_KEY,

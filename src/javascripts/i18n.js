@@ -24,6 +24,7 @@
  */
 
 import { assetPath } from "./paths.js";
+import { callerFromStack, currentCaller } from "./caller-context.js";
 
 // 语言包所在目录（相对 index.html 的路径）
 const LOCALE_DIR = `${assetPath("locales")}/`;
@@ -31,7 +32,6 @@ const LOCALE_DIR = `${assetPath("locales")}/`;
 // 语言选择的持久化键（与其他 webstartos_* 设置键同一命名空间）
 const LANGUAGE_KEY = "webstartos_language";
 
-// 语言文件映射：代号 -> 文件名
 const LANG_FILES = {
     "zh-CN": "zh-CN.json",
     "en": "en.json",
@@ -39,8 +39,10 @@ const LANG_FILES = {
     "cat": "cat.json",
 };
 
-// 当前语言
 let currentLang = "zh-CN";
+
+/** 语言切换序号：并发 setLanguage 时只有最后一次生效（BUG-47）。 */
+let langSwitchSeq = 0;
 
 // 内核语言包缓存：语言代号 -> assets/locales/<lang>.json 的原始内容
 const localeCache = {};
@@ -162,10 +164,11 @@ async function loadLocale(lang) {
 
 /**
  * 语言代号 → `<html lang>` 的 BCP 47 值。
- * `cat` 是加泰罗尼亚语的内部代号，标准语言标签是 `ca`，直接写 cat 会让读屏与
- * 浏览器翻译认不出来。
+ * `cat` 是「萌猫语言」（中文基底 + 喵尾，见 assets/locales/cat.json 与 finderbar.js
+ * INTL_LOCALES 的 zh-CN 映射），不是加泰罗尼亚语 —— 标成 ca 会让读屏按加泰罗尼亚语
+ * 规则朗读整页中文喵语（CON-08）。
  */
-const HTML_LANG = { "zh-CN": "zh-CN", en: "en", "ja-JP": "ja-JP", cat: "ca" };
+const HTML_LANG = { "zh-CN": "zh-CN", en: "en", "ja-JP": "ja-JP", cat: "zh-CN" };
 
 /**
  * 同步 `<html lang>`。
@@ -265,10 +268,25 @@ const i18n = {
         if (!LANG_FILES[lang]) {
             throw new Error(`不支持的语言：${lang}`);
         }
+        // 序号令牌：连续切换时只有最后一次派发事件与刷新（BUG-47）；
+        // 失败时回滚 currentLang 与持久化（BUG-38：旧版失败即「语言已切、字典没有」的半损坏态）。
+        const seq = ++langSwitchSeq;
+        const prev = currentLang;
         currentLang = lang;
         syncDocumentLang();
         persistLanguage(lang);
-        const dict = await loadLocale(lang);
+        let dict;
+        try {
+            dict = await loadLocale(lang);
+        } catch (err) {
+            if (seq === langSwitchSeq) {
+                currentLang = prev;
+                syncDocumentLang();
+                persistLanguage(prev);
+            }
+            throw err;
+        }
+        if (seq !== langSwitchSeq) return dict;
         // 派发语言变更事件：在 document 上派发并允许冒泡，
         // 这样 document 监听者（控制中心）与 window 监听者（菜单栏）都能收到。
         // 此前只在 window 上派发且不冒泡，document 上的监听者永远不会执行。
@@ -314,6 +332,20 @@ const i18n = {
         if (!messages || typeof messages !== "object" || Array.isArray(messages)) {
             writeLog("warn", `${lang} 的插件文案形态非法（需要嵌套对象），已忽略注册`);
             return 0;
+        }
+        // 命名空间约定（API-06）：插件键必须顶在「自己 id」的命名空间下（如 office.*），
+        // 深合并会叠在内核包之上 —— 写别人的命名空间就是覆盖全系统文案。这里只告警不拒收
+        // （存量插件可能依赖现状），但告警给了 static-check 与排查一个抓手。
+        // 公认的别名命名空间：system-settings 的全部面板共用 ss.*（pane 自带语言包惯例）。
+        const NAMESPACE_ALIAS = { "system-settings": ["ss"] };
+        const caller = currentCaller() || callerFromStack();
+        if (caller) {
+            const accepted = [caller, ...(NAMESPACE_ALIAS[caller] || [])];
+            const offNamespace = Object.keys(messages).filter((k) =>
+                !accepted.some((ns) => k === ns || k.startsWith(`${ns}.`)));
+            if (offNamespace.length) {
+                writeLog("warn", `插件 ${caller} 注册了非自身命名空间的文案（${offNamespace.join(", ")}），可能覆盖内核或他人文案`);
+            }
         }
         pluginMessages[lang] = pluginMessages[lang] || {};
         const merged = deepMergeInto(pluginMessages[lang], messages);

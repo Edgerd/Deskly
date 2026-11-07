@@ -103,6 +103,74 @@ export function broadcast(type, detail) {
     document.dispatchEvent(new CustomEvent(type, { detail, bubbles: true }));
 }
 
+/* ── 生命周期钩子（内核内部消费方专用，与开放 DOM 广播隔离） ──
+ * 授权记账、默认应用清理挂这里，由 registerPlugin / unregisterPlugin 在调用点
+ * **直接同步调用**，不再经由 document 事件 —— 那是开放总线，任何插件都能
+ * dispatchEvent 伪造「plugin-registered」自我授予权限、或伪造「plugin-unregistered」
+ * 清掉他人授权账本与默认应用绑定（BUG-17）。DOM 广播保留给纯 UI 刷新方（dock 图标、日志）。
+ * 赋值式注入（同 setExtensionResolver）：注册表保持纯数据层，不反向 import 消费方。 */
+const lifecycleHooks = new Set();
+
+/**
+ * 注册生命周期钩子。
+ * @param {{onRegistered?: (manifest: object) => void, onUnregistered?: (id: string) => void}} hooks
+ * @returns {Function} 摘除函数
+ */
+export function addLifecycleHook(hooks) {
+    if (hooks && typeof hooks === "object") lifecycleHooks.add(hooks);
+    return () => lifecycleHooks.delete(hooks);
+}
+
+/** 同步触发钩子。钩子可以是 async（授权落盘）：不等它，内存镜像已在同步段更新；单个钩子抛错不拖垮注册本身。 */
+function fireLifecycle(method, arg) {
+    for (const hooks of lifecycleHooks) {
+        const fn = hooks && hooks[method];
+        if (typeof fn !== "function") continue;
+        try {
+            Promise.resolve(fn(arg)).catch((err) => console.error(`[app-registry] 生命周期钩子 ${method} 失败：`, err));
+        } catch (err) {
+            console.error(`[app-registry] 生命周期钩子 ${method} 失败：`, err);
+        }
+    }
+}
+
+/* ── 内核事件主题表（公共总线 Deskly.bus.emit 的保留字） ──
+ * 伪造这些主题 = 冒充内核广播：plugin-* 曾经直接击穿授权记账（BUG-17），
+ * settings-changed 会让界面与存储漂移，plugin-unload 会触发他人插件的自清理（API-05）。
+ * 新増内核事件必须同步登记；插件自定义主题（建议带自己 id 前缀）不受影响。 */
+
+/** 内核保留前缀：插件生命周期一族（含 plugins-ready）与窗口管理器的 window:* 一族。 */
+const KERNEL_TOPIC_PREFIX = /^(?:plugins?-|window:)/;
+
+/** 内核保留主题全量名单（document 与 window 两级；settings 定义的 *-change 事件在内）。 */
+const KERNEL_TOPICS = new Set([
+    "settings-changed", "languagechange", "default-apps-changed",
+    "trash-changed", "trash-icon-change", "lock-screen-change",
+    "controlcenter-change", "system-settings-open-pane", "manual-open",
+    "finder-command", "notify-suppressed-change", "system-actions-changed",
+    "appearance-theme-change", "appearance-accent-change", "appearance-highlight-change",
+    "appearance-sidebar-change", "appearance-tint-change", "appearance-scrollbars-change",
+    "appearance-scroll-click-change",
+    "cursor-change", "display-brightness-change",
+    "dock-size-change", "dock-position-change", "dock-order-change", "dock-recents-change",
+    "dock-autohide-change", "dock-zoom-change", "dock-minimize-effect-change",
+    "dock-zoom-amount-change", "dock-show-indicators-change", "dock-show-recent-change",
+    "launchpad-icon-size-change", "launchpad-font-size-change", "siri-orb-size-change",
+    "datetime-format-change", "notify-config-change", "keyboard-shortcut-hints-change",
+    "wallpaper-change", "wallpaper-tint-change", "deskly-brand-pack-changed",
+    "debug-menu-visibility-change",
+]);
+
+/**
+ * 该主题是否内核保留。Deskly.bus.emit 据此拒发（os-api.js 在剥离 system: 前缀后判定）。
+ * @param {string} type 事件名（已剥离 system: 前缀）
+ * @returns {boolean}
+ */
+export function isKernelTopic(type) {
+    const name = String(type || "");
+    return KERNEL_TOPIC_PREFIX.test(name) || KERNEL_TOPICS.has(name);
+}
+
 // 插件 id 的合法形态：仅允许单层标识，禁止路径分隔符与 ..
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -135,8 +203,10 @@ export function registerPlugin(manifest) {
         });
     }
     registry.set(id, manifest);
-    // 先失效再广播：监听者在事件里查 listApps 时必须看到新清单。
+    // 先失效再通知：监听者（钩子与广播消费方）在事件里查 listApps 时必须看到新清单。
+    // 生命周期钩子先于 DOM 广播：授权记账在界面刷新之前就位，且不经开放总线（BUG-17）。
     invalidateIndex();
+    fireLifecycle("onRegistered", manifest);
     broadcast("plugin-registered", manifest);
     return true;
 }
@@ -150,6 +220,7 @@ export function unregisterPlugin(id) {
     const existed = registry.delete(id);
     if (existed) {
         invalidateIndex();
+        fireLifecycle("onUnregistered", id);
         broadcast("plugin-unregistered", { id });
     }
     return existed;
@@ -366,7 +437,65 @@ export function resolveAppId(nameOrId) {
     return rec ? rec.appId : undefined;
 }
 
-/* ───────────────────────── 启用 / 禁用 ───────────────────────── */
+/* ── 应用可见性 / 系统应用 ──
+ * 一个应用是否出现在启动台、设置的 App 列表、访达的应用列表，以及能否被卸载/禁用，
+ * 由 manifest.visibility 逐项声明，缺省按「内置不可卸载、已安装可卸载、到处可见」的
+ * 出厂行为。系统应用（system:true）一律不可卸载、不可禁用，且默认不进启动台。
+ * 消费方：启动台（网格过滤）、设置 › App（开关与卸载钮，落地前先用 API）、访达、
+ * 聚焦搜索（系统应用结果）、plugin-manager（卸载守卫）。 */
+
+/** 可见性出厂值：保持历史行为（注册表里的应用默认处处可见；内置应用本来就卸不掉）。 */
+const DEFAULT_VISIBILITY = Object.freeze({
+    launchpad: true,
+    settings: true,
+    finder: true,
+    uninstallable: true,
+    system: false,
+});
+
+/**
+ * 解析一个应用的可见性声明。
+ * 优先读记录自身（子应用可写自己的 visibility），再读插件级 manifest.visibility，
+ * 最后补出厂值；内置插件（非 _installed）卸载位强制 false，system 强制不可卸载。
+ * @param {string} appId 应用 id（插件 id 或 插件id.appId）
+ * @returns {{launchpad:boolean, settings:boolean, finder:boolean, uninstallable:boolean, system:boolean}}
+ */
+export function getAppVisibility(appId) {
+    const rec = resolveAppRecord(appId);
+    if (!rec) return { ...DEFAULT_VISIBILITY };
+    const declared = {
+        ...(rec.manifest && rec.manifest.visibility),
+        ...(rec.app && rec.app.visibility),
+    };
+    const out = { ...DEFAULT_VISIBILITY };
+    for (const key of ["launchpad", "settings", "finder", "uninstallable", "system"]) {
+        if (typeof declared[key] === "boolean") out[key] = declared[key];
+    }
+    // 内置插件（随包发布、没有商店安装记录）卸载位恒 false：商店链路本就删不掉它们。
+    if (!rec.manifest || !rec.manifest._installed) out.uninstallable = false;
+    if (out.system) out.uninstallable = false;
+    return out;
+}
+
+/**
+ * 应用是否可卸载。系统应用与内置应用恒 false；已安装第三方默认 true（可被清单覆盖）。
+ * @param {string} appId 应用 id
+ * @returns {boolean}
+ */
+export function isUninstallable(appId) {
+    return getAppVisibility(appId).uninstallable;
+}
+
+/**
+ * 应用是否系统应用（随系统运行、不可卸载、不可禁用）。
+ * @param {string} appId 应用 id
+ * @returns {boolean}
+ */
+export function isSystemApp(appId) {
+    return getAppVisibility(appId).system;
+}
+
+/* ── 启用 / 禁用 ── */
 
 // 禁用是**用户意图**，必须比注册表活得久，所以落在设置中枢而不是内存 Set。
 // 内置插件同样可以禁用（只是不能卸载），故与「已安装/内置」的来源概念正交。
@@ -397,16 +526,26 @@ export function disabledIds() {
  * @returns {boolean} 启用态
  */
 export function isPluginEnabled(id) {
-    return registry.has(id) && !disabledIds().includes(id);
+    if (!registry.has(id)) return false;
+    // 系统应用恒为启用：历史设置里可能残留被禁用的 id（旧版本还没 system 守卫），
+    // 这里按可见性兜底，避免升级后启动台/聚焦这类系统能力打不开。
+    if (isSystemApp(id)) return true;
+    return !disabledIds().includes(id);
 }
 
 /**
  * 启用 / 禁用一个插件，并广播 `plugin-enabled-change` 让界面（启动台/程序坞/商店）同步。
+ * 系统应用（visibility.system）拒绝被禁用：禁用后聚焦/快看这类系统能力会静默消失，
+ * 比「卸不掉」更难察觉，所以在数据层就拦住。
  * @param {string} id 插件 id
  * @param {boolean} on 是否启用
  * @returns {boolean} 变更后的启用态
  */
 export function setPluginEnabled(id, on) {
+    if (!on && isSystemApp(id)) {
+        console.warn(`[app-registry] 系统应用不可禁用：${id}`);
+        return true;
+    }
     const set = new Set(disabledIds());
     if (on) set.delete(id);
     else set.add(id);
@@ -460,7 +599,6 @@ export function setExtensionResolver(fn) {
     extensionResolver = typeof fn === "function" ? fn : null;
 }
 
-/** 扩展名规范化：去掉前导点与小写 */
 function normalizeExt(ext) {
     return String(ext || "").trim().toLowerCase().replace(/^\./, "");
 }

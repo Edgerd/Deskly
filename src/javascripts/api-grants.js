@@ -4,7 +4,7 @@
  * 两层机制，缺一不可：
  * 1. 安装时（内置插件在注册表建好时、ZIP 在落库前）读 manifest.permissions 展示清单，
  *    用户确认后 grantAll 记一条 granted 账；
- * 2. 运行时第一次调用某条 API 时，敏感权限再弹一次「拒绝 / 仅这次 / 始终允许」激活，
+ * 2. 运行时第一次调用某条 API 时，敏感权限再弹一次「拒绝 / 仅此一次 / 始终允许」激活，
  *    选「始终允许」后落盘，之后无感通行。
  *
  * 命名注意：本文件**不是** permissions.js。`permissions.js` 是浏览器 Permissions API
@@ -44,31 +44,48 @@ const PERMISSION_NAMES = [
     "system-patch:desktop",
     "system-patch:wallpaper",
     "system-patch:menu",
+    "window:read-others",
+    "window:manage-others",
+    "window:chrome",
+    "window:level",
+    "quicklook:register",
+    "menus:register",
+    "shortcuts:write",
 ];
 
-/** 权限名 -> 人类可读描述。弹窗正文、安装清单、帮助文档三处共用这一张表。 */
+/**
+ * 权限名 -> 人类可读名称与说明。弹窗正文、安装清单、帮助文档、日志四处共用这一张表。
+ * 说明统一写成「要拿什么 + 拿去干什么」，不缩写成口号；内部代号一律不进中文文案。
+ */
 const PERMISSION_LABELS = {
-    "apps:launch": ["启动应用", "打开本机其它插件提供的应用"],
-    "default-apps:read": ["读取默认应用", "查询某扩展名/协议当前由哪个应用打开"],
-    "default-apps:write": ["修改默认应用", "把扩展名或协议改绑到别的应用，含 http:/https: 协议接管"],
-    "widgets": ["桌面小组件", "在桌面创建、更新、移除小组件并收发事件"],
-    "dynamic-icons": ["动态图标", "推送应用图标的替换图，dock / 启动台 / 应用商店 / 访达同步刷新"],
-    "window-style:self": ["自身窗口样式", "改自己窗口的标题栏色、圆角、毛玻璃、深浅色"],
-    "window-style:others": ["跨应用窗口样式", "改别的应用窗口样式（主题包类能力，激活一次覆盖后续全部调用）"],
-    "theme:apply": ["应用主题包", "整套切换窗口与界面配色"],
-    "files:read": ["读取文件", "读自己 AppData 目录内的文件"],
-    "files:write": ["写入文件", "写文件；写到自己的 AppData 之外时逐次确认"],
-    "system-patch:dock": ["程序坞补丁", "给 dock 插入或替换内容"],
-    "system-patch:finderbar": ["顶栏补丁", "给顶部菜单栏插入或替换内容"],
-    "system-patch:desktop": ["桌面补丁", "给桌面层插入或替换内容"],
-    "system-patch:wallpaper": ["墙纸补丁", "给墙纸层插入或替换内容"],
-    "system-patch:menu": ["菜单补丁", "给顶栏菜单项插入或替换内容"],
+    "apps:launch": ["启动应用", "打开本机其他插件提供的应用"],
+    "default-apps:read": ["读取默认应用", "查询某个扩展名或协议目前由哪个应用打开"],
+    "default-apps:write": ["修改默认应用", "把扩展名或协议改绑到其他应用，包括网页链接的接管"],
+    "widgets": ["桌面小组件", "在桌面创建、更新或移除小组件，并接收与发送事件"],
+    "dynamic-icons": ["动态图标", "替换应用图标，并让程序坞、启动台、应用商店与访达同步刷新"],
+    "window-style:self": ["自身窗口样式", "修改自己窗口的标题栏颜色、圆角、毛玻璃与深浅色"],
+    "window-style:others": ["跨应用窗口样式", "修改其他应用的窗口样式。确认一次后，本次会话内不再逐次询问"],
+    "theme:apply": ["应用主题", "整套替换窗口与界面的配色"],
+    "files:read": ["读取文件", "读取本应用数据目录中的文件"],
+    "files:write": ["文件存储", "在本应用的数据目录中保存、修改或删除文件。写入其他位置时会再次询问"],
+    "system-patch:dock": ["程序坞补丁", "在程序坞中插入或替换内容"],
+    "system-patch:finderbar": ["顶栏补丁", "在顶部菜单栏中插入或替换内容"],
+    "system-patch:desktop": ["桌面补丁", "在桌面层插入或替换内容"],
+    "system-patch:wallpaper": ["墙纸补丁", "在墙纸层插入或替换内容"],
+    "system-patch:menu": ["菜单补丁", "在顶栏菜单中插入或替换条目"],
+    "window:read-others": ["读取其他窗口", "读取或订阅其他应用窗口的状态与事件"],
+    "window:manage-others": ["管理其他窗口", "改动、关闭或置顶其他应用的窗口"],
+    "window:chrome": ["隐藏窗口控件", "隐藏整组窗口控制按钮或关闭按钮"],
+    "window:level": ["窗口层级", "把自己的窗口提升到浮动层或面板层"],
+    "quicklook:register": ["注册快速查看预览", "为自己支持的文件格式提供快速查看预览"],
+    "menus:register": ["注册文件右键菜单", "在桌面与访达的文件右键菜单中增加条目"],
+    "shortcuts:write": ["管理桌面快捷方式", "在桌面创建或移除应用的快捷方式"],
 };
 
 /**
  * 敏感权限：运行时首次调用要真弹确认框。
  * 判据是「会不会影响别人」或「会不会丢数据」——跨应用样式、系统组件补丁、
- * 默认应用改写、写文件。读文件、启动应用、小组件、动态图标、自身样式这些
+ * 默认应用改写、文件存储。读文件、启动应用、小组件、动态图标、自身样式这些
  * 装了就该能用的，安装时一次性授权后静默激活，不再打扰。
  * 不这么做的话开机 14 个内置插件会各自弹一轮，用户只会一路点拒绝。
  */
@@ -77,6 +94,8 @@ const SENSITIVE = new Set([
     "window-style:others",
     "theme:apply",
     "files:write",
+    "window:manage-others",
+    "window:chrome",
 ]);
 
 /** 带通配的敏感前缀：system-patch:* 全部敏感。 */
@@ -85,7 +104,7 @@ const SENSITIVE_PREFIXES = ["system-patch:"];
 /** 账本内存镜像：pluginId -> { pluginId, grants: [{permission, granted, activated}] } */
 const ledger = new Map();
 
-/** 本次会话内「仅这次」的选择：`${pluginId}|${permission}` -> true */
+/** 本次会话内「仅此一次」的选择：`${pluginId}|${permission}` -> true */
 const sessionOnce = new Set();
 
 let dbPromise = null;
@@ -104,8 +123,8 @@ function openDb() {
             }
         };
         req.onblocked = () => {
-            // 与 osfs.js:97-102 / sw.js:144-147 同一写法：被别的连接挡住时 open 既不 success
-            // 也不 error，不清缓存就会把这个永久 pending 的 Promise 一直用下去 ——
+            // 与 osfs.js / sw.js 两处 openDb 的 onblocked 同一写法：被别的连接挡住时 open 既不
+            // success 也不 error，不清缓存就会把这个永久 pending 的 Promise 一直用下去 ——
             // initGrants() 永不 resolve，bootstrap 的 await 卡死，整个桌面起不来。
             dbPromise = null;
             reject(new Error("账本升级被其它连接阻塞"));
@@ -142,7 +161,6 @@ function log(level, message, data) {
 
 /* ── 权限名判定 ── */
 
-/** 是否合法权限名。 */
 function isKnownPermission(permission) {
     return PERMISSION_NAMES.includes(permission);
 }
@@ -353,20 +371,27 @@ async function ensurePermission(pluginId, permission) {
     if (!isSensitive(permission)) return activate(pluginId, permission, "always");
 
     const ask = async () => {
-        const { showMessageBox } = await import("./ui/alert.js");
-        const { getPlugin } = await import("./app-registry.js");
+        const [{ dialog }, { getPlugin }, { getIcon }, { i18n }] = await Promise.all([
+            import("./ui/dialog.js"),
+            import("./app-registry.js"),
+            import("./plugin-manager.js"),
+            import("./i18n.js"),
+        ]);
         const manifest = getPlugin(pluginId);
-        const { label, hint } = describe(permission);
-        const title = `${manifest && manifest.name ? manifest.name : pluginId} 想要使用「${label}」`;
-        const value = await showMessageBox({
-            title,
-            message: hint || "是否允许该插件使用这项能力？",
-            buttons: [
-                { label: "拒绝", value: "deny", style: "destructive" },
-                { label: "仅这次", value: "once", style: "secondary" },
-                { label: "始终允许", value: "always", style: "primary" },
-            ],
-            dismissValue: "deny",
+        const base = describe(permission);
+        const label = i18n.t(`perms.${permission}.label`, base.label); // i18n-dynamic-ok：键按权限 id 收敛在 perms 表内
+        const description = i18n.t(`perms.${permission}.hint`, base.hint); // i18n-dynamic-ok：同上
+        // 只有内核能走到这里；dialog.permission 还会再校验一次调用栈，
+        // 插件自己 import 那个函数会被按「拒绝」返回。
+        const value = await dialog.permission({
+            appId: pluginId,
+            appName: manifest && manifest.name ? manifest.name : pluginId,
+            permission,
+            label,
+            description,
+            // 授权框顶部显示申请方应用图标；manifest 未声明时 getIcon 给目录 icon.png，
+            // 再失败由 dialog 的 shadow <img> error 兜到 GENERIC_APP_ICON（不再裂图）。
+            icon: getIcon(pluginId),
         });
         if (value === "always") return activate(pluginId, permission, "always");
         if (value === "once") return activate(pluginId, permission, "once");
@@ -407,23 +432,45 @@ function grantIds() {
  * @param {object} manifest 待安装插件清单
  * @returns {Promise<boolean>} 用户是否确认「安装并授权」
  */
+/**
+ * 能力尚未开放的权限（与 os-api.js 的 UNIMPLEMENTED_PERMISSIONS 同源）：
+ * 声明了也调不出东西（pending 占位），安装清单必须明说，否则用户为不存在的能力点「允许」（API-03）。
+ * 常量写在本文件而不是 import：os-api 反向依赖本模块，顶层互拉会成环。
+ */
+const UNIMPLEMENTED_PERMISSIONS = new Set([
+    "widgets", "dynamic-icons", "window-style:others", "theme:apply",
+    "system-patch:dock", "system-patch:finderbar", "system-patch:desktop", "system-patch:wallpaper", "system-patch:menu",
+]);
+
 async function showPermissionChecklist(manifest) {
-    const { showMessageBox } = await import("./ui/alert.js");
+    const [{ dialog }, { i18n }] = await Promise.all([
+        import("./ui/dialog.js"),
+        import("./i18n.js"),
+    ]);
     const names = Array.isArray(manifest.permissions) ? manifest.permissions.filter(isKnownPermission) : [];
     const rows = names.length
         ? names.map((p) => {
-            const { label, hint } = describe(p);
-            return `<li><b>${escapeHtml(label)}</b><span class="ag-hint">${escapeHtml(hint)}</span></li>`;
+            const base = describe(p);
+            const label = i18n.t(`perms.${p}.label`, base.label); // i18n-dynamic-ok：键按权限 id 收敛在 perms 表内
+            const hint = i18n.t(`perms.${p}.hint`, base.hint); // i18n-dynamic-ok：同上
+            const closed = UNIMPLEMENTED_PERMISSIONS.has(p)
+                ? `<span class="ag-hint">${escapeHtml(i18n.t("dialog.permission.unavailable", "此能力尚未开放"))}</span>`
+                : "";
+            return `<li><b>${escapeHtml(label)}</b>${closed}<span class="ag-hint">${escapeHtml(hint)}</span></li>`;
         }).join("")
-        : "<li>不需要任何额外能力</li>";
-    const html = `<p>${escapeHtml(manifest.name || manifest.id)}（版本 ${escapeHtml(String(manifest.version || "?"))}）请求以下权限：</p><ul class="ag-list">${rows}</ul><p class="ag-note">标记为敏感的能力在第一次使用时还会再确认一次。</p>`;
-    const value = await showMessageBox({
-        title: "安装并授权",
+        : `<li>${escapeHtml(i18n.t("dialog.permission.none", "不需要任何额外能力"))}</li>`;
+    const name = escapeHtml(manifest.name || manifest.id);
+    const version = escapeHtml(String(manifest.version || "?"));
+    const html = `<p>${name} ${escapeHtml(i18n.t("dialog.permission.version", "版本"))} ${version}</p>`
+        + `<ul class="ag-list">${rows}</ul>`
+        + `<p class="ag-note">${escapeHtml(i18n.t("dialog.permission.checklistNote", "其中需要单独确认的能力，会在第一次使用时询问。"))}</p>`;
+    const value = await dialog.choose({
+        title: i18n.t("dialog.permission.installTitle", "安装此插件"),
         message: html,
         html: true,
         buttons: [
-            { label: "取消", value: "cancel", style: "secondary" },
-            { label: "安装并授权", value: "ok", style: "primary" },
+            { label: i18n.t("common.cancel", "取消"), value: "cancel", style: "secondary" },
+            { label: i18n.t("dialog.permission.install", "安装并授权"), value: "ok", style: "primary" },
         ],
         dismissValue: "cancel",
     });
@@ -481,28 +528,33 @@ function mergeRowFromDb(row) {
 }
 
 /**
- * 启动时接上注册表生命周期广播，并读回历史账本。
+ * 启动时接上注册表生命周期钩子，并读回历史账本。
  *
- * 顺序：**先同步挂监听，再异步读账本**。授权写入挂在 `plugin-registered` 上而不是
- * 改 registerPlugin 内部：内置插件（plugin-manager.js init 拉 manifest）与 ZIP 插件
- * （store-api.js 安装）最终都走 app-registry.js registerPlugin 这一个调用点，挂广播就
- * 天然同漏斗，而注册表本身保持纯数据层。
+ * 授权记账走 app-registry 的**直接钩子调用**（addLifecycleHook），不挂在 document 的
+ * plugin-registered/unregistered 事件上 —— 那是开放总线，任何插件都能 dispatchEvent
+ * 伪造：伪造 registered 可自我授予未声明的非敏感权限（非敏感权限 grantAll 时直接
+ * activated，连弹窗都没有），伪造 unregistered 可清掉他人账本（BUG-17）。
+ * 注册与注销最终都走 app-registry 的 registerPlugin / unregisterPlugin 这一个调用点
+ * （内置插件经 plugin-manager，ZIP 插件经 store-api），钩子与它们天然同漏斗。
  *
- * 不能把读账本放在监听器之前：registerPlugin 广播可能在同一轮微任务里就发生，
- * 监听器晚挂一步，内置插件的安装授权就漏记。读回只是补历史，不是前置条件，
- * 所以 bootstrap 不再 await 它，IndexedDB 全量读取不再充当启动硬屏障。
+ * 动态 import 保持本模块顶层纯净：dev/static-check.mjs 在 Node 里 import 本文件校验
+ * 权限名表，不能在顶层把 app-registry（连同它的 settings/i18n 链）拉进来。
+ * 挂载后按 getPlugins() 对账一遍：万一钩子上挂前已有注册（未来改动引入的时序差），
+ * 靠 grantAll 的并集语义补记，重复调用无副作用。
  * @returns {Promise<boolean>} 账本是否成功读回（失败时内存为空表，不阻塞启动）
  */
 async function initGrants() {
-    document.addEventListener("plugin-registered", (event) => {
-        const manifest = event.detail;
-        if (!manifest || !manifest.id) return;
-        grantAll(manifest.id, Array.isArray(manifest.permissions) ? manifest.permissions : []);
+    const { addLifecycleHook, getPlugins } = await import("./app-registry.js");
+    addLifecycleHook({
+        onRegistered: (manifest) => {
+            if (!manifest || !manifest.id) return;
+            grantAll(manifest.id, Array.isArray(manifest.permissions) ? manifest.permissions : []);
+        },
+        onUnregistered: (id) => { if (id) clearGrants(id); },
     });
-    document.addEventListener("plugin-unregistered", (event) => {
-        const id = event.detail && event.detail.id;
-        if (id) clearGrants(id);
-    });
+    for (const manifest of getPlugins()) {
+        if (manifest && manifest.id) grantAll(manifest.id, Array.isArray(manifest.permissions) ? manifest.permissions : []);
+    }
 
     try {
         const rows = await getAllRows();

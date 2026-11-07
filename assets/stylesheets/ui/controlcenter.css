@@ -1,14 +1,8 @@
-/*
- * controlcenter.css — macOS 15 控制中心样式（完全复刻）
- *
- * 严格对照 macOS Sequoia 控制中心：
- * - 面板：毛玻璃半透明背景（模糊走系统令牌 var(--surface-blur-3)，饱和走 --surface-saturate），
- *         非纯色块
- * - 配色：仅两主色 —— 蓝 #0A84FF（网络相关：Wi-Fi / 蓝牙 / AirDrop / 飞行模式）
- *                          橙 #FF9F0A（Focus 专注模式）
- * - 卡片式模块布局、圆形开关、横滑块控件，支持浅色 / 深色主题
- * - Music 卡片左侧为歌曲封面显示区（灰白毛玻璃占位），非红底、非蓝底
- */
+/* controlcenter.css — macOS 15 控制中心样式（严格对照 macOS Sequoia 复刻）
+   - 面板：毛玻璃半透明（模糊走 var(--surface-blur-3)，饱和走 --surface-saturate），非纯色块
+   - 配色仅两主色：蓝 #0A84FF（网络相关：Wi-Fi/蓝牙/AirDrop/飞行模式）、橙 #FF9F0A（Focus 专注）
+   - 卡片式模块布局、圆形开关、横滑块控件，支持浅色/深色主题
+   - Music 卡左侧为歌曲封面显示区（灰白毛玻璃占位），非红底、非蓝底 */
 
 /* ========== 字体栈 ========== */
 .cc-card,
@@ -226,11 +220,9 @@ html[data-transparency="off"] .cc-np-art {
   -webkit-backdrop-filter: none;
   background: var(--hover-bg) !important;
 }
-/* 卡片本身（.cc-card / .cc-slider-card / .cc-nowplaying）没有 backdrop-filter，
-   它们只是叠在面板上的半透明层：面板被压实色后层次仍在，所以这里一律不改，
-   避免「关掉毛玻璃」顺手改掉一堆本来正常的表面。
-   --hover-bg 是主题令牌（main.css 里浅色压黑、暗色提亮），因此两颗圆钮在
-   明暗两档下都能读出轮廓，不需要再各写一份暗色规则。 */
+/* 卡片本身（.cc-card / .cc-slider-card / .cc-nowplaying）没有 backdrop-filter，只是叠在面板上的
+   半透明层：面板压实色后层次仍在，故不改。两颗圆钮用主题令牌 --hover-bg（浅色压黑、暗色提亮），
+   明暗两档都能读出轮廓，无需再写暗色规则。 */
 
 /* 滚动条 */
 .controlcenter::-webkit-scrollbar {

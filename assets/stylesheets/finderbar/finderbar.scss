@@ -29,23 +29,10 @@
     // background: rgba(230, 230, 230, 0.47);
 
     /* Removed dead rule: `.finderbar.macbook` — no HTML/JS ever adds a `macbook`
-       class to `.finderbar` (grep found the name only in these stylesheets). */
-
-    &.black-text {
-        .left {
-            color: black;
-            text-shadow: none;
-        }
-
-        .right {
-            color: black;
-            text-shadow: none;
-
-            img {
-                filter: invert(1);
-            }
-        }
-    }
+       class to `.finderbar` (grep found the name only in these stylesheets).
+       Also removed `.finderbar.black-text` (BUG-50): no JS ever writes that class
+       (real light-wallpaper path is data-wallpaper-ink), the compiled css already
+       dropped it, and keeping it in scss would let it flow back on next compile. */
 
     .left {
         display: inline-flex;

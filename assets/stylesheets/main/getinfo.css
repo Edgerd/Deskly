@@ -1,0 +1,101 @@
+/* getinfo.css — 「显示简介」面板（⌘I）的独立样式（第 2 期桌面专项）。
+   与 quicklook.css 同一条口径：独立文件，不碰 assets/stylesheets/ui/**。 */
+
+.getinfo-panel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 300px;
+  z-index: 8001;   /* 盖在 Quick Look 之上：⌘I 是从预览里也点得到的入口 */
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(246, 246, 246, 0.86);
+  -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(1.4);
+  backdrop-filter: blur(var(--surface-blur-3)) saturate(1.4);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.36), 0 0 0 0.5px rgba(0, 0, 0, 0.18);
+}
+.getinfo-panel[hidden] { display: none; }
+
+.getinfo-panel .gi-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  cursor: move;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.getinfo-panel .gi-close {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #ff5f57;
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.getinfo-panel .gi-close:hover { filter: brightness(0.9); }
+.getinfo-panel .gi-bar-title {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.55);
+  padding-right: 12px;   /* 与左侧红点配平，标题真正居中 */
+}
+
+.getinfo-panel .gi-body { padding: 0 14px 14px; }
+
+.getinfo-panel .gi-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+.getinfo-panel .gi-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.getinfo-panel .gi-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.getinfo-panel .gi-rows {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 6px 10px;
+  margin: 12px 0 0;
+}
+.getinfo-panel .gi-rows dt {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.5);
+  text-align: right;
+}
+.getinfo-panel .gi-rows dd {
+  margin: 0;
+  font-size: 12px;
+  color: #1d1d1f;
+  overflow-wrap: anywhere;
+}
+
+html[data-theme="dark"] .getinfo-panel {
+  background: rgba(38, 38, 40, 0.86);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+}
+html[data-theme="dark"] .getinfo-panel .gi-bar-title { color: rgba(255, 255, 255, 0.55); }
+html[data-theme="dark"] .getinfo-panel .gi-head { border-bottom-color: rgba(255, 255, 255, 0.14); }
+html[data-theme="dark"] .getinfo-panel .gi-name { color: #f5f5f7; }
+html[data-theme="dark"] .getinfo-panel .gi-rows dt { color: rgba(255, 255, 255, 0.5); }
+html[data-theme="dark"] .getinfo-panel .gi-rows dd { color: #f5f5f7; }

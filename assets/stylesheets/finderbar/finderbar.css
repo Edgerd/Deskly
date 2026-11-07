@@ -29,8 +29,7 @@
   top: 0;
   left: 0;
 }
-/* Removed dead rule: `.finderbar.macbook` — no HTML/JS ever adds a `macbook`
-   class to `.finderbar` (grep found the name only in these stylesheets). */
+/* 删除死规则 `.finderbar.macbook`：没有任何 HTML/JS 给 .finderbar 加过 macbook 类。 */
 /* 降低透明度：菜单栏从毛玻璃换成实色条。
    实色条不是亚克力表面，文字退回主题令牌 --menubar-text；但右侧图标（images/*.svg，
    例如 wifi.svg）是 fill="white" 的单色图，浅底上会直接看不见 —— 所以浅色档把图标
@@ -65,7 +64,8 @@ html[data-theme="dark"][data-transparency="off"] .finderbar .right .plugin-icon-
 /* 菜单栏是「背后就是墙纸」的那类表面：文字色取系统墙纸档（只有黑与白，由 surface.js
    按壁纸主色 → 着色 → 亮度 → 夜间护眼实时推导），不再恒为白色靠投影硬撑。
    旧写法留下一组 .finderbar.black-text 规则准备给浅壁纸用，但全仓库没有任何 JS 写过
-   这个 class —— 等于不存在，浅色壁纸下顶栏一直是白字压浅底，这里由墙纸档令牌接管。 */
+   这个 class —— 等于不存在，浅色壁纸下顶栏一直是白字压浅底，这里由墙纸档令牌接管。
+   scss 侧的同名残留也已删除（BUG-50），两侧保持一致。 */
 .finderbar .left {
   display: inline-flex;
   align-items: center;
@@ -81,7 +81,6 @@ html[data-theme="dark"][data-transparency="off"] .finderbar .right .plugin-icon-
                "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
   font-weight: bold;
   font-size: 13px;
-  /* margin-top: 0.75px; */
   letter-spacing: normal;
   margin-left: 0;
 }
@@ -105,7 +104,6 @@ html[data-theme="dark"][data-transparency="off"] .finderbar .right .plugin-icon-
   color: var(--surface-text-wallpaper);
   text-shadow: 1px 2px 10px rgba(0, 0, 0, 0.3333333333);
   align-items: center;
-  /* justify-content: center; */
 }
 /* 毛玻璃档推出手黑墨时（浅色壁纸），白色文字变黑色文字，配套两件事必须一起翻：
    1) 去掉那道为白字准备的深色投影；2) 把 fill="white" 的单色 SVG 图标 invert 成黑。
@@ -121,7 +119,6 @@ html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .righ
 }
 .finderbar .right img {
   transform: scale(0.5);
-  /* transform: scale(0.1); */
   filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.3333333333));
   margin: 0 4px;
   width: auto;

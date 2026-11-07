@@ -1,13 +1,7 @@
-/*
- * datetime-popover.css — 菜单栏时间/日期点击弹出的日历面板样式
- *
- * 设计语言：macOS 毛玻璃材质（unified/vibrancy）
- *   - backdrop-filter blur + 半透明 rgba 背景
- *   - 大圆角、柔和阴影、1px 高光边框
- *   - 今日蓝色圆形高亮 (#0066cc / light, #0A84FF / dark)
- *   - 浅色 / 深色主题自适应（跟随 html[data-theme]）
- *   - 淡入 + 轻微缩放动画（cubic-bezier 缓动）
- */
+/* datetime-popover.css — 菜单栏时间/日期点击弹出的日历面板样式
+   设计语言：macOS 毛玻璃材质（backdrop-filter blur + 半透明 rgba 背景、大圆角、
+   1px 高光边框）；今日蓝色圆形高亮（#0066cc/light，#0A84FF/dark）；
+   浅色/深色主题自适应（跟随 html[data-theme]）；淡入动画（cubic-bezier 缓动）。 */
 
 .datetime-popover {
     position: fixed;
@@ -238,13 +232,11 @@
     color: var(--surface-text);
 }
 
-/* ============================================================
- * 深色主题（html[data-theme="dark"] 下自动切换）
- * 本节只留「表面」的深色档（底、边框、阴影、按下态）；文字色不在这里翻 ——
- * 面板是亚克力面，各级文字一律走 --surface-text / -secondary / -tertiary，
- * 由 surface.js 按表面真实底色推导，明暗两档共用同一条声明。
- * 原先这里成对抄了 #f5f5f7 / #8e8e93 / #48484a，属于第二个定义点，已删。
- * ============================================================ */
+/* ===== 深色主题（html[data-theme="dark"] 下自动切换） =====
+   本节只留「表面」的深色档（底、边框、阴影、按下态）；文字色不在这里翻 ——
+   面板是亚克力面，各级文字一律走 --surface-text / -secondary / -tertiary，
+   由 surface.js 按表面真实底色推导，明暗两档共用同一条声明。
+   原先这里成对抄了 #f5f5f7 / #8e8e93 / #48484a，属于第二个定义点，已删。 */
 html[data-theme="dark"] .datetime-popover {
     background: rgba(40, 40, 42, 0.78);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -300,13 +292,11 @@ html[data-theme="dark"] .dtp-sep {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* ============================================================
- * 降低透明度（html[data-transparency="off"]）
- * 放在文件末尾是有原因的：本文件的暗色档（html[data-theme="dark"] .datetime-popover）
- * 与这条特殊度相同（0,2,1），写在它前面会被它反过来盖掉、面板继续半透明。
- * 只改 backdrop-filter / background / border / box-shadow：isolation:isolate 与
- * overflow:hidden 原样保留，也不引入 transform（亚克力禁忌，见文件头）。
- * ============================================================ */
+/* ===== 降低透明度（html[data-transparency="off"]） =====
+   放在文件末尾是有原因的：本文件的暗色档（html[data-theme="dark"] .datetime-popover）
+   与这条特殊度相同（0,2,1），写在它前面会被它反过来盖掉、面板继续半透明。
+   只改 backdrop-filter / background / border / box-shadow：isolation:isolate 与
+   overflow:hidden 原样保留，也不引入 transform（亚克力禁忌，见文件头）。 */
 html[data-transparency="off"] .datetime-popover {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;

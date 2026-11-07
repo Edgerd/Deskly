@@ -77,6 +77,27 @@
     color: var(--surface-text-secondary);
 }
 
+/* 平铺示意图标列（TL-04）：16px 图标 + 文字基线对齐；悬停随文字变白 */
+.menu.contextmenu p .menu-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    vertical-align: -3px;
+}
+.menu.contextmenu p .menu-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ⌥ 动态项（TL-09）：只在菜单按住 Option 时显示 */
+.menu.contextmenu .menu-alt-only {
+    display: none;
+}
+.menu.contextmenu.alt-down .menu-alt-only {
+    display: block;
+}
+
 .menu.contextmenu hr {
     background: var(--separator, rgba(0, 0, 0, 0.1));
     border-radius: 0.5px;

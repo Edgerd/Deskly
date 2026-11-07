@@ -40,7 +40,6 @@
   }
 }
 .tip {
-  /* display: inline-block; */
   width: auto;
   height: auto;
   background: var(--panel-bg, rgba(255, 255, 255, 0.6));
@@ -68,7 +67,6 @@
   position: fixed;
   /* = Z.DOCK_TIP（src/javascripts/zindex.js），与菜单栏同档；勿再写裸数字 */
   z-index: 9999;
-  /* Origin block */
 }
 .tip::after {
   content: "";
@@ -429,8 +427,7 @@ html[data-transparency="off"] .dock-stack {
 .dock .container img:active {
   filter: brightness(0.5);
 }
-/* Removed dead rule: `.dock .container hr` — the dock never renders an <hr>
-   inside `.container`; section dividers are `.dock-sep` divs (see dock.js). */
+/* 删除死规则 `.dock .container hr`：dock 从不在 .container 里渲染 <hr>，分段分隔线是 .dock-sep（见 dock.js）。 */
 .dock .container .light {
   width: 4px;
   height: 4px;

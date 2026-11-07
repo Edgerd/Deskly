@@ -57,6 +57,50 @@ html[data-theme="dark"][data-wallpaper-tint="on"] .window > .right {
   background: color-mix(in srgb, var(--tint-color) calc(22% * var(--tint-strength)), #1e1e1e);
 }
 
+/* ===== 着色开启时的窗口文字 / 图标 / 输入控件 =====
+   此前只有「系统设置」侧栏把文字切到墙纸档（白/黑由 surface.js 推导），
+   其它窗口的标题栏、标签、输入框仍是写死的深色 —— 墙纸一深就糊在着色玻璃上。
+   做法：把墙纸档文字令牌挂到整个 .window（自定义属性沿继承树下放），
+   标题栏等铬面文字跟随；SVG / mask 图标吃 currentColor 自动跟随，
+   <img> 位图图标无法换色（能力边界，不改图片资源）。
+   .window > .right（旧三栏的内容区）是 color-mix 出来的浅底不透明面板，
+   文字必须钉回主题色，否则白字压浅底。 */
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .window {
+  --surface-text: var(--surface-text-wallpaper);
+  --surface-text-rgb: var(--surface-text-wallpaper-rgb);
+  --surface-text-secondary: var(--surface-text-wallpaper-secondary);
+  --surface-text-tertiary: var(--surface-text-wallpaper-tertiary);
+  color: var(--surface-text);
+}
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .window [data-titlebar] {
+  color: var(--surface-text);
+}
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .window > .right {
+  color: #1d1d1f;
+}
+html[data-theme="dark"][data-wallpaper-tint="on"]:not([data-transparency="off"]) .window > .right {
+  color: #f2f2f4;
+}
+/* 输入类控件：着色玻璃上的白字必须配深色半透明底才读得清（白字压白底是事故）。
+   系统设置窗口（.settings）的内容区是不透明面板、有自己的一套控件令牌，排除在外。 */
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .window:not(.settings)
+  :is(input:not([type]), input[type="text"], input[type="search"], input[type="password"],
+      input[type="number"], input[type="email"], input[type="url"], input[type="tel"],
+      textarea, select) {
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  caret-color: #fff;
+}
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .window:not(.settings)
+  :is(input, textarea)::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+html[data-wallpaper-tint="on"]:not([data-transparency="off"]) .window:not(.settings)
+  :is(input, textarea, select, button):disabled {
+  opacity: 0.55;
+}
+
 /* 最小化状态：窗口淡出后移除交互。
    关键禁忌：曾经使用 transform: scale(0.15) translateY(120vh) 触发 Chrome 3D 合成层，
    强烈破坏 backdrop-filter，导致亚克力面板大窗整片失效 / 闪烁 / 颜色偏移。

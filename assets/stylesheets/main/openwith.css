@@ -1,0 +1,131 @@
+/* openwith.css — 「打开方式」选择器（未知类型双击）的独立样式。
+   与 getinfo.css 同一条口径：独立文件、模糊层用 --surface-blur-3、深色单独覆盖。 */
+
+.openwith-panel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 320px;
+  z-index: 8002;   /* 高于显示简介：选择器是「要不要打开」的前置决策 */
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(246, 246, 246, 0.9);
+  -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(1.4);
+  backdrop-filter: blur(var(--surface-blur-3)) saturate(1.4);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.36), 0 0 0 0.5px rgba(0, 0, 0, 0.18);
+}
+.openwith-panel[hidden] { display: none; }
+
+.openwith-panel .ow-head {
+  padding: 14px 16px 10px;
+  text-align: center;
+}
+.openwith-panel .ow-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+.openwith-panel .ow-sub {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(0, 0, 0, 0.55);
+  overflow-wrap: anywhere;
+}
+
+.openwith-panel .ow-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0 12px;
+  padding: 4px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.6);
+}
+.openwith-panel .ow-app {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #1d1d1f;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.openwith-panel .ow-app:hover { background: rgba(0, 0, 0, 0.06); }
+.openwith-panel .ow-app.selected {
+  background: #2078da;
+  color: #fff;
+}
+.openwith-panel .ow-app img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+.openwith-panel .ow-app span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.openwith-panel .ow-empty {
+  margin: 8px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+
+.openwith-panel .ow-always {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 16px 0;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+}
+.openwith-panel .ow-always input {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.openwith-panel .ow-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px 14px;
+}
+.openwith-panel .ow-actions button {
+  min-width: 64px;
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.openwith-panel .ow-cancel { background: rgba(0, 0, 0, 0.08); color: #1d1d1f; }
+.openwith-panel .ow-open { background: #2078da; color: #fff; }
+.openwith-panel .ow-open:disabled { opacity: 0.55; cursor: default; }
+.openwith-panel .ow-cancel:hover { background: rgba(0, 0, 0, 0.14); }
+.openwith-panel .ow-open:not(:disabled):hover { filter: brightness(1.05); }
+
+html[data-theme="dark"] .openwith-panel {
+  background: rgba(38, 38, 40, 0.9);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+}
+html[data-theme="dark"] .openwith-panel .ow-title,
+html[data-theme="dark"] .openwith-panel .ow-app { color: #f5f5f7; }
+html[data-theme="dark"] .openwith-panel .ow-sub,
+html[data-theme="dark"] .openwith-panel .ow-empty,
+html[data-theme="dark"] .openwith-panel .ow-always { color: rgba(255, 255, 255, 0.6); }
+html[data-theme="dark"] .openwith-panel .ow-list { background: rgba(255, 255, 255, 0.08); }
+html[data-theme="dark"] .openwith-panel .ow-app:hover { background: rgba(255, 255, 255, 0.1); }
+html[data-theme="dark"] .openwith-panel .ow-app.selected { background: #0a84ff; color: #fff; }
+html[data-theme="dark"] .openwith-panel .ow-cancel { background: rgba(255, 255, 255, 0.14); color: #f5f5f7; }
+html[data-theme="dark"] .openwith-panel .ow-open { background: #0a84ff; }

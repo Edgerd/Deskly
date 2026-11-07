@@ -1,20 +1,13 @@
-/* ============================================================
- * windowtraffic.css — 窗口标题栏红绿灯按钮悬浮图标
- *
- * 复刻 macOS 原生红绿灯按钮的悬浮效果：
- * - 鼠标悬停在交通灯按钮组上时，三个按钮同时显示对应符号
- * - 关闭按钮（红）：居中 X 符号
- * - 最小化按钮（黄）：居中横杠
- * - 最大化按钮（绿）：两个实心小三角（一个朝右上、一个朝左下）
- *
- * 图标使用 ::before / ::after 伪元素绘制，悬浮时淡入淡出，
- * 不修改任何按钮原有背景与交互逻辑。
- *
- * 尺寸一律取自 trafficlights.css 的 --traffic-* 令牌：
- * 原先绿三角用 top/right:2.5px 角锚定（那 2.5px 是「12px 减掉 0.5px×2 边框后
- * 再居中」手算出来的 magic number），改按钮直径就会立刻错位。
- * 禁用位 .gray 不参与：它没有符号规则，也不加 hover/active。
- * ============================================================ */
+﻿/* windowtraffic.css — 窗口标题栏红绿灯按钮悬浮图标
+
+   复刻 macOS 原生红绿灯的悬浮效果：悬停按钮组时三个按钮同时显示符号 ——
+   关闭（红）居中 X、最小化（黄）居中横杠、最大化（绿）两个实心小三角
+   （一个朝右上、一个朝左下）。图标用 ::before/::after 伪元素绘制，悬浮淡入淡出，
+   不改按钮原有背景与交互逻辑。
+
+   尺寸一律取自 trafficlights.css 的 --traffic-* 令牌：原先绿三角用 top/right:2.5px
+   角锚定（那 2.5px 是「12px 减掉 0.5px×2 边框后再居中」手算的 magic number），
+   改按钮直径就错位。禁用位 .gray 不参与：无符号规则，也不加 hover/active。 */
 
 /* 鼠标悬停在按钮组上时，三个图标同时显示 */
 .wintools:hover > .red::before,
@@ -38,7 +31,7 @@
   background: #4d0000;
   border-radius: 1px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.1s ease;
 }
 .wintools > .red::before {
   transform: rotate(45deg);
@@ -59,7 +52,7 @@
   background: #995700;
   border-radius: 1px;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.1s ease;
 }
 
 /* ---------- 最大化按钮（绿）：两个实心小三角 ---------- */
@@ -70,7 +63,7 @@
   width: 0;
   height: 0;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.1s ease;
 }
 /* 右上三角：顶点朝右上 */
 .wintools > .green::before {

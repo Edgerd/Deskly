@@ -1,10 +1,5 @@
-/* ============================================================
-   错误弹窗（swift-messagebox）样式覆盖与优化
-   ------------------------------------------------------------
-   1. 优化弹窗整体外观：尺寸、圆角、阴影、毛玻璃背景、间距。
-   2. 修复底部按钮问题：使用自定义 .alert-btn 按钮，
-      确保水平居中显示、背景色正常显示（不再被遮挡）、文字为白色。
-   ============================================================ */
+/* 错误弹窗（swift-messagebox）样式覆盖：优化整体外观（尺寸/圆角/阴影/毛玻璃/间距）；
+   修复底部按钮 —— 用自定义 .alert-btn，保证水平居中、背景不被遮挡、文字为白色。 */
 
 /* 弹窗整体 */
 swift-messagebox {
@@ -100,15 +95,11 @@ swift-messagebox .alert-btn:active {
   background-image: linear-gradient(rgba(0, 0, 0, .10), rgba(0, 0, 0, .10));
 }
 
-/* ============================================================
-   通用系统弹窗（showMessageBox / window.__dialog）补充样式
-   ------------------------------------------------------------
+/* 通用系统弹窗（showMessageBox / window.__dialog）补充样式：
    1. 无图标时隐藏 <img icon src="">（swift-messagebox 模板恒含 img）
    2. 按钮变体：secondary（灰底黑字）/ destructive（红底白字）
-   3. 多按钮容器 .msgbox-btns：横排等宽；
-      !important 覆盖 shadow 内 ::slotted([slot=button]) 的
-      height:23px / align-self:normal 固定样式
-   ============================================================ */
+   3. 多按钮容器 .msgbox-btns：横排等宽；!important 覆盖 shadow 内
+      ::slotted([slot=button]) 的 height:23px / align-self:normal 固定样式 */
 
 swift-messagebox.system-dialog {
   width: 280px;

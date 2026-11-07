@@ -1,0 +1,185 @@
+/* quicklook.css — Quick Look 全局预览窗（第 3 期）的独立样式。
+   独立文件：assets/stylesheets/ui/** 正由窗口系统改造维护，这里不交叉。 */
+
+.quicklook-panel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(72vw, 920px);
+  height: min(72vh, 660px);
+  z-index: 8000;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(246, 246, 246, 0.82);
+  /* 卡片级毛玻璃走系统第 3 档令牌（finder ql-card 用第 4 档，预览窗比弹层低一档） */
+  -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(1.4);
+  backdrop-filter: blur(var(--surface-blur-3)) saturate(1.4);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42), 0 0 0 0.5px rgba(0, 0, 0, 0.18);
+}
+.quicklook-panel[hidden] { display: none; }
+
+.ql-bar {
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  cursor: move;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.ql-close {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #ff5f57;
+  cursor: pointer;
+  padding: 0;
+}
+.ql-close:hover { filter: brightness(0.9); }
+.ql-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+.ql-counter {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #6e6e73;
+}
+.ql-nav { flex: 0 0 auto; display: flex; gap: 4px; }
+.ql-nav button {
+  width: 24px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 14px;
+  color: #1d1d1f;
+  cursor: pointer;
+}
+.ql-nav button:hover { background: rgba(0, 0, 0, 0.08); }
+
+.ql-zoom {
+  flex: 1 1 auto;
+  min-height: 0;
+  transform-origin: center center;
+}
+.ql-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.ql-media {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.ql-audio { width: 80%; }
+.ql-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+  border-radius: 4px;
+}
+.ql-text {
+  align-self: flex-start;
+  width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ql-folder,
+.ql-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.ql-folder img,
+.ql-fallback img { width: 128px; height: auto; }
+.ql-folder-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1d1d1f;
+  word-break: break-all;
+}
+.ql-folder-meta {
+  margin: 0;
+  font-size: 12px;
+  color: #6e6e73;
+}
+
+/* ---------- 索引表（⌘Return） ---------- */
+.ql-sheet {
+  position: absolute;
+  inset: 38px 0 0 0;
+  z-index: 2;
+  background: rgba(246, 246, 246, 0.94);
+  overflow: auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.ql-sheet[hidden] { display: none; }
+.ql-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
+}
+.ql-sheet-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.ql-sheet-cell:hover { background: rgba(0, 0, 0, 0.06); }
+.ql-sheet-cell.active { outline: 2px solid rgba(32, 120, 218, 0.9); }
+.ql-sheet-cell img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.ql-sheet-cell span {
+  max-width: 100%;
+  font-size: 11px;
+  color: #1d1d1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,222 @@
+/* spaces.css — 全屏伪空间 / 分屏浏览 / 台前调度 / 窗口总览的样式层
+   （JS 侧：src/javascripts/wm/spaces.js、overview.js、stage-manager.js）
+
+   禁忌不变：.window 本体绝不加 transform / filter / clip-path（亚克力 backdrop-root）。
+   这里的停靠缩略图、总览卡片、分隔条都是独立 DOM（非 .window），可以用 transform。 */
+
+/* ---------- 伪空间隐藏 ----------
+   非当前空间的全屏/分屏窗口：visibility 而不是 display —— display 会被
+   isMinimized 的判定（el.style.display === "none"）误读成最小化。 */
+.window.wm-space-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* FS-08：进出全屏/分屏空间时墙纸压暗 10%（320ms 交叉淡化）。
+   独立遮罩层 + 只动 opacity：不给 .wallpaper 加 filter，避免整屏重绘；
+   层级压在所有窗口之下（窗口带从 2050 起），Dock 与菜单栏不受影响。 */
+#deskly-space-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#deskly-space-dim.on { opacity: 0.1; }
+html[data-reduce-motion="on"] #deskly-space-dim { transition: none; }
+
+/* ---------- 分屏分隔条 ---------- */
+#deskly-split-divider {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  margin-left: -3px; /* 命中区以分界缝为中心 */
+  cursor: col-resize;
+  z-index: 9400; /* 窗口区之内、高于两侧分屏窗 */
+  background: transparent;
+  touch-action: none;
+}
+#deskly-split-divider:hover {
+  background: color-mix(in srgb, var(--accent, #0a82ff) 35%, transparent);
+}
+
+/* ---------- 台前调度停靠条 ---------- */
+#deskly-stage-shelf {
+  position: fixed;
+  top: 64px;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  max-height: calc(100vh - 128px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+#deskly-stage-shelf::-webkit-scrollbar { display: none; }
+/* showRecent=false 或全屏挂起时：贴左缘唤出（macOS 同语义） */
+#deskly-stage-shelf.auto-hide,
+#deskly-stage-shelf.suspended {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+#deskly-stage-shelf.auto-hide:hover,
+#deskly-stage-shelf.auto-hide:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sm-thumb {
+  display: block;
+  width: 96px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: center;
+}
+.sm-thumb:focus-visible {
+  outline: 2px solid var(--accent, #0a82ff);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.sm-shot {
+  width: 96px;
+  /* 高度由 JS 按窗口实际宽高比写 aspect-ratio（等比缩放、不裁边）；
+     不设 max-height：高度封顶会把盒子压扁，canvas 只能靠 object-fit 补救。 */
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--foreground-rgb, 0 0 0) 8%, transparent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.sm-shot canvas, .sm-shot img {
+  /* 不定死 width/height：canvas 的交错尺寸会被拉成盒子比例（客户端报「被压扁」）；
+     max-width/max-height + auto 让整张图完整贴合，多出的边由盒子底色补。 */
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+.sm-thumb:hover .sm-shot { transform: scale(1.04); }
+.sm-thumb.on-stage .sm-shot {
+  outline: 2px solid var(--accent, #0a82ff);
+  outline-offset: 1px;
+}
+.sm-caption {
+  display: block;
+  margin-top: 5px;
+  /* 与 Dock 图标标签同一处理：停靠条浮在墙纸上，白字 + 硬投影保证深浅底都可读。
+     字号 12px / 字重 600 是 88–96px 缩略图下实测可读的下限（原 11px 在缩略图上发虚）；
+     投影拆成「1px 硬边 + 2px 柔光」两层，硬边负责轮廓、柔光负责压在深色墙纸上。 */
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  line-height: 1.3;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 非舞台组窗口本体：留在 stack 里不动层级，只是不可见不响应。
+   只写 .wm-shelved 单边（不写 :not 互补规则）：否则与 .window.minimized 的
+   淡出 transition 同权重撞车，源码顺序会把最小化淡出盖掉。 */
+.window.wm-shelved {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: visibility 0s linear 0.24s, opacity 0.2s ease;
+}
+
+/* ---------- 窗口总览（⌃↑） ---------- */
+#deskly-overview {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--foreground-rgb, 0 0 0) 22%, transparent);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  overflow-y: auto;
+  padding: 48px;
+  box-sizing: border-box;
+}
+#deskly-overview.visible { opacity: 1; }
+.ov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.ov-card {
+  position: relative;
+  padding: 6px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+html[data-theme="dark"] .ov-card { background: rgba(44, 44, 46, 0.7); }
+.ov-card:hover { transform: translateY(-2px); }
+.ov-card.selected {
+  box-shadow: 0 0 0 2px var(--accent, #0a82ff), 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.ov-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--foreground-rgb, 0 0 0) 6%, transparent);
+}
+.ov-thumb canvas, .ov-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+.ov-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ov-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #fff;
+  background: var(--accent, #0a82ff);
+}
+
+/* ---------- 减弱动态效果：全部降级为淡入淡出 ---------- */
+html[data-reduce-motion="on"] .sm-thumb:hover .sm-shot,
+html[data-reduce-motion="on"] .ov-card:hover {
+  transform: none;
+}
+html[data-reduce-motion="on"] #deskly-overview,
+html[data-reduce-motion="on"] .window.wm-shelved {
+  transition: opacity 0.01s linear;
+}

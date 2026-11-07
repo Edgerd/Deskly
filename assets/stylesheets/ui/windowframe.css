@@ -1,16 +1,13 @@
-/* ============================================================
- * windowframe.css — 窗口框架状态层（window-manager.js 的样式侧）
- *
- * 只放「窗口机制」相关的视觉状态：缩放带光标、拖拽/缩放期间的锁、
- * 状态切换过渡、平铺预览、全屏收边、活跃/非活跃阴影。
- * 窗口本体的外观（圆角、底色、着色、三栏旧外壳）仍在 window.css，
- * 红绿灯几何在 trafficlights.css —— 这里一律不覆盖它们，只补状态。
- *
- * 固化禁忌（与 window.css / dock.css / ui.css 同源）：
- * 本文件不得给 .window 引入 transform / filter / clip-path / will-change，
- * 那会让带 backdrop-filter 的侧栏与内容区换 backdrop-root，亚克力当场失效。
- * 所以缩放态、最小化、全屏的动画全部走 left/top/width/height 与 visibility。
- * ============================================================ */
+/* windowframe.css — 窗口框架状态层（window-manager.js 的样式侧）
+
+   只放「窗口机制」相关的视觉状态：缩放带光标、拖拽/缩放期间的锁、状态切换过渡、
+   平铺预览、全屏收边、活跃/非活跃阴影。窗口本体外观（圆角、底色、着色、三栏旧外壳）
+   仍在 window.css，红绿灯几何在 trafficlights.css —— 这里一律不覆盖它们，只补状态。
+
+   固化禁忌（与 window.css / dock.css / ui.css 同源）：本文件不得给 .window 引入
+   transform / filter / clip-path / will-change，那会让带 backdrop-filter 的侧栏与内容区
+   换 backdrop-root，亚克力当场失效。所以缩放态、最小化、全屏的动画全部走
+   left/top/width/height 与 visibility。 */
 
 /* ---------- 缩放边带 ----------
  * 核心给每个窗口注入 8 条透明边带（四边 + 四角），窗口管理器按「命中了哪条边带」

@@ -1,0 +1,66 @@
+/* desktop-view.css — 桌面文件系统视图（第 2 期）的独立样式。
+   独立文件是有意为之：assets/stylesheets/ui/** 与 window.css 等共享样式
+   正由窗口系统改造维护，这里不交叉。桌面基础布局仍来自 main/desktop.css。 */
+
+/* 选中态：macOS 的选中是图标名标签染强调色，图标本身压暗一层。
+   胶囊用 box-shadow 外扩而不是 padding —— padding 会把行盒撑大，
+   选中瞬间整个网格的上下间距跟着跳（布局跳动 bug 的修法，不是调数值） */
+.desktop .item.selected img {
+  filter: brightness(0.72) saturate(1.1);
+}
+.desktop .item.selected p {
+  background: rgba(32, 120, 218, 0.92);   /* 主题强调色 #2078DA */
+  box-shadow: 0 0 0 3px rgba(32, 120, 218, 0.92);   /* 视觉胶囊，不占布局 */
+  border-radius: 4px;
+  text-shadow: none;
+}
+
+/* 拖动中的幽灵：半透明 + 抬层级 + 不吃指针（落点判定要打穿它） */
+.desktop .item.drag-ghost {
+  opacity: 0.75;
+  z-index: 4000;
+  pointer-events: none;
+}
+
+/* 拖放落点高亮：文件夹图标与程序坞废纸篓共用同一视觉口径 */
+.desktop .item.drop-target img,
+#dock-trash.drop-target img {
+  outline: 2px solid rgba(32, 120, 218, 0.9);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* 框选矩形：fixed 是因为它随指针跨出桌面容器边界（ Dock 上方）也要画 */
+.desktop-lasso {
+  position: fixed;
+  z-index: 3999;
+  border: 1px solid rgba(32, 120, 218, 0.85);
+  background: rgba(32, 120, 218, 0.12);
+  pointer-events: none;
+}
+
+
+/* 拖拽轻提示：拖到程序坞但目标应用不接受该类型时出现一次，2.4s 后淡出（不弹模态框） */
+.desktop-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 108px;
+  transform: translateX(-50%) translateY(6px);
+  z-index: 9400;
+  max-width: 320px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(40, 40, 42, 0.9);
+  color: #f5f5f7;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.desktop-hint.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+

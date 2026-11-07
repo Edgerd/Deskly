@@ -270,8 +270,7 @@ export function attachAutosave({ store, onNotice }) {
     let autosaveTimer = null;
     let disposed = false;
     // 恢复期闸门。loadDraft → rehydrateFromVfs 是异步的，而编辑器从 init 那刻起就能吃输入：
-    // 一条「有 path、正文还没从根目录补回来」的笔记如果被用户敲了字就写回，
-    // 磁盘上的旧正文就永久没了 —— 这是真丢数据，不是界面闪一下。
+    // 「有 path、正文未补回」的笔记若被敲字就写回，磁盘旧正文永久丢失（真丢数据）。
     let writesPaused = false;
     // 同一权限态的「需重新授权」提示只弹一次，避免自动保存每 2s 重报
     let warnedReauth = false;

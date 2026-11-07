@@ -16,7 +16,7 @@ const DEBOUNCE = 300;      // 输入 → 序列化节流
 const BURST_MS = 600;      // 连续输入合并为一次撤销步骤
 
 function t(key, fallback) {
-    return i18n.t('notepad.' + key, fallback);
+    return i18n.t('notepad.' + key, fallback); // i18n-dynamic-ok: 前缀包装器，键恒以 notepad. 开头且调用点全为字面量
 }
 
 export function createWysiwygEditor(el, { store, onCursor }) {
@@ -398,7 +398,6 @@ export function createWysiwygEditor(el, { store, onCursor }) {
         reportCursor();
     }
 
-    /** 获取光标所在块级标签名 */
     function getCurrentBlockTag() {
         const sel = window.getSelection();
         if (!sel || !sel.rangeCount) return 'p';
@@ -413,7 +412,6 @@ export function createWysiwygEditor(el, { store, onCursor }) {
         return 'p';
     }
 
-    /** 插入代码块 */
     function codeBlock() {
         insertHtml('<pre><code>\n\n</code></pre><p><br></p>');
     }
@@ -437,7 +435,6 @@ export function createWysiwygEditor(el, { store, onCursor }) {
             .catch((err) => console.warn('[notepad] 插入链接失败：', err));
     }
 
-    /** 插入图片 */
     function image() {
         promptBox(t('imagePrompt', '输入图片地址：'), t('imageHint', 'http/https 或 data:image 图片地址'), '')
             .then((input) => {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * sidebar.js — 侧边栏「已保存的笔记」列表
  * 只列已落盘的笔记（与标签条上的「编辑中」区分），右键提供删除（规划里缺失的删除入口）。
  */
@@ -8,7 +8,7 @@ import { i18n } from '../../../src/javascripts/i18n.js';
 import { confirmBox } from './dialog.js';
 
 function t(key, fallback) {
-    return i18n.t('notepad.' + key, fallback);
+    return i18n.t('notepad.' + key, fallback); // i18n-dynamic-ok: 前缀包装器，键恒以 notepad. 开头且调用点全为字面量
 }
 
 export function initSidebar(el, { store, onSelect, onDelete }) {

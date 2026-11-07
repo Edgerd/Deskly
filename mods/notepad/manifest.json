@@ -6,7 +6,7 @@
   "entry": "window",
   "author": "Edgerd",
   "description": "多格式笔记工具：内置 TXT 与 Markdown 所见即所得编辑，通过扩展支持更多格式。",
-  "permissions": ["files:read", "files:write", "default-apps:read"],
+  "permissions": ["files:read", "files:write"],
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",

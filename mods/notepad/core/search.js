@@ -1,4 +1,4 @@
-/**
+﻿/**
  * search.js — 查找 / 替换（规划 §7-P1、§9 验收项）
  * 三种视图都可查找：源码/分屏直接操作 textarea，所见即所得按文本节点构造 Range。
  * 面板 DOM 在 index.html 内声明（.search-bar），本模块只做显隐与匹配逻辑。
@@ -9,7 +9,7 @@ import { i18n } from '../../../src/javascripts/i18n.js';
 const MAX_PASSES = 2000;   // 全部替换的兜底次数：替换词包含查找词时防止无限循环
 
 function t(key, fallback) {
-    return i18n.t('notepad.' + key, fallback);
+    return i18n.t('notepad.' + key, fallback); // i18n-dynamic-ok: 前缀包装器，键恒以 notepad. 开头且调用点全为字面量
 }
 
 /** 大小写不敏感匹配（不预先整体 toLowerCase：某些字符会改变长度，偏移会错位） */

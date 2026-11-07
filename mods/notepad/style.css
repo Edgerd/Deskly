@@ -1,11 +1,5 @@
-/* 记事本应用样式 v2 — Apple Design 规范
- * 三层工具栏 + 侧边栏 + 编辑区 + 状态栏
- * 遵循项目亚克力禁忌：.notepad 自身及祖先不加 transform
- *
- * 令牌说明：浅色值一律写在 var() 的回退参数里（历史上 .np-var 从未被任何元素使用，
- * 故该块已删除）；暗色直接覆盖在 .notepad 上。
- * 文字三档（--np-text / -secondary / -tertiary）是唯一的例外：它们只在 .notepad
- * 一处指向系统的 --surface-text* 令牌，自身已随明暗主题翻转，所以深色块里不再重复定义。
+/* 记事本样式：三层工具栏 + 侧边栏 + 编辑区 + 状态栏。
+ * 亚克力禁忌：.notepad 自身及祖先不加 transform。浅色值写在 var() 回退参数里，暗色覆盖在 .notepad 上。
  */
 
 html[data-theme="dark"] .notepad {
@@ -13,10 +7,8 @@ html[data-theme="dark"] .notepad {
     --np-toolbar: rgba(44, 44, 46, 0.75);
     --np-sidebar: rgba(40, 40, 42, 0.6);
     --np-editor-bg: #1c1c1e;
-    /* --np-text / --np-text-secondary / --np-text-tertiary 不再在这里各写一份深色灰度：
-       三档已在 .notepad 基块里统一指向 --surface-text*（只黑或白，由 surface.js
-       按主题 + 壁纸着色 + 亮度推导），令牌自身随主题翻转，这里再覆盖等于退回第二套写死色。
-       底色类令牌（--np-bg / --np-toolbar / --np-editor-bg …）仍按主题各写一份。 */
+    /* --np-text 三档不在此重复写死：基块已统一指向 --surface-text*（surface.js 按主题/壁纸推导，随主题自翻）。
+       底色类令牌（--np-bg 等）仍按主题各写一份。 */
     --np-divider: rgba(255, 255, 255, 0.1);
     --np-accent: #0a84ff;
     --np-hover: rgba(255, 255, 255, 0.08);
@@ -26,8 +18,8 @@ html[data-theme="dark"] .notepad {
 }
 
 .notepad {
-    /* 窗口可被 resize 到 200×150（window.js），这里的下限只挡住无意义的小值，
-       真正的适配交给 @container 断点：低于断点时区域依次降级而不是被裁掉 */
+    /* 下限只挡无意义小值；真正的窄窗适配交给 @container 断点（window.js 允许 resize 到 200×150），
+       低于断点时区域依次降级而不是被裁掉 */
     min-width: 220px;
     min-height: 160px;
     width: 100%;
@@ -35,11 +27,8 @@ html[data-theme="dark"] .notepad {
     /* 尺寸容器：让内部区域按窗口宽度自适应（媒体查询看的是视口，对窗口无用） */
     container-type: inline-size;
     container-name: np;
-    /* 文字三档统一在这里指向表面系统令牌（src/javascripts/surface.js）：
-       --surface-text 只取黑或白，由「壁纸主色 → 色调偏移 → 着色浓度 → 明暗主题 →
-       显示器亮度」推导，secondary / tertiary 是同一支墨色的弱化层级。
-       因此这一处定义同时覆盖浅色与深色两个主题（令牌自己翻），下面各规则里
-       `var(--np-text, #1d1d1f)` 这类回退值从此只是「令牌还没生效时的兜底」，不再参与配色。 */
+    /* 文字三档统一指向表面系统令牌（src/javascripts/surface.js）：随主题/壁纸自翻，
+       一处定义覆盖明暗两主题；各规则里 var() 的回退值只是令牌未生效时的兜底。 */
     --np-text: var(--surface-text);
     --np-text-secondary: var(--surface-text-secondary);
     --np-text-tertiary: var(--surface-text-tertiary);
@@ -47,9 +36,8 @@ html[data-theme="dark"] .notepad {
     /* 模糊改由系统按等级分配：原 blur(30px)（≤34px → 第 3 档），无配套函数 */
     backdrop-filter: blur(var(--surface-blur-3));
     -webkit-backdrop-filter: blur(var(--surface-blur-3));
-    /* 亚克力稳定层（0.2.74 固化）：isolation: isolate 强制自身成 backdrop-root，
-       不受祖先 stacking context（含 .window 的 stacking context）截断；
-       配合既有 overflow:hidden 形成「固定 blur 区域 + 强隔离 backdrop-root」的最简方案 */
+    /* 亚克力稳定层：isolation 强制自身成 backdrop-root，不受祖先 stacking context 截断；
+       配合 overflow:hidden 形成「固定 blur 区域 + 强隔离 backdrop-root」的最简方案 */
     isolation: isolate;
     border-radius: 10px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22);
@@ -128,20 +116,25 @@ html[data-theme="dark"] .notepad {
     color: var(--np-text, #1d1d1f);
 }
 
-/* 下拉浮层。打开时由 src/javascripts/ui/popover.js 搬进 body 上的浮出层，
-   position/top/left 会被改写成内联样式（按视口定位、放不下就朝上翻），
-   下面这三条只是浮出层没加载成功时的退路。
-   载体节点带 notepad + menu-dropdown 两个类名，本文件的 .notepad .menu-popup 与
-   .notepad .menu-dropdown .menu-item 才继续命中，--np-* 令牌也照样继承。 */
+/* 下拉浮层。打开时由 popover.js 搬进 body 浮出层并按视口内联定位。
+   材质与系统菜单（assets/stylesheets/ui/ui.css 的 .menu）同规格：第 3 档模糊、
+   0.5px 发丝边、8px 圆角、三段阴影收口，深浅主题共用一套令牌。 */
 .notepad .menu-popup {
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
     min-width: 184px;
-    background: rgba(255, 255, 255, 0.98);
-    border: 1px solid var(--np-border, rgba(0, 0, 0, 0.1));
-    border-radius: 9px;
-    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.2);
+    background: var(--panel-bg, rgba(246, 246, 246, 0.6));
+    border: 0.5px solid var(--hairline, rgba(0, 0, 0, 0.06));
+    border-radius: 8px;
+    box-shadow:
+        inset 0 0 1px 0 rgba(255, 255, 255, 0.5),
+        0 2px 4px 0 rgba(0, 0, 0, 0.15),
+        0 8px 15px 6px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(var(--surface-blur-3));
+    -webkit-backdrop-filter: blur(var(--surface-blur-3));
+    isolation: isolate;
+    overflow: hidden;
     padding: 5px;
     z-index: 100;
     display: flex;
@@ -153,7 +146,21 @@ html[data-theme="dark"] .notepad {
     display: none;
 }
 
-.notepad .menu-dropdown .menu-item {
+html[data-theme="dark"] .notepad .menu-popup {
+    box-shadow:
+        inset 0 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 2px 4px 0 rgba(0, 0, 0, 0.4),
+        0 8px 15px 6px rgba(0, 0, 0, 0.5);
+}
+
+html[data-transparency="off"] .notepad .menu-popup {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--surface-panel, #f4f4f6);
+    border-color: var(--separator, rgba(0, 0, 0, 0.1));
+}
+
+.notepad .menu-popup .menu-item {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -161,47 +168,41 @@ html[data-theme="dark"] .notepad {
     height: 24px;
     padding: 0 10px;
     font-size: 13px;
-    color: var(--np-text, #1d1d1f);
+    color: var(--surface-text, #1d1d1f);
     border-radius: 5px;
     background: transparent;
 }
 
-/* 以下三处 hover 的白字保持写死：它们落在 --np-accent（实色强调底）上，
-   属于「强调色上的文字」，规则明确排除在 --surface-text 迁移之外
-   —— 换成表面墨色会在浅色主题变成黑字压蓝底。下面 .menu-item-keys /
-   .menu-toggle-state 的 hover 覆盖是同一情形。 */
-.notepad .menu-dropdown .menu-item:hover {
-    background: var(--np-accent, #007aff);
+/* 以下三处 hover 白字写死：落在 --accent 强调底上，属「强调色上的文字」，
+   排除在 --surface-text 迁移之外（换表面墨色会变黑字压蓝底）。下方 keys/toggle-state 同。 */
+.notepad .menu-popup .menu-item:hover {
+    background: var(--accent, #007aff);
     color: #fff;
 }
 
-.notepad .menu-dropdown .menu-item-keys {
+.notepad .menu-popup .menu-item-keys {
     font-size: 11px;
-    color: var(--np-text-tertiary, rgba(0, 0, 0, 0.3));
+    color: var(--surface-text-tertiary, rgba(0, 0, 0, 0.3));
 }
 
-.notepad .menu-dropdown .menu-item:hover .menu-item-keys {
+.notepad .menu-popup .menu-item:hover .menu-item-keys {
     color: rgba(255, 255, 255, 0.8);
 }
 
 .notepad .menu-sep {
     height: 1px;
-    background: var(--np-divider, rgba(0, 0, 0, 0.08));
+    background: var(--separator, rgba(0, 0, 0, 0.08));
     margin: 4px 8px;
 }
 
 .notepad .menu-toggle-state {
     font-size: 12px;
     font-weight: 600;
-    color: var(--np-accent, #007aff);
+    color: var(--accent, #007aff);
 }
 
-.notepad .menu-dropdown .menu-item:hover .menu-toggle-state {
+.notepad .menu-popup .menu-item:hover .menu-toggle-state {
     color: #fff;
-}
-
-html[data-theme="dark"] .notepad .menu-popup {
-    background: rgba(40, 40, 42, 0.98);
 }
 
 /* ── 第二行：视图切换 ── */
@@ -563,9 +564,8 @@ html[data-theme="dark"] .notepad .editor-source-split::selection {
     margin: 0;
 }
 
-/* 视图切换：根据 data-view 控制显示。
-   隐藏规则必须限定 .editor-area 的直接子元素——分屏预览同样带 .editor-wysiwyg 类，
-   用后代选择器会把预览一起隐藏（分屏右栏变空白）。 */
+/* 视图切换：根据 data-view 控制显示。隐藏规则必须限定 .editor-area 直接子元素——
+   分屏预览同样带 .editor-wysiwyg 类，后代选择器会把预览一起隐藏（分屏右栏变空白）。 */
 .notepad .editor-source-wrap,
 .notepad .editor-split { display: none; }
 
@@ -721,11 +721,8 @@ html[data-theme="dark"] .notepad .editor-source-split::selection {
 
 .notepad .search-bar button:hover { background: var(--np-hover, rgba(0, 0, 0, 0.05)); }
 
-/* 弹窗输入框（core/dialog.js 的 prompt 承载体）
-   注意：这段 HTML 是塞进内核 swift-messagebox 里的，不在 .notepad 子树内，
-   所以拿不到 --np-* 这一层，直接引用系统令牌。对话框本体也是亚克力面
-   （assets/stylesheets/ui/alert.css 的 rgba(250,250,250,.72) / 深色 rgba(46,46,50,.72)），
-   --surface-text 自己会随主题翻，于是深色块里那条 color 覆盖成了死样式，已删。 */
+/* 弹窗输入框（core/dialog.js 的 prompt 承载体）：HTML 塞进内核 swift-messagebox，不在 .notepad
+   子树内，拿不到 --np-*，直接引用系统令牌；--surface-text 随主题自翻，深色无需覆盖 color。 */
 .np-prompt-label { display: block; margin-bottom: 8px; font-size: 13px; }
 
 .np-prompt-input {
@@ -797,8 +794,7 @@ html[data-theme="dark"] .np-prompt-input {
 }
 
 /* ── 窗口尺寸自适应 ──
-   .notepad 是 inline-size 容器：窗口被拖窄时按区域重要性依次让位，
-   而不是靠 min-width 把内容裁掉（window.js 允许缩到 200×150）。 */
+   .notepad 是 inline-size 容器：拖窄时按区域重要性依次让位，而不是靠 min-width 裁掉。 */
 @container np (max-width: 860px) {
     .notepad .sidebar { display: none; }
     .notepad .editor-wysiwyg {
@@ -823,5 +819,5 @@ html[data-theme="dark"] .np-prompt-input {
 
 @container np (max-width: 420px) {
     .notepad .statusbar .stats { display: none; }
-    .notepad .menu-dropdown .menu-item-keys { display: none; }
+    .notepad .menu-popup .menu-item-keys { display: none; }
 }

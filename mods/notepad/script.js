@@ -1,4 +1,4 @@
-/**
+﻿/**
  * script.js — 记事本入口（ES module）
  * 装配 store / 三类编辑器 / 侧边栏 / 标签 / 工具栏 / 查找替换 / 快捷键 / 持久化。
  *
@@ -25,7 +25,7 @@ import { openPopover } from '../../src/javascripts/ui/popover.js';
 const notepadWindow = document.querySelector('.notepad');
 
 function t(key, fallback) {
-    return i18n.t('notepad.' + key, fallback);
+    return i18n.t('notepad.' + key, fallback); // i18n-dynamic-ok: 前缀包装器，键恒以 notepad. 开头且调用点全为字面量
 }
 
 /** 字数按码点统计：Array.from 不会把 emoji 之类的代理对算成两个 */
@@ -237,7 +237,7 @@ function init(root) {
         }
         return d.messageBox({
             title: t('reauthTitle', '需要重新授权'),
-            message: t('reauthMessage', '根目录的访问权限已过期，笔记暂时读不到（磁盘上的内容未改动）。重新授权后即可继续。'),
+            message: t('reauthMessage', '根目录的访问权限已过期，笔记暂时无法读取。磁盘上的内容没有改动。重新授权后即可继续。'),
             dismissValue: null,
             buttons: [
                 { label: t('reauthAction', '重新授权'), value: 'reauth', style: 'primary' },
@@ -397,10 +397,8 @@ function init(root) {
         const popup = root.querySelector('.menu-popup');
         if (!dropdown || !btn || !popup) return { close: () => {}, isOpen: () => false };
 
-        // 菜单经浮出层显示：记事本窗口根带 overflow:hidden + backdrop-filter，
-        // 原地摆 position:fixed 也会被自己裁掉，只能搬出窗口。
-        // scope 里带上 menu-dropdown —— 菜单项的样式是 .notepad .menu-dropdown .menu-item，
-        // 搬出去之后要靠浮层载体上的这两个类名继续命中。
+        // 菜单经浮出层显示：窗口根 overflow:hidden + backdrop-filter 会把原地 fixed 元素裁掉，只能搬出窗口；
+        // scope 带 menu-dropdown —— 菜单项样式是 .notepad .menu-dropdown .menu-item，搬出后靠浮层载体的类名继续命中。
         let handle = null;
         const isOpen = () => Boolean(handle && handle.isOpen());
         const close = () => { if (handle) handle.close(); };
@@ -432,9 +430,7 @@ function init(root) {
             else if (action === 'toggle-md') store.setMarkdown(!store.markdown);
             close();
         });
-        // 「点菜单外部关闭」与 Esc 由 src/javascripts/ui/popover.js 统一负责，
-        // 这里不再自己挂 document mousedown（旧写法还漏了：只判 .menu-dropdown，
-        // 菜单搬出窗口后那个祖先就不存在了）。
+        // 「点菜单外部关闭」与 Esc 由 popover.js 统一负责（旧的 document mousedown 写法只判 .menu-dropdown，菜单搬出窗口后失效）。
         return { close, isOpen };
     }
 
@@ -515,9 +511,8 @@ function init(root) {
     updateMenuMarkdownState(store.markdown);
     const firstPaint = () => { renderActiveView(); updateStatus(); };
 
-    // 恢复期闸门：loadDraft → rehydrateFromVfs 是异步的，而编辑器从这一刻起就能吃输入。
-    // 一条「有落盘路径、正文还没从根目录补回来」的笔记如果被用户敲脏就写回磁盘，
-    // 旧正文就永久没了 —— 所以补回完成前一律不写回，放开时再补排一次。
+    // 恢复期闸门：loadDraft → rehydrateFromVfs 是异步的，而编辑器从这一刻起就能吃输入；
+    // 「有路径、正文未补回」的笔记若被敲脏就写回，旧正文永久丢失——补回完成前一律不写回，放开时再补排一次。
     autosave.pauseWrites();
     storage.loadDraft()
         .catch((err) => {

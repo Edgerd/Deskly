@@ -1,7 +1,7 @@
 <div class="notepad window" data-view="wysiwyg" data-format="md" data-md="on" data-window="size:900x620 centered">
     <deskly-traffic-lights class="wintools" overlay></deskly-traffic-lights>
 
-    <!-- 第一行：菜单（最左侧下拉）+ 标题 —— 它同时是标题栏，从空白处可拖动窗口 -->
+    <!-- 第一行：菜单 + 标题；整条是标题栏（data-titlebar），空白处可拖动窗口 -->
     <div class="toolbar toolbar-primary" data-titlebar>
         <div class="menu-dropdown">
             <button class="btn-menu" data-i18n-title="notepad.menu" title="菜单" aria-haspopup="true" aria-expanded="false">
@@ -155,7 +155,7 @@
         </div>
     </div>
 
-    <!-- 状态栏：文件名 · 行数 · 字数 · 光标 · 保存状态 · 编码 · 格式 -->
+    <!-- 状态栏 -->
     <div class="statusbar">
         <span class="file-info">未命名.md</span>
         <span class="stats"><span class="line-count">行数 1</span> · <span class="word-count">字数 0</span></span>

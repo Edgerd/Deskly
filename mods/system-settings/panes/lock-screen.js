@@ -1,24 +1,22 @@
 /**
  * panes/lock-screen.js — 「系统设置 › 锁定屏幕」面板
  *
- * 空闲自动锁定的分钟数由 lock.js 定义并生效（0 = 从不），滑块标签直接跟着值改写，
- * 免得停在「0 分钟」这种看起来像立刻锁屏的表述上。「立即锁定」调 lock.lockNow("manual")，
- * 与顶栏菜单里的锁定屏幕走同一条路径。
+ * 空闲自动锁定分钟数由 lock.js 定义并生效（0 = 从不），滑块标签跟着值改写，
+ * 免得停在「0 分钟」这种像立刻锁屏的表述；「立即锁定」调 lock.lockNow("manual")，与顶栏菜单同一条路径。
  *
- * 自动锁定与登录密码是一对：只锁不设密码等于没锁。所以开了「解锁需要密码」却没设过密码时，
- * 这里挂一条警示行，点它经 debug.js 的 openSettingsPane("password") 跳到「登录密码」面板。
+ * 只锁不设密码等于没锁：开了「解锁需要密码」却没设过密码时挂警示行，
+ * 点它经 openSettingsPane("password") 跳到「登录密码」面板。
  */
 
 import { lock } from "../../../src/javascripts/lock.js";
 import { openSettingsPane } from "../../../src/javascripts/debug.js";
 import { settings } from "../../../src/javascripts/settings.js";
 import {
-    t, el, group, bind, controlSlider, actionRow, statusRow, usePaneStyle,
+    t, el, group, bind, controlSlider, controlSwitch, actionRow, statusRow, usePaneStyle,
 } from "../ui.js";
 
 export const paneId = "lock-screen";
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {
@@ -27,6 +25,8 @@ export const messages = {
                 autoLock: "闲置自动锁定",
                 never: "从不",
                 minutes: "分钟",
+                bootLock: "启动时锁定",
+                bootLockHint: "打开新标签页时先进入锁定屏幕。",
                 stateGroup: "当前状态",
                 requiresLabel: "解锁需要密码",
                 requiresYes: "已开启",
@@ -51,6 +51,8 @@ export const messages = {
                 autoLock: "Lock After Idle",
                 never: "Never",
                 minutes: "min",
+                bootLock: "Lock at Startup",
+                bootLockHint: "Show the lock screen first on every new tab (requires a password).",
                 stateGroup: "Status",
                 requiresLabel: "Require Password",
                 requiresYes: "On",
@@ -75,6 +77,8 @@ export const messages = {
                 autoLock: "自動ロック",
                 never: "行わない",
                 minutes: "分",
+                bootLock: "起動時にロック",
+                bootLockHint: "新しいタブを開くたびロック画面を表示します（パスワード設定が必要）。",
                 stateGroup: "現在の状態",
                 requiresLabel: "解除にパスワードが必要",
                 requiresYes: "オン",
@@ -99,6 +103,8 @@ export const messages = {
                 autoLock: "放多久就锁屏喵",
                 never: "不锁啦",
                 minutes: "分钟",
+                bootLock: "一开场就锁喵",
+                bootLockHint: "每次开新页都先锁屏喵（要先设好密码）。",
                 stateGroup: "现在的情况喵",
                 requiresLabel: "解锁要密码吗",
                 requiresYes: "要哒",
@@ -131,7 +137,7 @@ const CSS = `
  * @returns {string} 成品文本
  */
 function tt(key, fallback) {
-    return t(`ss.${paneId}.${key}`, fallback);
+    return t(`ss.${paneId}.${key}`, fallback); // i18n-dynamic-ok: 前缀包装器，键域为 ss.<paneId>.* 的字面量短键
 }
 
 /**
@@ -180,7 +186,13 @@ export function build() {
     repaintState();
 
     return el("div", { class: "ss-pane ss-lock-screen" },
-        group([autoRowEl], { title: t("ss.lock-screen.autoGroup", "自动锁定") }),
+        group([
+            autoRowEl,
+            controlSwitch("lock.lockAtBoot", {
+                label: t("ss.lock-screen.bootLock", "启动时锁定"),
+                hint: t("ss.lock-screen.bootLockHint", "打开新标签页时先进入锁定屏幕。"),
+            }),
+        ], { title: t("ss.lock-screen.autoGroup", "自动锁定") }),
 
         group([
             requiresRow,

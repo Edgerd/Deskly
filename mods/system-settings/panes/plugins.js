@@ -57,6 +57,7 @@ export const messages = {
                 reloadBtn: "重新加载",
                 opened: "已打开",
                 reloaded: "已重新加载",
+                reloadSelfBlocked: "不能重新加载正在使用的系统设置，请关闭后重开窗口",
                 failed: "操作失败：",
                 gone: "这个 App 已经不在了。",
                 rowBuiltin: "内置",
@@ -110,6 +111,7 @@ export const messages = {
                 reloadBtn: "Reload",
                 opened: "Opened",
                 reloaded: "Reloaded",
+                reloadSelfBlocked: "Can't reload System Settings while you're using it. Close and reopen the window instead.",
                 failed: "Action failed: ",
                 gone: "This App is no longer here.",
                 rowBuiltin: "Built-in",
@@ -163,6 +165,7 @@ export const messages = {
                 reloadBtn: "再読み込み",
                 opened: "開きました",
                 reloaded: "再読み込みしました",
+                reloadSelfBlocked: "使用中のシステム設定は再読み込みできません。ウインドウを閉じて開き直してください。",
                 failed: "操作失敗：",
                 gone: "この App はもうありません。",
                 rowBuiltin: "内蔵",
@@ -216,6 +219,7 @@ export const messages = {
                 reloadBtn: "重来一遍",
                 opened: "打开啦",
                 reloaded: "重开好了喵",
+                reloadSelfBlocked: "正在用的系统设置不能重来喵，主人先关掉窗口再打开就好啦",
                 failed: "没办成：",
                 gone: "这只 App 不见了的喵。",
                 rowBuiltin: "自带的",
@@ -674,7 +678,7 @@ function hero(entry) {
     });
     acts.append(primary);
 
-    if (entry.enabled) {
+    if (entry.enabled && entry.disableable !== false) {
         const off = el("button", { class: "ss-btn", attrs: { type: "button" }, dataset: { action: "disable" }, text: t("ss.plugins.disableBtn", "禁用") });
         off.addEventListener("click", () => toggleEnabled(entry.id, false, status));
         acts.append(off);
@@ -682,12 +686,15 @@ function hero(entry) {
 
     acts.append(reloadButton(entry.id, entry.name, status, entry.enabled, "ss-btn"), status);
 
+    const bylineText = entry.disableable === false && entry.disableReason
+        ? `${byline(entry)} · ${entry.disableReason}`
+        : byline(entry);
     return el("header", { class: "ss-apps__hero" },
         el("span", { class: entry.enabled ? "" : "ss-apps__hero-off" }, icon(entry.icon, entry.name, "ss-apps__hero-icon")),
         el("div", { class: "ss-apps__hero-main" },
             el("h3", { class: "ss-apps__hero-name", text: entry.name }),
             el("p", { class: "ss-apps__tagline", text: (entry.store && entry.store.tagline) || entry.description || "" }),
-            el("p", { class: "ss-apps__byline", text: byline(entry) }),
+            el("p", { class: "ss-apps__byline", text: bylineText }),
             acts));
 }
 
@@ -864,6 +871,11 @@ function reloadButton(id, name, status, enabled, cls = "ss-btn ss-btn--small") {
  */
 async function runAction(button, status, id, kind) {
     if (button.disabled || !id) return;
+    // 重载自己 = 当场拆掉用户正在看的窗口，flash 写进已 detach 的节点，用户什么都看不到（BUG-63）
+    if (kind === "reload" && id === "system-settings") {
+        flash(status, t("ss.plugins.reloadSelfBlocked", "不能重新加载正在使用的系统设置，请关闭后重开窗口"));
+        return;
+    }
     button.disabled = true;
     try {
         if (kind === "reload") {
@@ -885,7 +897,7 @@ async function runAction(button, status, id, kind) {
 }
 
 /**
- * 启用 / 禁用：store-api 可能拒绝（应用商店自己不能被禁用 —— 关掉它再没有界面能开回来），
+ * 启用 / 禁用：store-api 可能拒绝系统应用（visibility.system 的启动台等），
  * 拒绝理由写进状态位，不抛错也不弹窗。
  * @param {string} id App id
  * @param {boolean} on 目标状态

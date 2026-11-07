@@ -83,14 +83,19 @@ function clampSize(n) {
     return Math.max(MIN, Math.min(MAX, n));
 }
 
+/** 安全读取 localStorage：存储被禁用的嵌入上下文里读访问本身会抛 SecurityError（BUG-42）。 */
+function safeGetItem(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+}
+
 /** 当前光标尺寸（像素），存储缺失或非法时取默认 28 并钳进 16..64。 */
 export function getCursorSize() {
-    return clampSize(localStorage.getItem(LS.size));
+    return clampSize(safeGetItem(LS.size));
 }
 
 /** 光标阴影是否开启：默认开启，只有显式写入 "off" 才关闭。 */
 export function getCursorShadow() {
-    return localStorage.getItem(LS.shadow) !== "off";
+    return safeGetItem(LS.shadow) !== "off";
 }
 
 /** 最近一次生成的 cursor CSS 值（供设置界面做悬浮预览），未生成时为空串。 */
@@ -195,28 +200,111 @@ function injectStyle(css) {
     _styleEl.textContent = css;
 }
 
-/** 临时放大指针的定时器（同一时刻只允许一次，避免连续晃动把计时器叠起来）。 */
-let _pulseTimer = null;
+/** 进行中的放大动画句柄（rAF id；同一时刻只允许一次，连续触发先取消再重排）。 */
+let _pulseAnim = 0;
+let _pulseFallbackTimer = null;
+
+/**
+ * 晃动放大的目标倍数：mouse.shakeScale（设置中枢），缺省 1.6，钳进 1.1–4.0。
+ * 设置面板拖动滑块时经 previewCursorScale 实时预览同一份值，两处不各读各的。
+ */
+function shakeFactor() {
+    const raw = Number(globalThis.__settings?.get?.("mouse.shakeScale"));
+    return Number.isFinite(raw) ? Math.max(1.1, Math.min(4, raw)) : 1.6;
+}
+
+/** 回弹过冲系数：mouse.shakeOvershoot，缺省 1.12（过冲 12%），1 = 无过冲。 */
+function shakeOvershoot() {
+    const raw = Number(globalThis.__settings?.get?.("mouse.shakeOvershoot"));
+    return Number.isFinite(raw) ? Math.max(1, Math.min(1.4, raw)) : 1.12;
+}
+
+/** 放大态的像素上限：放大要明显，不受用户光标尺寸上限（64px）约束。 */
+const PULSE_MAX = 128;
+/** 放大态像素钳制：基准 ≥1、上限 PULSE_MAX。 */
+function clampPulseSize(n) {
+    return Math.max(MIN, Math.min(PULSE_MAX, Math.round(n)));
+}
+
+/** 「减少动态效果」开启时放大退化为瞬时（data-reduce-motion 由设置中枢维护）。 */
+function reduceMotionOn() {
+    return document.documentElement?.dataset?.reduceMotion === "on";
+}
+
+function cancelPulse() {
+    if (_pulseAnim) { cancelAnimationFrame(_pulseAnim); _pulseAnim = 0; }
+    if (_pulseFallbackTimer) { clearTimeout(_pulseFallbackTimer); _pulseFallbackTimer = null; }
+}
+
+const _easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const _easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
 /**
  * 短暂放大指针（macOS「晃动以查找指针」的视觉反馈）。
  *
- * 只改注入样式里的 CSS 变量，不写用户设置：放大结束后立刻按当前设置重建，
- * 因此拖动滑块改过尺寸也不会被覆盖。自定义 .cur / .ani 本身无法缩放，
- * buildCursor 会原样返回，此时该函数等于空操作。
- * @param {number} [ms=1200] 放大的持续时间
+ * 动画分四段：放大并略过冲（240ms）→ 回落到目标倍数（90ms）→ 保持（ms）→
+ * 平滑收回（240ms），全部走注入样式里的光标尺寸帧（光标本身无法 CSS 过渡，
+ * 逐帧重建 data-URI 是唯一途径；每帧只改尺寸不动热点比例，视觉连续）。
+ * 「减少动态效果」开启时退化为瞬时放大 + 定时还原。
+ * 只改注入样式，不写用户设置：结束后按当时的 cursor.size 重建，拖过滑块也不被覆盖。
+ * @param {number} [ms=1200] 放大后的保持时长
  * @returns {void}
  */
 export function pulseCursor(ms = 1200) {
-    if (_pulseTimer) return;
+    cancelPulse();
     const base = getCursorSize();
-    const boosted = clampSize(Math.round(base * 1.8));
-    if (boosted <= base) return;
-    injectStyle(buildCSS(boosted, getCursorShadow()));
-    _pulseTimer = setTimeout(() => {
-        _pulseTimer = null;
-        injectStyle(buildCSS(getCursorSize(), getCursorShadow()));
-    }, ms);
+    const target = clampPulseSize(base * shakeFactor());
+    if (target <= base) return;
+    const shadow = getCursorShadow();
+    if (reduceMotionOn() || typeof requestAnimationFrame !== "function") {
+        injectStyle(buildCSS(target, shadow));
+        _pulseFallbackTimer = setTimeout(() => {
+            _pulseFallbackTimer = null;
+            injectStyle(buildCSS(getCursorSize(), getCursorShadow()));
+        }, ms);
+        return;
+    }
+    const overshoot = clampPulseSize(target * shakeOvershoot());
+    const ATTACK = 240;
+    const SETTLE = 90;
+    const RELEASE = 240;
+    const holdStart = ATTACK + SETTLE;
+    const releaseStart = holdStart + ms;
+    const total = releaseStart + RELEASE;
+    const t0 = performance.now();
+    const frame = (now) => {
+        const t = now - t0;
+        let size;
+        if (t < ATTACK) size = base + (overshoot - base) * _easeOut(t / ATTACK);
+        else if (t < holdStart) size = overshoot + (target - overshoot) * _easeOut((t - ATTACK) / SETTLE);
+        else if (t < releaseStart) size = target;
+        else if (t < total) size = target + (base - target) * _easeInOut((t - releaseStart) / RELEASE);
+        else {
+            _pulseAnim = 0;
+            injectStyle(buildCSS(getCursorSize(), getCursorShadow()));
+            return;
+        }
+        injectStyle(buildCSS(Math.round(size), shadow));
+        _pulseAnim = requestAnimationFrame(frame);
+    };
+    _pulseAnim = requestAnimationFrame(frame);
+}
+
+/**
+ * 设置面板的「晃动放大倍数」实时预览：拖动中把光标临时渲染成 base×factor，
+ * 传 null 结束预览并按当前设置还原。与 pulseCursor 同一套注入路径，不碰用户设置。
+ * @param {number|null} factor 预览倍数；null 结束预览
+ * @returns {void}
+ */
+export function previewCursorScale(factor) {
+    cancelPulse();
+    const shadow = getCursorShadow();
+    if (factor === null || factor === undefined) {
+        injectStyle(buildCSS(getCursorSize(), shadow));
+        return;
+    }
+    const size = clampPulseSize(getCursorSize() * Math.max(1.1, Math.min(4, Number(factor) || 1.6)));
+    injectStyle(buildCSS(size, shadow));
 }
 
 /**
@@ -444,6 +532,6 @@ export async function setCursorImage(role, img) {
 
 /** 清除某角色的自定义光标，恢复内置。 */
 export async function clearCursorImage(role) {
-    localStorage.removeItem(CUSTOM_PREFIX + role);
+    try { localStorage.removeItem(CUSTOM_PREFIX + role); } catch { /* 存储被禁用时本次会话仍生效（BUG-42） */ }
     await applyCursor();
 }

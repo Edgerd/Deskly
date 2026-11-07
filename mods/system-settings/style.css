@@ -134,7 +134,7 @@ html[data-theme="dark"] .settings {
     position: absolute;
     top: 0;
     left: 0;
-    width: 214px;
+    width: 236px;
     height: 38px;
     display: flex;
     align-items: center;
@@ -148,12 +148,14 @@ html[data-theme="dark"] .settings {
     pointer-events: auto;
 }
 
-/* 侧栏：毛玻璃 + 墙纸着色（与 window.css 给 .window > .left 的那套同一浓度） */
+/* 侧栏：毛玻璃 + 墙纸着色（与 window.css 给 .window > .left 的那套同一浓度）。
+   宽度 236px：214px 时代「桌面与程序坞 / 隐私与安全性 / デスクトップとDock」
+   这类长名会被省略号截断；236 给文字留足 195px+，四语最长条目都完整显示。 */
 .settings > .ss-sidebar {
-    flex: 0 0 214px;
-    width: 214px;
-    min-width: 214px;
-    max-width: 214px;
+    flex: 0 0 236px;
+    width: 236px;
+    min-width: 236px;
+    max-width: 236px;
     height: 100%;
     padding-top: 38px;
     display: flex;
@@ -255,10 +257,12 @@ html[data-transparency="off"] .settings > .ss-sidebar {
     color: var(--ss-text-tertiary);
 }
 
+/* 聚焦反馈收敛：不切实心白底（一切就像换了控件、亚克力感当场消失），
+   保持 --ss-field-bg 不变，只给一道更明确的描边 + 外环 + 极浅内阴影。 */
 .settings .ss-search:focus-visible {
-    border-color: rgba(var(--accent-rgb), 0.75);
-    box-shadow: 0 0 0 3px var(--ss-ring);
-    background: var(--ss-control-bg);
+    border-color: rgba(var(--accent-rgb), 0.55);
+    box-shadow: 0 0 0 3px var(--ss-ring), inset 0 1px 2px rgba(0, 0, 0, 0.04);
+    background: var(--ss-field-bg);
 }
 
 .settings .ss-search__glyph {
@@ -1108,9 +1112,83 @@ html[data-sidebar-size="large"] .settings .ss-item {
     -webkit-user-select: text;
 }
 
+/* 与搜索框同一套收敛聚焦：底色不动，只动描边与外环（深浅主题各由其令牌换算）。 */
 .settings .ss-input:focus-visible {
-    border-color: rgba(var(--accent-rgb), 0.75);
+    border-color: rgba(var(--accent-rgb), 0.55);
     box-shadow: 0 0 0 3px var(--ss-ring);
+}
+
+/* 下拉触发钮的聚焦与输入控件同规则（此前只有 hover，键盘聚焦毫无反馈） */
+.settings .ss-dropdown:focus-visible {
+    border-color: rgba(var(--accent-rgb), 0.55);
+    box-shadow: 0 0 0 3px var(--ss-ring);
+    outline: none;
+}
+
+/* 原生文件选择控件：裸 <input type="file"> 会带回浏览器默认的灰底浮雕钮
+   （鼠标面板「选择文件」截图的返祖样式）。按钮部分统一成 .ss-btn 同款，
+   后面的「未选择任何文件」文本跟随控件字体与次级色，排版自然对齐。 */
+.settings input[type="file"] {
+    max-width: 100%;
+    font: inherit;
+    font-size: 12px;
+    color: var(--ss-text-secondary);
+}
+
+.settings input[type="file"]::file-selector-button {
+    height: 26px;
+    padding: 0 12px;
+    margin-right: 10px;
+    border: 1px solid var(--ss-control-border);
+    border-radius: 7px;
+    background: var(--ss-control-bg);
+    color: var(--ss-text);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.settings input[type="file"]::file-selector-button:hover {
+    background: var(--ss-hover);
+}
+
+.settings input[type="file"]::file-selector-button:active {
+    background: var(--ss-pressed);
+}
+
+.settings input[type="file"]:disabled::file-selector-button {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.settings input[type="file"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 7px;
+}
+
+/* 原生 <select>（调试面板的来源筛选）：默认外观与全套控件不搭，统一成
+   下拉触发钮同款描边药丸；appearance:none 后补一枚中性灰箭头（深浅底都可见）。 */
+.settings .ss-select {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 26px;
+    padding: 0 26px 0 10px;
+    border: 1px solid var(--ss-control-border);
+    border-radius: 7px;
+    background: var(--ss-control-bg)
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")
+        no-repeat right 8px center / 8px;
+    color: var(--ss-text);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.settings .ss-select:focus-visible {
+    border-color: rgba(var(--accent-rgb), 0.55);
+    box-shadow: 0 0 0 3px var(--ss-ring);
+    outline: none;
 }
 
 /* 按钮 */

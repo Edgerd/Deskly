@@ -2,11 +2,8 @@
  * panes/controlcenter.js — 「系统设置 › 控制中心」面板
  *
  * 面板不硬编码字段清单：`settings.list({prefix:"controlcenter."})` 返回什么就渲染什么，
- * controlcenter.js 以后加开关、改标签都不用回来改这里。定义本身来自
- * CONTROL_CENTER_FIELDS（由 settings-definitions.js 落成 switch / slider 控件）。
- *
- * 生效链路是真实的：写入经设置中枢广播 `settings-changed`，controlcenter.js 监听后
- * 把值并回它的内存镜像并重绘面板，所以这里的每次拨动都会立刻反映到控制中心。
+ * 定义来自 CONTROL_CENTER_FIELDS。写入经设置中枢广播 `settings-changed`，controlcenter.js
+ * 并回内存镜像重绘面板，每次拨动立刻反映到控制中心。
  */
 
 import { settings } from "../../../src/javascripts/settings.js";
@@ -17,7 +14,6 @@ import {
 
 export const paneId = "controlcenter";
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {

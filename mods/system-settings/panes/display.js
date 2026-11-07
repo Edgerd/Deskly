@@ -1,10 +1,9 @@
 /**
  * panes/display.js — 「系统设置 › 显示器」面板
  *
- * 亮度、夜览、夜览强度、夜览自动四个设置项的权威在 display.js（它定义并 apply），
- * 本面板只读只写设置中枢，因此与控制中心里的亮度滑块改的是同一份值、互相回灌。
- * 压暗遮罩元素本身属于 controlcenter.js，这里不重复造一个覆盖层，只放一块
- * 用同一组数值实时上色的预览。
+ * 四个设置项的权威在 display.js（它定义并 apply），本面板只读写设置中枢，
+ * 与控制中心亮度滑块改的是同一份值。压暗遮罩属于 controlcenter.js，
+ * 这里不重复造覆盖层，只放一块用同组数值实时上色的预览。
  */
 
 import { settings } from "../../../src/javascripts/settings.js";
@@ -15,7 +14,6 @@ import {
 
 export const paneId = "display";
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {
@@ -75,7 +73,9 @@ export const messages = {
     },
 };
 
-/** 暖色压层与真实界面用同一个色值与混合模式（对齐 display.js 的 WARM_COLOR）。 */
+/** 暖色压层与真实界面用同一个色值（对齐 display.js 的 WARM_COLOR）。
+ *  预览块不带 blend-mode：页面里任何 mix-blend-mode 元素都会让 Chromium 的
+ *  backdrop-filter 采样失效，侧栏毛玻璃会整块退化成平色。 */
 const WARM_COLOR = "rgb(255, 170, 90)";
 const STEPS = [0, 0.25, 0.5, 0.75, 1];
 
@@ -84,8 +84,8 @@ const CSS = `
 .ss-display .ss-display__screen { position: relative; height: 96px; border-radius: 12px; overflow: hidden;
   background: linear-gradient(150deg,#f4f6fb,#dfe6f2); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
 .ss-display .ss-display__screen span { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: #1d1d1f; }
-.ss-display .ss-display__tint { position: absolute; inset: 0; pointer-events: none; background: ${WARM_COLOR}; mix-blend-mode: multiply; }
-.ss-display .ss-display__dim { position: absolute; inset: 0; pointer-events: none; background: #000; mix-blend-mode: multiply; }
+.ss-display .ss-display__tint { position: absolute; inset: 0; pointer-events: none; background: ${WARM_COLOR}; }
+.ss-display .ss-display__dim { position: absolute; inset: 0; pointer-events: none; background: #000; }
 .ss-display .ss-display__steps { display: flex; gap: 6px; }
 .ss-display__swatch { flex: 1 1 0; height: 34px; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14);
   background: ${WARM_COLOR}; }

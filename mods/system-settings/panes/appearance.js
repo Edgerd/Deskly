@@ -2,18 +2,13 @@
  * panes/appearance.js — 「外观」面板：主题、强调色、高亮色、边栏尺寸、亚克力表面与动效
  *
  * 四项硬约束：
- * 1. 只渲染设置定义里存在、且没有 hidden 的键。`appearance.scroll.click` 是浏览器原生
- *    滚动条行为（网页既不能接管也无法用 CSS 表达「点按位置」），定义里标了 hidden，
- *    这里就不给它任何界面位置 —— 与 registry 里 implemented:false 的面板同一个道理。
- * 2. 色值以内核为准：强调色取 settings 定义里的 valueColors，缺失时回退到与
- *    appearance.js 的 COLOR_MAP 同序同值的一份本地镜像（内核值是 #0a82ff，绝不另起一个蓝）。
- * 3. 所有选项表都在 build() 里现算：模块只有一份实例、build 每次切换面板都会重跑，
- *    所以语言切换后选项标签一定跟着换（旧版算在模块求值时，从此冻在中文）。
- * 4. 表面系统（src/javascripts/surface.js）的三档参数只做「读写设置 + 展示推导结果」：
- *    模糊等级的五个档位取自定义（values / valuesLabel，缺失时退到 __surface.levels()），
- *    着色浓度与色调偏移把 key 交给 row()，由 ui.js 的 wireRequires 依 `requires` 禁用，
- *    预览小样的底色 / 文字色 / 等级一律读 __surface.stats() 与 <html> 上的令牌，
- *    面板自己不再算第二遍 —— 两处算法迟早分叉，分叉了界面就变成假读数。
+ * 1. 只渲染设置定义里未标 hidden 的键（无消费者的死键不入界面，与 registry 里
+ *    implemented:false 的面板同理，不给界面位置）。
+ * 2. 色值以内核为准：取定义里的 valueColors，缺失时回退到与 appearance.js 的 COLOR_MAP
+ *    同序同值的本地镜像（内核值 #0a82ff，绝不另起一个蓝）。
+ * 3. 选项表都在 build() 里现算，语言切换后重建面板才跟着换词（旧版算在模块求值时，从此冻在中文）。
+ * 4. 表面系统（surface.js）的三档参数只做「读写设置 + 展示推导结果」：读数一律读
+ *    __surface.stats() 与 <html> 令牌，面板不另算第二遍（两处算法迟早分叉，分叉即假读数）。
  */
 
 import { settings } from "../../../src/javascripts/settings.js";
@@ -46,7 +41,6 @@ const COLOR_MAP = {
     gray: "#8D8D8D",
 };
 
-/** 面板语言包。 */
 export const messages = {
     "zh-CN": {
         ss: {
@@ -234,7 +228,7 @@ html[data-wallpaper-tint="on"][data-theme="dark"] .settings .ss-pane-appearance 
  * @returns {string} 当前语言的名称
  */
 function colorName(key) {
-    return t(`ss.appearance.colors.${key}`, COLOR_FALLBACK[key] || key);
+    return t(`ss.appearance.colors.${key}`, COLOR_FALLBACK[key] || key); // i18n-dynamic-ok: 键域为 COLOR_FALLBACK 的有限颜色键
 }
 
 /**
@@ -249,10 +243,9 @@ function accentColor(definition, key) {
 }
 
 /**
- * 模糊等级的档位表：值与标签都来自设置定义（owner 是 surface.js），面板这里不数 0–4。
- * 标签先查当前语言的 ss.appearance.blurLevels.<值>，没有就用定义里的 valuesLabel ——
- * 于是「语言切换后重建面板」一定换新词，而内核改了档位文案时这里自动跟上。
- * 定义还没注册（内核未就绪的极端时序）时退到 __surface.levels()，同样是那一份来源。
+ * 模糊等级档位表：值与标签取自设置定义（owner 是 surface.js），面板不数 0–4。
+ * 标签先查语言包再退定义里的 valuesLabel，语言切换重建后一定换新词；
+ * 定义未注册（内核未就绪的极端时序）时退到 __surface.levels()，同一份来源。
  * @returns {Array<{value:number,label:string}>} 分段选项
  */
 function blurOptions() {
@@ -268,9 +261,8 @@ function blurOptions() {
 }
 
 /**
- * 亚克力表面小样：一块真磨砂芯片，文字色随底色自动推导。
- * 芯片登记进 __surface 后，它拿到的文字色与全站其它磨砂表面走同一条局部推导；
- * apply() 返回的注销函数交给 track()，面板销毁时由 disposeAll() 释放，避免监听泄漏。
+ * 亚克力表面小样：芯片登记进 __surface，文字色与全站其它磨砂表面走同一条推导；
+ * apply() 的注销函数交 track()，面板销毁时由 disposeAll() 释放，避免监听泄漏。
  * @returns {HTMLElement} 小样行
  */
 function surfaceStrip() {
@@ -396,8 +388,7 @@ export function build(ctx) {
                 label: t("ss.appearance.tint", "允许墙纸为窗口着色"),
             }),
             // 这两个滑块与上面的开关是一个单元：定义里写着 requires: "appearance.wallpaper.tint"，
-            // 控件工厂把 key 转交给 row()，ui.js 的 wireRequires 就会读依赖、给整行加
-            // ss-row--disabled 并禁用行内 input/button，开关拨回来时自动恢复。
+            // ui.js 的 wireRequires 据此给整行加 ss-row--disabled 并禁用控件，开关拨回自动恢复。
             controlSlider("appearance.tintStrength", {
                 label: t("ss.appearance.strength", "着色浓度"),
                 // min/max/step 由 controlSlider 自己从定义取；format / units 它只认调用方传的，
@@ -432,12 +423,6 @@ export function build(ctx) {
     return root;
 }
 
-/**
- * 面板销毁：本模块不持有跨面板的资源。
- * 设置订阅（bind）、依赖禁用（wireRequires）、小样的 __surface.subscribe / apply
- * 与所有 document·window 监听都在 build 里经 track() 登记，由 ui.js 的 disposeAll()
- * 统一释放——入口脚本每次打开都会重跑，漏登记的那一个就会一直拖着旧的 DOM。
- * @returns {void}
- */
+/** 面板销毁：订阅与监听都在 build 里经 track() 登记，由 ui.js 的 disposeAll() 统一释放（入口每次打开重跑，漏登记的会拖着旧 DOM）。 */
 export function destroy() { }
 

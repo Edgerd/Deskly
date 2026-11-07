@@ -299,9 +299,9 @@ export function build() {
                 return;
             }
             const ok = await window.__dialog?.confirm?.(
-                t("ss.privacy.wipeTitle", "确定要清除所有本地数据吗？"),
-                t("ss.privacy.wipeMessage", "清除后无法恢复，挂载的文件夹不会被删除。"),
-                { okText: t("ss.privacy.wipeOk", "清除"), cancelText: t("ss.privacy.wipeCancel", "取消") }
+                t("ss.privacy.wipeTitle", "要清除所有本地数据吗？"),
+                t("ss.privacy.wipeMessage", "清除后无法恢复。挂载的文件夹不会被删除。"),
+                { okText: t("ss.privacy.wipeOk", "清除"), cancelText: t("ss.privacy.wipeCancel", "取消"), danger: true }
             );
             if (!ok) return;
             const result = await permissions.resetAll({ confirm: true });

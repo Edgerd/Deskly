@@ -39,17 +39,23 @@ const LS = {
     sidebar: "appearance-sidebar-size",
     tint: "appearance-wallpaper-tint",
     scrollbars: "appearance-scrollbars",
-    scrollClick: "appearance-scroll-click",
 };
 
+/**
+ * 安全读取 localStorage：存储访问本身抛 SecurityError 的环境（禁用 Cookie/存储的嵌入
+ * 上下文）里，裸读会把异常抛进滚动/右键等事件处理器（BUG-42）。读不到就按默认值走。
+ */
+function safeGetItem(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+}
+
 export const appearance = {
-    getTheme: () => localStorage.getItem(LS.theme) || "light",
-    getAccent: () => localStorage.getItem(LS.accent) || "multicolor",
-    getHighlight: () => localStorage.getItem(LS.highlight) || "accent",
-    getSidebarSize: () => localStorage.getItem(LS.sidebar) || "medium",
-    getTint: () => localStorage.getItem(LS.tint) || "off",
-    getScrollbars: () => localStorage.getItem(LS.scrollbars) || "auto",
-    getScrollClick: () => localStorage.getItem(LS.scrollClick) || "next-page",
+    getTheme: () => safeGetItem(LS.theme) || "light",
+    getAccent: () => safeGetItem(LS.accent) || "multicolor",
+    getHighlight: () => safeGetItem(LS.highlight) || "accent",
+    getSidebarSize: () => safeGetItem(LS.sidebar) || "medium",
+    getTint: () => safeGetItem(LS.tint) || "off",
+    getScrollbars: () => safeGetItem(LS.scrollbars) || "auto",
 };
 
 /**
@@ -105,8 +111,10 @@ function applyAccent(value) {
     const color = COLOR_MAP[v] || COLOR_MAP.multicolor;
     document.documentElement.style.setProperty("--accent", color);
     document.documentElement.style.setProperty("--accent-rgb", hexToRgb(color));
-    // 高亮色若固定为「主题色」，则跟随强调色实时更新，避免会话内保留 stale 值
-    if (localStorage.getItem(LS.highlight) === "accent") applyHighlight("accent");
+    // 高亮色若固定为「主题色」，则跟随强调色实时更新，避免会话内保留 stale 值。
+    // 默认值就是 "accent" 但从不落盘：getItem 返回 null 时必须按默认语义判定（BUG-35），
+    // 否则全新档案改强调色时 --highlight 永远停在旧色。
+    if (appearance.getHighlight() === "accent") applyHighlight("accent");
     window.dispatchEvent(new CustomEvent("appearance-accent-change", { detail: v }));
 }
 
@@ -168,19 +176,12 @@ function applyScrollbars(value) {
     window.dispatchEvent(new CustomEvent("appearance-scrollbars-change", { detail: v }));
 }
 
-function applyScrollClick(value) {
-    const v = value || appearance.getScrollClick();
-    document.documentElement.setAttribute("data-scroll-click", v);
-    window.dispatchEvent(new CustomEvent("appearance-scroll-click-change", { detail: v }));
-}
-
 export function setTheme(v) { safeSetItem(LS.theme, v); applyTheme(v); }
 export function setAccent(v) { safeSetItem(LS.accent, v); applyAccent(v); }
 export function setHighlight(v) { safeSetItem(LS.highlight, v); applyHighlight(v); }
 export function setSidebarSize(v) { safeSetItem(LS.sidebar, v); applySidebar(v); }
 export function setTint(v) { safeSetItem(LS.tint, v); applyTint(v); }
 export function setScrollbars(v) { safeSetItem(LS.scrollbars, v); applyScrollbars(v); }
-export function setScrollClick(v) { safeSetItem(LS.scrollClick, v); applyScrollClick(v); }
 
 let _mqBound = false;
 let _wallpaperTintBound = false;
@@ -191,7 +192,6 @@ export function initAppearance() {
     applySidebar();
     applyTint();
     applyScrollbars();
-    applyScrollClick();
 
     // 「自动」模式下跟随系统明暗变化
     if (window.matchMedia && !_mqBound) {

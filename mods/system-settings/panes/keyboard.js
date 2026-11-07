@@ -1,12 +1,11 @@
 /**
  * panes/keyboard.js — 「系统设置 › 键盘」面板
  *
- * 上半部分是真实开关：keyboard.menuShortcuts 会广播 `keyboard-shortcut-hints-change`，
- * 顶栏菜单右侧那列 ⌘N 提示直接跟着显示或隐藏。
+ * 上半部分是真实开关：keyboard.menuShortcuts 广播 `keyboard-shortcut-hints-change`，
+ * 顶栏菜单右侧的 ⌘N 提示列跟着显隐。
  *
- * 下半部分是快捷键总表：数据由 finderbar.js 的 getShortcutMap() 提供（菜单树里带
- * shortcut 的项），本面板只做过滤与复制，不另立一份表 —— 两处各抄一遍必然漂移。
- * 该导出缺失时如实显示空态，不编造条目。
+ * 下半部分是快捷键总表：数据来自 finderbar.js 的 getShortcutMap()，本面板只过滤与复制，
+ * 不另抄一份（两处各抄必然漂移）；导出缺失时如实显示空态，不编造条目。
  */
 
 import * as finderbarApi from "../../../src/javascripts/finderbar.js";
@@ -17,7 +16,6 @@ import {
 
 export const paneId = "keyboard";
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {

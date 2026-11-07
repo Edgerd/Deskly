@@ -1,7 +1,7 @@
 {
   "id": "system-settings",
   "name": "系统设置",
-  "version": "2.0.0",
+  "version": "2.4.0",
   "type": "app",
   "entry": "window",
   "author": "Edgerd",

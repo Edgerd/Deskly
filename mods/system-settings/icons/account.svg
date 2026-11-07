@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="account">
+  <title>account</title>
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#007AFF"/>
+  <circle cx="12" cy="9.4" r="2.75" fill="#fff"/><path fill="#fff" d="M12 12.8c-3.15 0-5.35 2.0-5.35 4.8h10.7c0-2.8-2.2-4.8-5.35-4.8z"/>
+</svg>

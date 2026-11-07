@@ -38,7 +38,7 @@ export const messages = {
                 networkFailed: "这张图片没能载入", uploadTitle: "本地图片",
                 uploadButton: "选择图片",
                 uploadBusy: "正在压缩…", uploadFailed: "本地图片设置失败",
-                uploadSize: "压缩后约 {v}，已写入本机存储", uploadSizeWarn: "体积偏大，本机存储可能装不下",
+                uploadSize: "压缩后约 {v}，已写入本机存储", uploadNotPersisted: "本次未持久化，刷新后会恢复",
                 resetTitle: "默认墙纸", resetButton: "恢复默认",
                 quota: "本机存储占用",
             },
@@ -59,7 +59,7 @@ export const messages = {
                 networkFailed: "That image could not be loaded", uploadTitle: "Local image",
                 uploadButton: "Choose image",
                 uploadBusy: "Compressing…", uploadFailed: "Could not apply the local image",
-                uploadSize: "Compressed to about {v} and stored locally", uploadSizeWarn: "Quite large — local storage may not fit it",
+                uploadSize: "Compressed to about {v} and stored locally", uploadNotPersisted: "Not persisted; it reverts after a reload",
                 resetTitle: "Default wallpaper", resetButton: "Restore default",
                 quota: "Local storage used",
             },
@@ -80,7 +80,7 @@ export const messages = {
                 networkFailed: "画像を読み込めませんでした", uploadTitle: "ローカルの画像",
                 uploadButton: "画像を選ぶ",
                 uploadBusy: "圧縮中…", uploadFailed: "ローカル画像を適用できませんでした",
-                uploadSize: "圧縮後およそ {v}、本機に保存しました", uploadSizeWarn: "サイズが大きめです。本機保存容量に収まらないことがあります",
+                uploadSize: "圧縮後およそ {v}、本機に保存しました", uploadNotPersisted: "今回は永続化されず、再読み込みで戻ります",
                 resetTitle: "既定の壁紙", resetButton: "既定に戻す",
                 quota: "本機保存の使用量",
             },
@@ -101,7 +101,7 @@ export const messages = {
                 networkFailed: "這張圖打不開喵~", uploadTitle: "主人的圖片喵",
                 uploadButton: "選張圖喵",
                 uploadBusy: "正在壓小喵…", uploadFailed: "主人的圖放不上去喵~",
-                uploadSize: "壓完大約 {v}，已經收進本機喵~", uploadSizeWarn: "有點大喵，本機的位置可能塞不下",
+                uploadSize: "壓完大約 {v}，已經收進本機喵~", uploadNotPersisted: "今次冇存落去喵，刷新會變返",
                 resetTitle: "默認壁紙喵", resetButton: "換回默認喵",
                 quota: "本機被占了多少喵",
             },
@@ -137,9 +137,6 @@ const PANE_CSS = `
 .ss-wp__cell--on span { color: var(--ss-text); font-weight: 600; }
 .ss-wp__file { display: none; }
 `;
-
-/** 上传后多大算「偏大」：localStorage 配额通常 5MB，base64 还会膨胀约 4/3。 */
-const LARGE_BYTES = 1.5 * 1024 * 1024;
 
 /** 字节数说成人类可读的文本。 */
 function formatBytes(bytes) {
@@ -203,9 +200,16 @@ export function build(ctx) {
         attrs: { type: "file", accept: "image/*", tabindex: "-1", "aria-hidden": "true" },
     });
 
-    const typeName = (type) => t(`ss.wallpaper.type.${type}`, {
-        default: "内置默认", system: "系统内置", network: "网络地址", upload: "本地上传", bing: "Bing 每日",
-    }[type] || type);
+    const typeName = (() => {
+        const table = {
+            default: t("ss.wallpaper.type.default", "内置默认"),
+            system: t("ss.wallpaper.type.system", "系统内置"),
+            network: t("ss.wallpaper.type.network", "网络地址"),
+            upload: t("ss.wallpaper.type.upload", "本地上传"),
+            bing: t("ss.wallpaper.type.bing", "Bing 每日"),
+        };
+        return (type) => table[type] || type;
+    })();
 
     /** 按 wallpaper 模块的当前配置重画预览、名称、来源与网格选中态。 */
     const refresh = () => {
@@ -285,17 +289,16 @@ export function build(ctx) {
             const file = await pickFile(fileInput);
             if (!file) return;
             try {
-                const dataUrl = await wallpaper.uploadLocal(file);
-                const stored = Math.round(dataUrl.length * 0.75);
-                const sizeText = formatBytes(stored);
+                const result = await wallpaper.uploadLocal(file);
+                const sizeText = formatBytes(result.bytes || 0);
                 refresh();
                 quotaRow.setValue(sizeText);
-                const message = tf("ss.wallpaper.uploadSize", `压缩后约 ${sizeText}，已写入本机存储`, { v: sizeText });
-                if (stored > LARGE_BYTES) {
-                    showErrorDialog(t("ss.wallpaper.uploadSizeWarn", "体积偏大，本机存储可能装不下"), message);
-                } else {
-                    log.info("plugin/system-settings", `${message}`);
-                }
+                // 本体在 IndexedDB（不再挤 localStorage 配额），persisted=false 时
+                // wallpaper.js 自己已弹过提示，这里只把结果写进运行记录。
+                const message = result.persisted
+                    ? tf("ss.wallpaper.uploadSize", `压缩后约 ${sizeText}，已写入本机存储`, { v: sizeText })
+                    : t("ss.wallpaper.uploadNotPersisted", "本次未持久化，刷新后会恢复");
+                log.info("plugin/system-settings", message);
             } catch (err) {
                 showErrorDialog(
                     t("ss.wallpaper.uploadFailed", "本地图片设置失败"),

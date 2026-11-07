@@ -30,6 +30,7 @@ export const messages = {
                 mounted: "已挂载", notMounted: "未挂载", reauth: "需要重新授权",
                 mountTitle: "挂载本地文件夹",
                 mountButton: "选择文件夹…", mountBusy: "等待选择…",
+                whereDisk: "本地文件夹 {name}",
                 reauthTitle: "重新授权根目录",
                 reauthButton: "重新授权", reauthBusy: "正在请求权限…",
                 unmountTitle: "取消挂载", unmountHint: "只解除关联，磁盘上的文件不会被删除。",
@@ -59,6 +60,7 @@ export const messages = {
                 mounted: "Mounted", notMounted: "Not Mounted", reauth: "Needs Re-Authorization",
                 mountTitle: "Mount Local Folder",
                 mountButton: "Choose Folder…", mountBusy: "Waiting for selection…",
+                whereDisk: "Local folder {name}",
                 reauthTitle: "Re-Authorize Root",
                 reauthButton: "Re-Authorize", reauthBusy: "Requesting permission…",
                 unmountTitle: "Unmount", unmountHint: "Detaches only. Files on disk are not deleted.",
@@ -88,6 +90,7 @@ export const messages = {
                 mounted: "マウント済み", notMounted: "未マウント", reauth: "再許可が必要",
                 mountTitle: "ローカルフォルダをマウント",
                 mountButton: "フォルダを選択…", mountBusy: "選択をお待ちください…",
+                whereDisk: "ローカルフォルダ {name}",
                 reauthTitle: "ルートを再許可",
                 reauthButton: "再許可", reauthBusy: "権限を要求中…",
                 unmountTitle: "マウント解除", unmountHint: "関連付けを外すだけで、ディスク上のファイルは消去しません。",
@@ -117,6 +120,7 @@ export const messages = {
                 mounted: "掛上了喵", notMounted: "未掛喵", reauth: "得再批一次喵",
                 mountTitle: "掛個本地夾子喵",
                 mountButton: "揀夾子喵…", mountBusy: "等主人揀喵…",
+                whereDisk: "本地夾子 {name} 喵",
                 reauthTitle: "再批根夾子喵",
                 reauthButton: "再批一次喵", reauthBusy: "正喺問准批喵…",
                 unmountTitle: "摘咗佢喵", unmountHint: "淨係解開關係，磁盘上嘅檔案唔會冇咗喵~",
@@ -208,8 +212,10 @@ export function build(ctx) {
         }
         navigator.storage.estimate()
             .then((estimate) => {
-                const usage = formatBytes(estimate.usage || 0);
-                const quota = formatBytes(estimate.quota || 0);
+                // formatBytes 返回的是 "1.5 KB" 这种字符串：再喂回 formatBytes 得 NaN → "—"，
+                // 字符串比大小也恒 false（进度条恒 0%）。显示与比例都必须用原始数值（BUG-59）。
+                const usage = Number(estimate.usage) || 0;
+                const quota = Number(estimate.quota) || 0;
                 quotaRow.setValue(`${formatBytes(usage)} / ${formatBytes(quota)}`);
                 meterFill.style.width = quota > 0 ? `${Math.min(100, (usage / quota) * 100).toFixed(2)}%` : "0%";
             })

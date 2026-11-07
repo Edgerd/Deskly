@@ -1,13 +1,10 @@
 /**
  * panes/general.js — 「通用」面板：语言、时间、设置存储读数，以及备份 / 恢复 / 恢复默认三条真实动作
  *
- * 与旧版的区别：这个文件里没有一处 localStorage 字面量。
- * 读写全部经 ui.js 的 bind()（它只调 settings.get/set），动作全部调设置中枢自己的
- * snapshot / restore / resetAll / storage —— 备份出来的就是中枢能认回去的格式，
- * 界面不再复制一遍键名（旧版界面与内核各写各的键，写错一个字符就静默失效）。
- *
- * 语言下拉的选项在每次 build() 时重新取自 i18n.getSupportedLanguages()：
- * 旧版把选项表算在模块求值时，切换语言后界面就永远冻在旧语言里。
+ * 与旧版的区别：没有一处 localStorage 字面量。读写全经 ui.js 的 bind()，动作全调设置中枢的
+ * snapshot / restore / resetAll / storage，备份出来的就是中枢能认回去的格式
+ * （旧版界面与内核各写各的键，写错一个字符就静默失效）。
+ * 语言选项每次 build() 重新取自 i18n.getSupportedLanguages()（旧版算在模块求值时，切语言后冻在旧语言里）。
  */
 
 import { settings } from "../../../src/javascripts/settings.js";
@@ -220,9 +217,9 @@ function showErrorDialog(title, message) {
 }
 
 /** 确认弹窗；没有弹窗能力时按「未确认」处理——危险操作绝不默认放行。 */
-async function askConfirm(title, message) {
+async function askConfirm(title, message, opts = {}) {
     if (globalThis.__dialog && typeof globalThis.__dialog.confirm === "function") {
-        return Boolean(await globalThis.__dialog.confirm(title, message));
+        return Boolean(await globalThis.__dialog.confirm(title, message, opts));
     }
     log.warn("plugin/system-settings", "系统弹窗不可用，已取消「恢复全部默认」");
     return false;
@@ -329,8 +326,9 @@ export function build(ctx) {
         tone: "danger",
         onAction: async () => {
             const confirmed = await askConfirm(
-                t("ss.general.resetAsk", "确定要把全部设置恢复默认吗？"),
-                t("ss.general.resetAskBody", "此操作不可撤销，请先导出备份。"),
+                t("ss.general.resetAsk", "要把全部设置恢复默认吗？"),
+                t("ss.general.resetAskBody", "此操作无法撤销。建议先导出备份。"),
+                { danger: true, okText: t("ss.general.resetButton", "恢复默认") },
             );
             if (!confirmed) {
                 lastRow.setValue(t("ss.general.resetCancelled", "已取消，未改动任何设置"));

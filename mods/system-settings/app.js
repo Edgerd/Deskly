@@ -11,6 +11,8 @@
  * - 侧栏只渲染 registry 里 `implemented: true` 的面板，未实现项不进 DOM 也不被 import；
  * - 面板按需 `import("./panes/<module>.js")`，失败就在面板区给出可读的错误行 + 重试，绝不留空白面板；
  * - 每次切换先 ui.disposeAll() 摘掉上一个面板的全部订阅，再调它的 destroy()（若有）；
+ *   但旧面板的 DOM 不提前清空：新面板 build() 完成后，清空与 append 在同一个同步任务里
+ *   完成，中间没有绘制机会 —— 否则 await import 期间会先看到一帧空白面板区；
  * - 文案一律 t(key, 中文fallback)：面板自带语言包由这里注册进 i18n，注册不上也只是退回中文；
  * - 语言切换后重建当前面板：选项标签（浅色/深色、滚动条三档……）是构建时算出来的，
  *   不重建就会永远冻在切换前那门语言里（旧版 bug）。
@@ -31,6 +33,7 @@ import { log } from "../../src/javascripts/log.js";
 import { openApp } from "../../src/javascripts/plugin-manager.js";
 import { el, t, disposeAll, actionRow } from "./ui.js";
 import { sidebarGroups, findPane, matchPanes } from "./registry.js";
+import { paneIconSrc } from "./pane-icons.js";
 
 /** 插件 id：plugin-unload 的 detail.id 与日志来源都用它。 */
 const PLUGIN_ID = "system-settings";
@@ -245,16 +248,31 @@ function renderSidebar() {
 /**
  * 一个侧栏条目：data-pane + 图标 + 本地化标题。
  * 用 <button> 而不是 <div>：窗口拖拽的排除清单里有 button，条目因此不会被拖窗劫持。
+ * 图标优先用 pane-icons 的彩色方块（data-tile 豁免 style.css 的压黑/反白）；
+ * 没有专属方块时退回 registry 的单色字形，后者继续吃 shared 样式。
  * @param {object} entry registry 面板条目
  * @returns {HTMLElement} 条目元素
  */
 function itemRow(entry) {
+    const tileSrc = paneIconSrc(entry.id);
+    const img = el("img", {
+        class: "ss-item__icon",
+        attrs: { src: tileSrc || entry.icon, alt: "" },
+    });
+    if (tileSrc) {
+        img.dataset.tile = "1";
+        // 文件缺失 / 被并行改动删掉时回退到 registry 的单色字形，绝不留裂图。
+        img.addEventListener("error", () => {
+            delete img.dataset.tile;
+            img.src = entry.icon;
+        }, { once: true });
+    }
     const row = el("button", {
         class: "ss-item",
         attrs: { type: "button" },
         dataset: { pane: entry.id },
     },
-        el("img", { class: "ss-item__icon", attrs: { src: entry.icon, alt: "" } }),
+        img,
         el("span", { class: "ss-item__label", text: paneLabel(entry) }));
     row.addEventListener("click", () => selectPane(entry.id));
     shell.rows.set(entry.id, row);
@@ -378,7 +396,10 @@ async function selectPane(id, opts = {}) {
     }
 
     const ticket = ++shell.ticket;
-    releasePane();
+    // 先卸掉旧面板的订阅与模块（它已不可再操作），但画面保留：宿主里的旧 DOM 一直留到
+    // 新面板构建成功、同一个同步任务里替换为止。旧实现是在 await import 之前就清空宿主，
+    // 动态 import 的往返里浏览器必然有绘制机会 —— 那正是「先空白一帧，再跳到新面板」。
+    releasePane(true);
     shell.paneId = entry.id;
     markActive(entry.id);
     shell.title.textContent = paneLabel(entry);
@@ -412,6 +433,9 @@ async function selectPane(id, opts = {}) {
         return;
     }
     shell.module = mod;
+    // 交换点：清空旧内容与挂载新面板在同一个同步任务内完成，中间没有任何绘制机会。
+    // 新节点已构建完毕（build() 同步返回），所以不会出现「旧内容没了、新内容还没画出来」。
+    shell.host.textContent = "";
     shell.host.append(node);
     refreshSidebarLabels();
     // releasePane() 已把旧模块置空，recordHistory 时按钮只能按历史栈算；
@@ -469,15 +493,21 @@ function markActive(id) {
     });
 }
 
-/** 释放当前面板：ui.js 的订阅/监听 + 面板自己的 destroy()。 */
-function releasePane() {
+/**
+ * 释放当前面板：ui.js 的订阅/监听 + 面板自己的 destroy()。
+ * @param {boolean} [keepContent=false] true 时保留宿主里的旧 DOM —— 切换面板期间用它维持
+ *   画面连续，等新面板构建好后再由 selectPane 在同一个同步任务里清空并替换；
+ *   关窗走 shutdown()，用默认 false 一次清干净。
+ * @returns {void}
+ */
+function releasePane(keepContent = false) {
     const mod = shell.module;
     shell.module = null;
     disposeAll();
     if (mod && typeof mod.destroy === "function") {
         try { mod.destroy(); } catch (err) { log.warn("plugin/system-settings", `${shell.paneId} 面板的 destroy 抛错`, err); }
     }
-    if (shell.host) shell.host.textContent = "";
+    if (!keepContent && shell.host) shell.host.textContent = "";
 }
 
 /**
@@ -605,9 +635,12 @@ function shutdown() {
 /**
  * 打开窗口时装配外壳（由 script.js 每次调用）。
  * 先 shutdown() 再装配，保证「入口脚本每次重跑」不会把上一份外壳的监听留下。
- * @returns {void}
+ * 返回的 Promise 在首个面板真正挂载后才 resolve：script.js 用顶层 await 等它，
+ * 窗口层以模块 <script> 的 load 事件作为「首屏可绘制」信号，于是窗口出现时
+ * 面板区已经有内容，不会先露出一个空面板区再填进去。
+ * @returns {Promise<void>}
  */
-export function boot() {
+export async function boot() {
     shutdown();
 
     const root = document.getElementById("系统设置") || document.querySelector(".settings.window");
@@ -643,7 +676,7 @@ export function boot() {
             t("ss.shell.notImplementedHint", "注册表里这个面板还没有实现，界面不再为它留占位页。"));
         return;
     }
-    selectPane(first.id, { params: first.params });
+    await selectPane(first.id, { params: first.params });
     log.debug("plugin/system-settings", `外壳已装配，默认面板 ${first.id}`);
 }
 

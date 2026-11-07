@@ -88,7 +88,8 @@ function applyVolume(el) {
     const value = level();
     if (el) {
         if (typeof el.volume === "number") el.volume = value;
-        if ("muted" in el) el.muted = isMuted();
+        // 只在全局静音开启时压 muted：全局未静音时不能替应用解除它自己设的静音（BUG-43）
+        if ("muted" in el && isMuted()) el.muted = true;
         return true;
     }
     const list = document.querySelectorAll("audio, video");

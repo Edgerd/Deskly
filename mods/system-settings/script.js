@@ -13,4 +13,7 @@
 
 import { boot } from "./app.js";
 
-boot();
+// 顶层 await：模块 <script> 的 load 事件要等模块求值（含顶层 await）结束才派发，
+// plugin-manager 正是以 load 作为「首屏可绘制」信号才显示窗口。把首次面板装配也纳入
+// 这个信号，窗口出现时面板区就已经有内容，不会先空一帧再填进去。
+await boot();

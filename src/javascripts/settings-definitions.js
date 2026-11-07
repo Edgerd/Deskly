@@ -20,7 +20,7 @@
  */
 
 import { settings } from "./settings.js";
-import { setTheme, setAccent, setHighlight, setSidebarSize, setTint, setScrollbars, setScrollClick } from "./appearance.js";
+import { setTheme, setAccent, setHighlight, setSidebarSize, setTint, setScrollbars } from "./appearance.js";
 import { setCursorSize, setCursorShadow } from "./cursor.js";
 import { setTrashIcon, TRASH_KEYS } from "./trashIcon.js";
 import { setNativeContextMenuEnabled } from "./contextMenuSettings.js";
@@ -76,14 +76,6 @@ function initSettingsSchema() {
             values: ["auto", "when-scrolling", "always"], control: "radio", pane: "appearance", group: "外观", order: 60,
             label: "显示滚动条",
             apply: (value) => setScrollbars(value),
-        },
-        {
-            // 滚动条「点按位置」是浏览器原生滚动条行为，网页无法接管（没有对应的 CSS/JS 能力），
-            // 因此只保留键与持久化，不再出现在界面上占位。
-            key: "appearance.scroll.click", slot: "appearance-scroll-click", type: "string", default: "next-page",
-            values: ["next-page", "spot"], control: "radio", pane: "appearance", group: "外观", order: 70,
-            hidden: true, label: "在滚动条中点按",
-            apply: (value) => setScrollClick(value),
         },
         {
             key: "appearance.reduceMotion", type: "boolean", default: false,
@@ -239,10 +231,35 @@ function initSettingsSchema() {
             control: "switch", pane: "mouse", group: "鼠标", order: 30,
             label: "晃动指针以查找",
         },
+        {
+            // 晃动放大的目标倍数：cursor.js 在 pulse 起跳帧现读（shakeFactor），无需 apply。
+            // 上限 4 倍：配合 cursor.js 的放大像素上限（128px）保证大基准下也能看出差别。
+            key: "mouse.shakeScale", type: "number", default: 1.6, min: 1.1, max: 4, step: 0.1,
+            units: "倍", control: "slider", pane: "mouse", group: "鼠标", order: 40,
+            label: "晃动放大倍数",
+        },
+        {
+            // 触发放大所需的累计位移阈值：pointer-shake.js 判定时现读。
+            key: "mouse.shakeDistance", type: "number", default: 48, min: 24, max: 200, step: 4,
+            units: "px", control: "slider", pane: "mouse", group: "鼠标", order: 41,
+            label: "晃动触发距离",
+        },
+        {
+            // 放大后的保持时长：pointer-shake.js 触发时现读并传给 pulseCursor。
+            key: "mouse.shakeHold", type: "number", default: 1200, min: 400, max: 3000, step: 100,
+            units: "毫秒", control: "slider", pane: "mouse", group: "鼠标", order: 42,
+            label: "放大后停留",
+        },
+        {
+            // 回弹强度（过冲系数）：cursor.js 起跳帧现读；1 = 无过冲（直接到位）。
+            key: "mouse.shakeOvershoot", type: "number", default: 1.12, min: 1, max: 1.4, step: 0.02,
+            units: "倍", control: "slider", pane: "mouse", group: "鼠标", order: 43,
+            label: "回弹强度",
+        },
 
         // ── Siri siri.* ─────────────────────────────────────────────────
         {
-            key: "siri.orb.size", slot: "siri-orb-size", type: "number", default: 150, min: 80, max: 300, step: 2,
+            key: "siri.orb.size", slot: "siri-orb-size", type: "number", default: 120, min: 64, max: 240, step: 2,
             control: "slider", units: "px", pane: "siri", group: "Siri", order: 10,
             label: "光球大小", event: "siri-orb-size-change",
         },

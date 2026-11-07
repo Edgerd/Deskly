@@ -6,12 +6,16 @@
  * - **亮度**：压暗层 `#deskly-brightness-overlay`（旧 id 仍兼容读取） 由控制中心（controlcenter.js）持有，
  *   本模块只负责把 `display.brightness` 注册进设置中枢、校验取值、和控制中心共用
  *   `webstartos_controlcenter` 这同一个 JSON 槽的 `displayBrightness` 字段。
- *   生效函数按约定派发 window 事件 `display-brightness-change`（detail 为音量比），
+ *   生效函数按约定派发 window 事件 `display-brightness-change`（detail 为亮度比），
  *   控制中心据此驱动它自己的那层；设置中枢同时广播 document 的 `settings-changed`，
  *   所以从系统设置拖动滑块与从控制中心拖动滑块结果完全一致。
  * - **Night Shift**：这一层是本模块自己画的真实暖色压层 —— 固定 `<div>`，
- *   `mix-blend-mode: multiply`，透明度由 `display.nightShiftIntensity` 缩放，
- *   层级 `Z.NIGHT_SHIFT`（= 压暗层之上、会话遮罩之下），两层相乘得到「先压暗再染暖」。
+ *   暖色以普通 alpha 合成（透明度由 `display.nightShiftIntensity` 缩放），
+ *   层级 `Z.NIGHT_SHIFT`（= 压暗层之上、会话遮罩之下），与压暗层顺序叠加。
+ *   历史写法是 `mix-blend-mode: multiply`：页面里一旦出现带 blend-mode 的元素，
+ *   Chromium 会让 backdrop-filter 采样失效，系统设置侧栏的毛玻璃因此整块退化成
+ *   平色（切到「显示器」面板必现）。为保住亚克力，这里改用普通合成，视觉上
+ *   从「正片叠底染色」变为「暖色薄纱」，色值不变。
  *
  * 自动模式（`display.nightShiftAuto`）在 19:00–07:00 之间生效，每 60 秒重算一次，
  * 并在标签页重新可见时立刻重算 —— 后台标签页的 setInterval 会被浏览器节流到分钟级，
@@ -112,7 +116,7 @@ function intensity() {
     return ratio(settings.get("display.nightShiftIntensity"), DEFAULT_INTENSITY);
 }
 
-/** 取（或建）暖色压层元素。层级与混合模式一次性写定，之后只改透明度。 */
+/** 取（或建）暖色压层元素。层级一次写定，之后只改透明度；刻意不带 blend-mode（见文件头）。 */
 function ensureOverlay() {
     let el = document.getElementById(OVERLAY_ID);
     if (el) return el;
@@ -127,7 +131,6 @@ function ensureOverlay() {
         width: "100vw",
         height: "100vh",
         background: WARM_COLOR,
-        mixBlendMode: "multiply",
         pointerEvents: "none",
         opacity: "0",
         transition: "opacity .6s ease",

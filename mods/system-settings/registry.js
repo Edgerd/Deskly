@@ -12,8 +12,19 @@
  * 每项的 `module` 是 `panes/` 下的文件名，由 app.js 动态 import；未实现项不会被 import。
  */
 
-import { assetIcon, assetPath, glyph } from "../../src/javascripts/paths.js";
+import { assetPath, glyph } from "../../src/javascripts/paths.js";
 import { i18n } from "../../src/javascripts/i18n.js";
+
+/**
+ * 侧栏图标统一为单色字形：与 assets/images 的 glyph() 同一观感（同网格、同视觉重量），
+ * 靠 style.css 的 brightness(0) 压黑 + 主题反白，不再混入彩色拟物 PNG。
+ * glyph() 库里没有的四枚（存储 / Siri / App / 开发者）以内联 data-URI 补，风格对齐。
+ */
+const ICON_STORAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 7c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2H4zm0 2h16v6H4V9zm13.5 3.7a.95.95 0 1 1 0 1.9.95.95 0 0 1 0-1.9z'/%3E%3C/svg%3E";
+const ICON_SIRI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 1.8a7.2 7.2 0 1 1 0 14.4 7.2 7.2 0 0 1 0-14.4zm0 3a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4z'/%3E%3C/svg%3E";
+const ICON_PLUGINS = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4.5 4.5h6.5v6.5H4.5V4.5zm8.5 0h6.5v6.5H13V4.5zM4.5 13h6.5v6.5H4.5V13zm8.5 0h6.5v6.5H13V13z'/%3E%3C/svg%3E";
+const ICON_DEBUG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 5c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2H4zm0 2h16v10H4V7zm1.3 1.2l3 3.3-3 3.3 1.1 1 4-4.3-4-4.3-1.1 1zm6.7 5.1h5v1.5h-5v-1.5z'/%3E%3C/svg%3E";
+const ICON_WHATS_NEW = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2zm7 12l.9 2.8 2.8.9-2.8.9-.9 2.8-.9-2.8-2.8-.9 2.8-.9.9-2.8zM5 15l.8 2.4 2.4.8-2.4.8L5 23l-.8-2.4-2.4-.8 2.4-.8L5 15z'/%3E%3C/svg%3E";
 
 /**
  * 侧栏面板名与分组名的四语词条。
@@ -34,6 +45,7 @@ const LABELS = {
                 screenTime: "屏幕使用时间", "lock-screen": "锁定屏幕", password: "密码",
                 privacy: "隐私与安全性", users: "用户与群组", icloud: "iCloud",
                 keyboard: "键盘", mouse: "鼠标", plugins: "App", debug: "开发者", defaultApps: "默认应用",
+                whatsNew: "新功能",
             },
         },
     },
@@ -47,6 +59,7 @@ const LABELS = {
                 screenTime: "Screen Time", "lock-screen": "Lock Screen", password: "Passwords",
                 privacy: "Privacy & Security", users: "Users & Groups", icloud: "iCloud",
                 keyboard: "Keyboard", mouse: "Mouse", plugins: "Apps", debug: "Developer", defaultApps: "Default Apps",
+                whatsNew: "What's New",
             },
         },
     },
@@ -60,6 +73,7 @@ const LABELS = {
                 screenTime: "スクリーンタイム", "lock-screen": "ロック画面", password: "パスワード",
                 privacy: "プライバシーとセキュリティ", users: "ユーザーとグループ", icloud: "iCloud",
                 keyboard: "キーボード", mouse: "マウス", plugins: "App", debug: "開発者", defaultApps: "デフォルトアプリ",
+                whatsNew: "新機能",
             },
         },
     },
@@ -73,6 +87,7 @@ const LABELS = {
                 screenTime: "屏幕使用时间喵", "lock-screen": "锁定屏幕喵", password: "密码喵",
                 privacy: "隐私与安全性喵", users: "用户与群组喵", icloud: "iCloud 喵",
                 keyboard: "键盘喵", mouse: "鼠标喵", plugins: "App 喵", debug: "开发者喵", defaultApps: "开东西的应用喵",
+                whatsNew: "新功能喵",
             },
         },
     },
@@ -107,8 +122,13 @@ const PANES = [
         keywords: ["语言", "时间", "日期", "通用", "启动", "备份", "恢复"],
     },
     {
+        id: "whats-new", group: "general", module: "whats-new", implemented: true,
+        icon: ICON_WHATS_NEW, label: "新功能", i18nKey: "ss.pane.whatsNew",
+        keywords: ["新功能", "更新", "日志", "版本", "changelog"],
+    },
+    {
         id: "storage", group: "general", module: "storage", implemented: true,
-        icon: assetIcon("folder/Folder"), label: "存储", i18nKey: "ss.pane.storage",
+        icon: ICON_STORAGE, label: "存储", i18nKey: "ss.pane.storage",
         keywords: ["存储", "根目录", "文件夹", "授权", "下载", "文档", "图片", "空间"],
     },
     {
@@ -154,7 +174,7 @@ const PANES = [
     },
     {
         id: "siri", group: "personalize", module: "siri", implemented: true,
-        icon: assetIcon("Siri"), label: "Siri", i18nKey: "ss.pane.siri",
+        icon: ICON_SIRI, label: "Siri", i18nKey: "ss.pane.siri",
         keywords: ["siri", "光球", "语音"],
     },
     {
@@ -217,12 +237,12 @@ const PANES = [
     },
     {
         id: "plugins", group: "advanced", module: "plugins", implemented: true,
-        icon: assetIcon("Automator"), label: "App", i18nKey: "ss.pane.plugins",
+        icon: ICON_PLUGINS, label: "App", i18nKey: "ss.pane.plugins",
         keywords: ["App", "apps", "应用", "扩展", "插件", "第三方设置", "应用设置"],
     },
     {
         id: "debug", group: "advanced", module: "debug", implemented: true,
-        icon: assetIcon("Console"), label: "开发者", i18nKey: "ss.pane.debug",
+        icon: ICON_DEBUG, label: "开发者", i18nKey: "ss.pane.debug",
         keywords: ["开发者", "调试", "日志", "运行记录", "诊断", "console"],
     },
 ];

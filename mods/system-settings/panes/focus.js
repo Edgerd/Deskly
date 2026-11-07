@@ -1,15 +1,13 @@
 /**
  * panes/focus.js — 「系统设置 › 专注模式」面板
  *
- * 专注模式的开关与模式名就是控制中心里那张大卡（controlcenter.focus / controlcenter.focusMode），
- * 写这两个键会经设置中枢广播 `settings-changed`，controlcenter.js 把值并回它的内存镜像并重绘卡片。
+ * 开关与模式名就是控制中心里那张大卡（controlcenter.focus / controlcenter.focusMode），
+ * 写键经设置中枢广播 `settings-changed`，controlcenter.js 并回内存镜像重绘卡片。
  *
- * 「已拦截 N 条」不是装饰：通知在免打扰期间不落横幅而是计数，计数接口由 ui/notification.js 的
- * pendingCount() 提供，清零走 resetPendingCount()。刷新有三路 —— 设置变更订阅、面板自身的轻量轮询、
- * 以及手动「发一条测试通知」后的立刻回读，任一路线都能把数字带到界面上。
+ * 「已拦截 N 条」读 ui/notification.js 的 pendingCount()，清零走 resetPendingCount()；
+ * 刷新有三路：设置变更订阅、面板轻量轮询、手动测试后的立刻回读。
  *
- * 关于飞行模式与 Wi-Fi 的联动：controlcenter.js 目前的 handleCardAction 只是逐项取反，
- * 没有任何「开飞行就断 Wi-Fi/蓝牙」的互斥逻辑，所以这里如实写明，不编造行为。
+ * 飞行模式与 Wi-Fi 无联动互斥（controlcenter.js 的 handleCardAction 只逐项取反），如实写明，不编造行为。
  */
 
 import { settings } from "../../../src/javascripts/settings.js";
@@ -21,7 +19,6 @@ import {
 
 export const paneId = "focus";
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {

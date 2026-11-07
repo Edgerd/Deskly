@@ -1,10 +1,9 @@
 /**
  * panes/debug.js — 「系统设置 › 调试」面板（运行记录查看器）
  *
- * 与 log.js 的关系：门槛、捕获开关、缓冲条数、留存策略都是 debug.* 设置项，写它们会立刻
- * 改到 log.js 的内存 config（定义的 apply 就在 log.js 里）；下面的列表则是 log.query()
- * 的直接投影 —— 新记录经 log.subscribe 进来，用 requestAnimationFrame 合并成一次重绘，
- * 绝不在每条日志上做同步 DOM 写入（那会把日志系统自己拖慢）。
+ * 与 log.js 的关系：debug.* 设置项的 apply 在 log.js，写入立刻改到其内存 config；
+ * 列表是 log.query() 的投影，新记录经 log.subscribe 进来后用 requestAnimationFrame
+ * 合并成一次重绘（每条日志同步写 DOM 会拖慢日志系统自己）。
  *
  * 三条硬约束：
  * 1. 列表行、来源名、消息文本一律 textContent，插件写的东西不当标签解析。
@@ -24,7 +23,6 @@ export const paneId = "debug";
 /** 一次渲染的日志条数上限（缓冲区可以更大，界面只画最近这些）。 */
 const RENDER_CAP = 300;
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {
@@ -406,7 +404,7 @@ export function build() {
         list,
     ], { title: t("ss.debug.bodyGroup", "运行记录") });
 
-    // ---- 日志增量 -> 合并到一帧 ----
+    // 日志增量：经 rAF 合并到一帧重绘
     let frame = 0;
     const scheduleRender = () => {
         if (frame) return;

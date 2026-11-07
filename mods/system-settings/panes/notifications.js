@@ -2,13 +2,9 @@
  * panes/notifications.js — 「系统设置 › 通知」面板
  *
  * 三件事都有真实落点：
- * 1. notify.* 的写入会广播 `notify-config-change`（见 settings-definitions.js 的 apply），
- *    ui/notification.js 据此决定横幅是否出现、是否发声、停留多久。
- * 2. 系统级通知授权走 permissions.js（浏览器 Notification 权限），状态与请求结果都回读，
- *    不支持或被拒绝都如实显示，不做假成功。
- * 3. 「发送测试通知」真的调用 window.__notify.show，能立刻看到上面几项开关的效果。
- *
- * 时长滑块只在「允许通知」打开时出现：关了横幅，停留时长没有意义。
+ * 1. notify.* 写入广播 `notify-config-change`，ui/notification.js 据此决定横幅/声音/停留时长。
+ * 2. 系统级授权走 permissions.js（浏览器 Notification 权限），不支持或被拒绝如实显示，不做假成功。
+ * 3. 「发送测试通知」真调 window.__notify.show。时长滑块只在「允许通知」打开时出现。
  */
 
 import { permissions } from "../../../src/javascripts/permissions.js";
@@ -29,7 +25,6 @@ const STATE_KEYS = {
     unknown: { key: "ss.notifications.stateUnknown", fallback: "未知" },
 };
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {

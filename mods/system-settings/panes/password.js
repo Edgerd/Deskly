@@ -4,9 +4,8 @@
  * 密码不是设置项：它绝不能出现在 `settings.snapshot()` 里，所以这里不调 settings.set，
  * 一律走 lock.js 的 setPassword/checkPassword/clearPassword/hasPassword。
  *
- * 也不用 window.__dialog.prompt —— 它的输入框是 `type="password"` 之外的普通文本框
- * （见 ui/alert.js 里 `inputEl.type = "text"`），会把口令明文显示在弹窗上。这里自建
- * 两个 `<input type="password">`，配一份只看长度与字符类别、不回显任何字符的强度提示。
+ * 口令输入不做成模态弹窗（ui/dialog.js 的 prompt 虽支持 password，但一个弹窗只放一个输入框），
+ * 这里自建两个 `<input type="password">`，配一份只看长度与字符类别、不回显任何字符的强度提示。
  *
  * 已存在密码时：先验旧密码，再经 __dialog.confirm 确认覆盖，两步都过才落盘。
  */
@@ -56,6 +55,7 @@ export const messages = {
                 overwriteCancel: "取消",
                 clearTitle: "清除登录密码？",
                 clearMessage: "清除后锁屏不再需要密码。",
+                lockedHint: "屏幕锁定期间无法修改密码设置，请先解锁。",
             },
         },
     },
@@ -95,6 +95,7 @@ export const messages = {
                 overwriteCancel: "Cancel",
                 clearTitle: "Clear the login password?",
                 clearMessage: "The lock screen will no longer ask for a password.",
+                lockedHint: "Password settings can't be changed while the screen is locked. Unlock first.",
             },
         },
     },
@@ -134,6 +135,7 @@ export const messages = {
                 overwriteCancel: "取り消す",
                 clearTitle: "ログインパスワードを消去しますか？",
                 clearMessage: "ロック画面がパスワードを尋ねなくなります。",
+                lockedHint: "画面ロック中はパスワード設定を変更できません。先にロックを解除してください。",
             },
         },
     },
@@ -173,6 +175,7 @@ export const messages = {
                 overwriteCancel: "先算了",
                 clearTitle: "真的要清咗登录口令吗？",
                 clearMessage: "清咗之后锁屏就唔再问口令喵。",
+                lockedHint: "锁屏紧嘅时候改唔到口令喵，解锁先啦。",
             },
         },
     },
@@ -270,9 +273,9 @@ export function build() {
                 return say(t("ss.password.wrongCurrent", "当前密码不正确。"));
             }
             const ok = await window.__dialog?.confirm?.(
-                t("ss.password.overwriteTitle", "覆盖现有密码？"),
-                t("ss.password.overwriteMessage", "旧密码将立即失效。"),
-                { okText: t("ss.password.overwriteOk", "覆盖"), cancelText: t("ss.password.overwriteCancel", "取消") }
+                t("ss.password.overwriteTitle", "要替换现有密码吗？"),
+                t("ss.password.overwriteMessage", "旧密码将立即失效，之后需要用新密码解锁。"),
+                { okText: t("ss.password.overwriteOk", "替换"), cancelText: t("ss.password.overwriteCancel", "取消"), danger: true }
             );
             if (!ok) return say("—");
         }
@@ -285,9 +288,9 @@ export function build() {
     async function clear() {
         if (!apiReady) return say(t("ss.password.notReady", "密码功能不可用。"));
         const ok = await window.__dialog?.confirm?.(
-            t("ss.password.clearTitle", "清除登录密码？"),
-            t("ss.password.clearMessage", "清除后锁屏不再需要密码。"),
-            { okText: t("ss.password.clearBtn", "清除"), cancelText: t("ss.password.overwriteCancel", "取消") }
+            t("ss.password.clearTitle", "要清除登录密码吗？"),
+            t("ss.password.clearMessage", "清除后，锁屏将不再要求密码。"),
+            { okText: t("ss.password.clearBtn", "清除"), cancelText: t("ss.password.overwriteCancel", "取消"), danger: true }
         );
         if (!ok) return say("—");
         lock.clearPassword?.();
@@ -302,7 +305,7 @@ export function build() {
         try { await task(); } catch { say(t("ss.password.notReady", "密码功能不可用。")); } finally { button.disabled = false; }
     }
 
-    return el("div", { class: "ss-pane ss-password" },
+    const root = el("div", { class: "ss-pane ss-password" },
         group([
             controlSwitch("lock.requirePassword", {
                 label: t("ss.password.requireSwitch", "解锁需要密码"),
@@ -314,6 +317,24 @@ export function build() {
 
         group([form], { title: t("ss.password.formGroup", "设置密码") })
     );
+    freezeWhenLocked(root);
+    return root;
+}
+
+/**
+ * 锁定态降级处理：锁屏期间整页表单只读，并在顶部给出原因。
+ * 遮罩本身已盖住窗口，这里是控制台/深链直达面板时的第二道防线；
+ * 真正的硬防线在 lock.js —— 锁定态下 setPassword/clearPassword 一律拒绝。
+ * @param {HTMLElement} root 面板根元素
+ * @returns {void}
+ */
+function freezeWhenLocked(root) {
+    if (!(typeof lock?.isLocked === "function" && lock.isLocked())) return;
+    root.querySelectorAll("input, button").forEach((node) => { node.disabled = true; });
+    root.prepend(el("p", {
+        class: "ss-note",
+        text: t("ss.password.lockedHint", "屏幕锁定期间无法修改密码设置，请先解锁。"),
+    }));
 }
 
 /**

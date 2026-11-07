@@ -18,18 +18,30 @@ import { pulseCursor } from "./cursor.js";
 const WINDOW_MS = 320;
 /** 窗口内最少采样点数：低于此值不可能构成"来回"。 */
 const MIN_SAMPLES = 5;
-/** 累计位移阈值（px）：防止手抖或微调触发。 */
-const MIN_DISTANCE = 48;
+/** 累计位移阈值默认值（px）：实际值由设置项 mouse.shakeDistance 现读。 */
+const DEFAULT_DISTANCE = 48;
 /** 方向反转次数阈值：来回至少要 3 次。 */
 const MIN_REVERSALS = 3;
 /** 两次放大之间的冷却（毫秒），避免连续晃动把动画抖成频闪。 */
 const COOLDOWN_MS = 1500;
-/** 单次放大持续时间（毫秒），与 cursor.pulseCursor 的默认值保持一致。 */
-const PULSE_MS = 1200;
+/** 放大保持时长默认值（毫秒）：实际值由设置项 mouse.shakeHold 现读。 */
+const DEFAULT_PULSE_MS = 1200;
 /** 相邻采样点的最小水平位移（px）：小于它不参与方向判定（噪声）。 */
 const NOISE_X = 2;
 
 const ENABLED_KEY = "mouse.shakeToFind";
+
+/** 触发所需的累计位移阈值（px）：设置缺失时按默认 48。 */
+function minDistance() {
+    const raw = Number(settings.get("mouse.shakeDistance"));
+    return Number.isFinite(raw) ? Math.max(24, Math.min(200, raw)) : DEFAULT_DISTANCE;
+}
+
+/** 放大后的保持时长（毫秒）：设置缺失时按默认 1200。 */
+function pulseHoldMs() {
+    const raw = Number(settings.get("mouse.shakeHold"));
+    return Number.isFinite(raw) ? Math.max(400, Math.min(3000, raw)) : DEFAULT_PULSE_MS;
+}
 
 /** 最近采样点：[{x, y, t}]，只保留一个窗口的长度。 */
 let samples = [];
@@ -63,12 +75,12 @@ function onPointerMove(event) {
         if (lastDir && dir !== lastDir) reversals += 1;
         lastDir = dir;
     }
-    if (distance < MIN_DISTANCE || reversals < MIN_REVERSALS) return;
+    if (distance < minDistance() || reversals < MIN_REVERSALS) return;
 
     if (now - lastPulseAt < COOLDOWN_MS) return;
     lastPulseAt = now;
     samples = [];
-    pulseCursor(PULSE_MS);
+    pulseCursor(pulseHoldMs());
 }
 
 /** 当前是否启用：设置缺失时按默认开启处理（与 defineMany 的默认值一致）。 */

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Siri">
+  <title>Siri</title>
+  <defs>
+    <linearGradient id="siriAppBase" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFC24B"/>
+      <stop offset=".44" stop-color="#FF5E7E"/>
+      <stop offset=".78" stop-color="#C05DEF"/>
+      <stop offset="1" stop-color="#8A63F2"/>
+    </linearGradient>
+    <radialGradient id="siriAppAqua" cx="0" cy="1" r="1" fx="0" fy="1">
+      <stop offset="0" stop-color="#54D7F5" stop-opacity=".95"/>
+      <stop offset=".6" stop-color="#54D7F5" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="siriAppCoral" cx="1" cy="0" r="1" fx="1" fy="0">
+      <stop offset="0" stop-color="#FF4D6D" stop-opacity=".62"/>
+      <stop offset=".55" stop-color="#FF4D6D" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="url(#siriAppBase)"/>
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="url(#siriAppAqua)"/>
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="url(#siriAppCoral)"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="7" stroke-width="1.7" stroke-opacity=".96"/>
+    <path d="M12 12 C10.4 9.2 7.6 8.7 6.3 10.4 C5.2 11.9 5.7 13.9 7.4 14.8 C9.2 15.7 11.1 14.2 12 12" stroke-width="1.45"/>
+    <path d="M12 12 C13.6 14.8 16.4 15.3 17.7 13.6 C18.8 12.1 18.3 10.1 16.6 9.2 C14.8 8.3 12.9 9.8 12 12" stroke-width="1.45"/>
+  </g>
+</svg>

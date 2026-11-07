@@ -1,12 +1,11 @@
 /**
  * panes/dock.js — 「桌面与程序坞」面板：程序坞 8 项布局设置、废纸篓图标、原生右键菜单与恢复默认顺序
  *
- * 这 8 项在设置定义里走的是 event 通道（定义只有 event 没有 apply）：设置中枢按旧格式
- * 在 window 上补发 dock-size-change 一类事件，dock.js 侧零改动即可实时生效。
- * 因此本面板只需要老实调用 settings.set —— 由 ui.js 的 bind() 完成 —— 不再自己拼事件。
+ * 这 8 项在定义里走 event 通道（只有 event 没有 apply）：设置中枢补发 dock-*-change 事件，
+ * dock.js 零改动即可实时生效，本面板只调 settings.set（经 ui.js 的 bind()），不自己拼事件。
  *
- * 废纸篓图标：候选值与生效函数都在内核（trashIcon.js 的 TRASH_VARIANTS / setTrashIcon），
- * 这里只把「变体键 -> 文件名」这一步做出来（见 trashIconFile 的说明），图片地址一律走 paths.js。
+ * 废纸篓图标：候选值与生效函数都在内核 trashIcon.js，这里只做「变体键 -> 文件名」，
+ * 图片地址一律走 paths.js。
  */
 
 import { assetPath } from "../../../src/javascripts/paths.js";
@@ -14,13 +13,12 @@ import { settings } from "../../../src/javascripts/settings.js";
 import * as trashIcon from "../../../src/javascripts/trashIcon.js";
 import { log } from "../../../src/javascripts/log.js";
 import {
-    el, t, group, actionRow,
-    controlSwitch, controlSlider, controlSegmented, controlCards, usePaneStyle,
+    el, t, group, actionRow, bind, row,
+    controlSwitch, controlSlider, controlSegmented, usePaneStyle,
 } from "../ui.js";
 
 export const paneId = "dock";
 
-/** 面板语言包。 */
 export const messages = {
     "zh-CN": {
         ss: {
@@ -40,11 +38,20 @@ export const messages = {
                     light_nocolour: "浅色·黑白", dark_nocolour: "深色·黑白",
                     light_nocolour2: "浅色·透明", dark_nocolour2: "深色·透明",
                 },
+                trashTone: "外观", toneLight: "浅色", toneDark: "深色",
+                trashStyle: "样式", styleAuto: "自动", styleFull: "装满", styleMono: "黑白", styleClear: "透明",
                 context: "显示原生右键菜单",
                 resetTitle: "程序坞排列", resetButton: "恢复默认顺序", resetBusy: "正在恢复…",
                 launchpad: "启动台",
                 lpIcon: "图标大小",
                 lpFont: "文字大小",
+                stage: "台前调度",
+                stageRecent: "显示最近使用的应用",
+                stageMode: "显示应用程序窗口",
+                stageModeAll: "一次全部", stageModeOne: "一次一个",
+                stageDesktop: "在桌面上显示项目",
+                stageWallpaper: "点按墙纸显示桌面",
+                wpAlways: "始终", wpStageOnly: "仅台前调度中",
             },
         },
     },
@@ -66,11 +73,20 @@ export const messages = {
                     light_nocolour: "Light · mono", dark_nocolour: "Dark · mono",
                     light_nocolour2: "Light · clear", dark_nocolour2: "Dark · clear",
                 },
+                trashTone: "Appearance", toneLight: "Light", toneDark: "Dark",
+                trashStyle: "Style", styleAuto: "Auto", styleFull: "Full", styleMono: "Mono", styleClear: "Clear",
                 context: "Show native context menu",
                 resetTitle: "Dock arrangement", resetButton: "Restore order", resetBusy: "Restoring…",
                 launchpad: "Launchpad",
                 lpIcon: "Icon size",
                 lpFont: "Label size",
+                stage: "Stage Manager",
+                stageRecent: "Show recent apps",
+                stageMode: "Show windows",
+                stageModeAll: "All at once", stageModeOne: "One at a time",
+                stageDesktop: "Show items on desktop",
+                stageWallpaper: "Click wallpaper to show desktop",
+                wpAlways: "Always", wpStageOnly: "Only in Stage Manager",
             },
         },
     },
@@ -92,11 +108,20 @@ export const messages = {
                     light_nocolour: "ライト・白黒", dark_nocolour: "ダーク・白黒",
                     light_nocolour2: "ライト・透明", dark_nocolour2: "ダーク・透明",
                 },
+                trashTone: "外観", toneLight: "ライト", toneDark: "ダーク",
+                trashStyle: "スタイル", styleAuto: "自動", styleFull: "満杯", styleMono: "白黒", styleClear: "透明",
                 context: "ネイティブの右クリックメニューを表示",
                 resetTitle: "Dockの並び", resetButton: "並びを戻す", resetBusy: "戻しています…",
                 launchpad: "Launchpad",
                 lpIcon: "アイコンサイズ",
                 lpFont: "文字サイズ",
+                stage: "ステージマネージャ",
+                stageRecent: "最近使用したAppを表示",
+                stageMode: "ウインドウの表示",
+                stageModeAll: "すべて一度に", stageModeOne: "一度に一つ",
+                stageDesktop: "デスクトップに項目を表示",
+                stageWallpaper: "壁紙をクリックしてデスクトップを表示",
+                wpAlways: "常に", wpStageOnly: "ステージマネージャ使用時のみ",
             },
         },
     },
@@ -118,24 +143,73 @@ export const messages = {
                     light_nocolour: "淺色·黑白喵", dark_nocolour: "深色·黑白喵",
                     light_nocolour2: "淺色·透明喵", dark_nocolour2: "深色·透明喵",
                 },
+                trashTone: "外觀喵", toneLight: "淺色", toneDark: "深色",
+                trashStyle: "樣式喵", styleAuto: "自動", styleFull: "裝滿", styleMono: "黑白", styleClear: "透明",
                 context: "用原生右鍵選單喵",
                 resetTitle: "程序塢排列喵", resetButton: "排回原樣喵", resetBusy: "正在整理喵…",
                 launchpad: "啟動台喵",
                 lpIcon: "圖標多大喵",
                 lpFont: "文字多大喵",
+                stage: "台前調度喵",
+                stageRecent: "最近用過的擱左邊喵",
+                stageMode: "窗口怎麼擺喵",
+                stageModeAll: "一次全上喵", stageModeOne: "一次一扇喵",
+                stageDesktop: "桌面圖標也露臉喵",
+                stageWallpaper: "點牆紙見桌面喵",
+                wpAlways: "隨時都行喵", wpStageOnly: "只在調度中喵",
             },
         },
     },
 };
 
-/** 面板私有样式：废纸篓卡片给一层同色底，浅色/深色变体都看得见。 */
+/** 面板私有样式：废纸篓两维选择器（预览 + 外观/样式两组分段）。
+ *  布局约束：两组分段 + 预览在窗口最窄宽度（620px）下也不许溢出 ——
+ *  分段本身按内容收口且允许换行，预览图定宽不定死整行。 */
 const PANE_CSS = `
-.ss-pane-dock .ss-cards__img {
-    width: 62px;
-    height: 62px;
+.ss-pane-dock .ss-trash {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+.ss-pane-dock .ss-trash__preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+.ss-pane-dock .ss-trash__img {
+    width: 56px;
+    height: 56px;
     object-fit: contain;
-    padding: 8px;
+    padding: 6px;
+    border-radius: 10px;
     background: var(--ss-row-bg);
+    box-shadow: inset 0 0 0 1px var(--ss-row-divider);
+}
+.ss-pane-dock .ss-trash__current {
+    font-size: 12.5px;
+    color: var(--ss-text-secondary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ss-pane-dock .ss-trash__dims {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+}
+.ss-pane-dock .ss-trash__dim {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.ss-pane-dock .ss-trash__dimlabel {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: var(--ss-text-secondary);
 }
 `;
 
@@ -167,6 +241,106 @@ function trashIconSrc(trashModule, key) {
 }
 
 /**
+ * 变体键 ↔ 两个决策维度（外观 tone × 样式 style）。
+ * 旧界面把 8 个变体平铺成一排卡片，窗口稍窄就溢出；真正的决策只有两个维度，
+ * 收敛成两组分段后任何宽度都放得下。`auto` 对应内核的「空/满自动切换」变体
+ * （trashIcon.getTrashIconForFullness 只在常规档做自动切换，见 trashIcon.js）。
+ */
+const TRASH_DIMS = {
+    light: { auto: "light", full: "light_full", mono: "light_nocolour", clear: "light_nocolour2" },
+    dark: { auto: "dark", full: "dark_full", mono: "dark_nocolour", clear: "dark_nocolour2" },
+};
+
+/** 由变体键反解维度；不在表内（未知键）按默认浅色自动处理。 */
+function trashDimsOf(key) {
+    for (const [tone, styles] of Object.entries(TRASH_DIMS)) {
+        for (const [style, variant] of Object.entries(styles)) {
+            if (variant === key) return { tone, style };
+        }
+    }
+    return { tone: "light", style: "auto" };
+}
+
+/**
+ * 一组分段按钮（不绑设置键的纯 UI 件：两个维度合写同一个 trash.icon，
+ * 因此不复用 controlSegmented 的一键一值绑定）。
+ * @param {Array<{value:string, label:string}>} options 候选
+ * @param {(value:string)=>void} onPick 点选回调
+ * @returns {{node:HTMLElement, mark:(current:string)=>void}} 部件
+ */
+function dimSegmented(options, onPick) {
+    const node = el("div", { class: "ss-segmented", attrs: { role: "radiogroup" } });
+    const items = options.map((opt) => {
+        const btn = el("button", {
+            class: "ss-segmented__item",
+            attrs: { type: "button", role: "radio", "aria-checked": "false" },
+            dataset: { value: opt.value },
+            text: opt.label,
+        });
+        btn.addEventListener("click", () => onPick(opt.value));
+        node.appendChild(btn);
+        return btn;
+    });
+    return {
+        node,
+        mark(current) {
+            items.forEach((btn) => {
+                const on = btn.dataset.value === current;
+                btn.classList.toggle("ss-segmented__item--on", on);
+                btn.setAttribute("aria-checked", on ? "true" : "false");
+            });
+        },
+    };
+}
+
+/**
+ * 废纸篓两维选择器：预览（当前变体大图 + 名称）+「外观」「样式」两组分段。
+ * @returns {HTMLElement} 控件根
+ */
+function buildTrashPicker() {
+    const img = el("img", { class: "ss-trash__img", attrs: { alt: "" } });
+    const current = el("span", { class: "ss-trash__current" });
+
+    /** 把维度合成变体键并写入设置中枢（apply 指向 trashIcon.setTrashIcon）。 */
+    const apply = (tone, style) => {
+        const key = (TRASH_DIMS[tone] || TRASH_DIMS.light)[style] || TRASH_DIMS.light.auto;
+        settings.set("trash.icon", key, { source: "system-settings" });
+    };
+
+    const toneSeg = dimSegmented([
+        { value: "light", label: t("ss.dock.toneLight", "浅色") },
+        { value: "dark", label: t("ss.dock.toneDark", "深色") },
+    ], (tone) => apply(tone, trashDimsOf(settings.get("trash.icon")).style));
+
+    const styleSeg = dimSegmented([
+        { value: "auto", label: t("ss.dock.styleAuto", "自动") },
+        { value: "full", label: t("ss.dock.styleFull", "装满") },
+        { value: "mono", label: t("ss.dock.styleMono", "黑白") },
+        { value: "clear", label: t("ss.dock.styleClear", "透明") },
+    ], (style) => apply(trashDimsOf(settings.get("trash.icon")).tone, style));
+
+    /** 按当前 trash.icon 值刷新预览与两组分段的选中态。 */
+    const repaint = () => {
+        const key = String(settings.get("trash.icon") || "light");
+        const dims = trashDimsOf(key);
+        img.src = trashIconSrc(trashIcon, key);
+        current.textContent = t(`ss.dock.trashName.${key}`, key); // i18n-dynamic-ok: 键域为 trash.icon 的有限候选值
+        toneSeg.mark(dims.tone);
+        styleSeg.mark(dims.style);
+    };
+    bind("trash.icon", repaint);
+    repaint();
+
+    return el("div", { class: "ss-trash" },
+        el("div", { class: "ss-trash__preview" }, img, current),
+        el("div", { class: "ss-trash__dims" },
+            el("div", { class: "ss-trash__dim" },
+                el("span", { class: "ss-trash__dimlabel", text: t("ss.dock.trashTone", "外观") }), toneSeg.node),
+            el("div", { class: "ss-trash__dim" },
+                el("span", { class: "ss-trash__dimlabel", text: t("ss.dock.trashStyle", "样式") }), styleSeg.node)));
+}
+
+/**
  * 构建「桌面与程序坞」面板。
  * @param {object} ctx 外壳上下文
  * @returns {HTMLElement} 面板根元素
@@ -191,15 +365,6 @@ export function build(ctx) {
     const minimizeDefinition = settings.info("dock.minimize.effect") || {};
     const minimizeOptions = (minimizeDefinition.values || ["genie", "scale"])
         .map((value) => ({ value, label: minimizeLabels[value] || value }));
-
-    const trashOptions = (trashIcon.TRASH_KEYS || []).map((key) => {
-        const nameKey = `ss.dock.trashName.${key}`;
-        return {
-            value: key,
-            label: t(nameKey, key),
-            image: trashIconSrc(trashIcon, key),
-        };
-    });
 
     const resetRow = actionRow({
         label: t("ss.dock.resetTitle", "程序坞排列"),
@@ -253,15 +418,43 @@ export function build(ctx) {
         ], { title: t("ss.dock.dock", "程序坞") }),
 
         group([
-            controlCards("trash.icon", {
+            row({
                 label: t("ss.dock.trash", "废纸篓图标"),
-                options: trashOptions,
+                control: buildTrashPicker(),
+                stack: true,
             }),
             controlSwitch("general.nativeContextMenu", {
                 label: t("ss.dock.context", "显示原生右键菜单"),
             }),
             resetRow,
         ], { title: t("ss.dock.desktop", "桌面") }),
+
+        // FS-07：桌面与台前调度区（键定义在 wm/stage-manager.js，这里只渲染）
+        group([
+            controlSwitch("controlcenter.stage", {
+                label: t("ss.dock.stage", "台前调度"),
+            }),
+            controlSwitch("desktop.stage.showRecent", {
+                label: t("ss.dock.stageRecent", "显示最近使用的应用"),
+            }),
+            controlSegmented("desktop.stage.windowMode", {
+                label: t("ss.dock.stageMode", "显示应用程序窗口"),
+                options: [
+                    { value: "all", label: t("ss.dock.stageModeAll", "一次全部") },
+                    { value: "one", label: t("ss.dock.stageModeOne", "一次一个") },
+                ],
+            }),
+            controlSwitch("desktop.stage.showDesktopItems", {
+                label: t("ss.dock.stageDesktop", "在桌面上显示项目"),
+            }),
+            controlSegmented("desktop.stage.clickWallpaper", {
+                label: t("ss.dock.stageWallpaper", "点按墙纸显示桌面"),
+                options: [
+                    { value: "always", label: t("ss.dock.wpAlways", "始终") },
+                    { value: "stageOnly", label: t("ss.dock.wpStageOnly", "仅台前调度中") },
+                ],
+            }),
+        ], { title: t("ss.dock.stage", "台前调度") }),
 
         group([
             // 两项都走 event 通道（启动台是插件，没有常驻 owner）：这里只经 settings.set

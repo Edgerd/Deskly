@@ -1,15 +1,11 @@
 /**
  * panes/default-apps.js — 「系统设置 › 通用 › 默认应用」面板
  *
- * 这里是默认应用**唯一**的手工修改入口（设计决策 6）：插件可以调
- * Deskly.apps.default.set，但用户想改回去、想看清现在归谁，就来这页。
+ * 这里是默认应用**唯一**的手工修改入口（设计决策 6）。
  *
- * 控件不复用 ui.js 的 controlDropdown：那个组件是「一个设置键 ↔ 一个值」的绑定，
- * 而本页是一张 map（.md/.docx/http: … 各一条），没有对应的单键。
- * 但外观类名（.ss-dropdown/.ss-menu）沿用组件层那套，界面不会长出一个孤例。
- *
- * 每行的候选项来自 app-registry 的 listApps()，所以下拉里出现的都是真实可启动的 app；
- * 「跟随系统默认」不是选项之一而是**删除用户绑定**（回到三级回退链的第二、三级）。
+ * 控件不复用 ui.js 的 controlDropdown（那是「一个设置键 ↔ 一个值」的绑定，本页是一张 map），
+ * 但外观类名沿用 .ss-dropdown/.ss-menu，界面不长出孤例。
+ * 候选项来自 app-registry 的 listApps()；「跟随系统默认」不是选项而是**删除用户绑定**（回到三级回退链的二、三级）。
  */
 
 import {
@@ -21,7 +17,6 @@ import { closeAllPopovers } from "../../../src/javascripts/ui/popover.js";
 
 export const paneId = "default-apps";
 
-/** 四语言文案。 */
 export const messages = {
     "zh-CN": {
         ss: {
@@ -150,9 +145,8 @@ function picker(key, options, current) {
 }
 
 /**
- * 一种文件类型/协议的一行。
- * 来源只在「用户改过」时才标一次：以前每行都挂一行「系统默认」，21 行就是 21 条同样的
- * 小字 —— 那是数据不是说明，原版把它放在值的位置，从不占一行正文。
+ * 一种文件类型/协议的一行。来源只在「用户改过」时才标：每行都挂「系统默认」是 21 条重复
+ * 数据而非说明，原版把它放在值的位置，从不占一行正文。
  */
 function typeRow(entry, options) {
     const hit = resolve(entry.key);
@@ -222,10 +216,8 @@ export function build() {
     paneRoot = root;
     render();
 
-    // 改绑可能来自插件调用 Deskly.apps.default.set，界面要跟着动，
-    // 所以订阅内核事件而不是只在自己点按钮后刷新。
-    // 重建整页前先把浮层收掉：旧行的下拉菜单还挂在浮出层里，等 rAF 发现
-    // 触发元素消失才关，会有一帧的错位的菜单留在屏幕上。
+    // 改绑可能来自插件调用 Deskly.apps.default.set，所以订阅内核事件而非只在点按钮后刷新。
+    // 重建前先收浮层：旧行的下拉菜单还挂在浮出层里，等 rAF 发现触发元素消失才关会留一帧错位菜单。
     const onChanged = () => { closeAllPopovers(); render(); };
     document.addEventListener("default-apps-changed", onChanged);
     track(() => document.removeEventListener("default-apps-changed", onChanged));

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="debug">
+  <title>debug</title>
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#248A3D"/>
+  <rect x="5.9" y="8.5" width="12.2" height="7" rx="1.6" fill="#fff"/><path fill="#248A3D" d="M9.1 10.3l3.5 2.8-3.5 2.8v-2.1l1.5-1.2-1.5-1.2z"/><rect x="13.1" y="13.2" width="3.9" height="1.4" rx=".35" fill="#248A3D"/>
+</svg>

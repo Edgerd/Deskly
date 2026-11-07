@@ -12,12 +12,18 @@
 
 .rb-tabs {
     display: flex;
+    flex-wrap: nowrap;
     align-items: flex-end;
     gap: 1px;
     padding: 0 10px;
     background: #f3f3f3;
     border-bottom: 1px solid #d0d0d0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
 }
+
+.rb-tabs::-webkit-scrollbar { display: none; }
 
 .rb-tab {
     position: relative;
@@ -131,8 +137,8 @@
     color: #2b579a;
 }
 
-.rb-icon svg { width: 14px; height: 9px; fill: currentColor; }
-.rb-large .rb-icon svg { width: 18px; height: 12px; }
+.rb-icon svg { width: 15px; height: 15px; fill: currentColor; }
+.rb-large .rb-icon svg { width: 20px; height: 20px; }
 .rb-icon-text { font-size: 13px; font-weight: 600; }
 .rb-label { white-space: nowrap; }
 .rb-sep { width: 1px; height: 22px; margin: 0 2px; background: #e1e1e1; }
@@ -165,13 +171,24 @@
 
 .rb-backstage-title { font-size: 15px; font-weight: 600; color: #2b579a; margin: 4px 10px 0 0; }
 
-.rb-backstage-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.rb-backstage-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+}
 
 .rb-backstage-item {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 2px;
+    flex: none;
     min-width: 118px;
     padding: 7px 12px;
     font: inherit;
@@ -208,6 +225,7 @@
     cursor: default;
 }
 
+.office-qat button svg { width: 15px; height: 15px; fill: currentColor; }
 .office-qat button:hover { background: rgba(43, 87, 154, 0.1); border-color: rgba(43, 87, 154, 0.25); }
 .office-qat button[disabled] { opacity: 0.35; }
 
@@ -267,9 +285,8 @@ html[data-theme="dark"] .office-find input { background: #1b1b1e; color: #dcdce0
 html[data-theme="dark"] .office-find-count { color: #9a9aa0; }
 
 /* ── 打印 / 导出 PDF ──
-   外壳在打印前给 <html> 挂 .office-printing，并把目标窗口标记为 .office-print-target：
-   此时整个桌面（壁纸、Dock、其它窗口、功能区与状态栏）全部隐藏，只有文档区留在纸上，
-   于是 Chrome 的「打印 → 另存为 PDF」出来的就是干净的文档本身。 */
+   外壳在打印前给 <html> 挂 .office-printing、目标窗口挂 .office-print-target：桌面其余全部隐藏，
+   只有文档区留在纸上，Chrome「打印 → 另存为 PDF」出来的就是干净文档。 */
 @media print {
     html.office-printing body > *:not(.window.office-print-target) { display: none !important; }
     html.office-printing .window.office-print-target {

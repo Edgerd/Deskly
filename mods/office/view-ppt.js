@@ -1,36 +1,19 @@
 /**
- * view-ppt.js — 演示视图模块（外壳往 [data-role="view"] 里塞的那个视图）
- *
- * 界面：左侧缩略图列 + 右侧幻灯片纸面，命令一律走 Office 2016 功能区
- * （`ribbon()` 声明标签页与控件、`command(id, value)` 执行、`state()` 回报按下态 /
- * 可用态，`onSelectionChange()` 让外壳在切页后重画功能区）。
- *
- * 页模型与 codecs/pptx.js 同一形状（本模块不 import 它，只按约定的字段读写）：
+ * view-ppt.js — 演示视图：左侧缩略图列 + 右侧幻灯片纸面 + Office 2016 功能区（ribbon/command/state 契约）。
+ * 页模型与 codecs/pptx.js 同一形状（本模块不 import，只按字段读写）：
  *   Slide = { title, bullets: string[], bulletsRight: string[],
  *             layout: "titleContent"|"titleOnly"|"blank"|"twoColumn",
- *             background: "#RRGGBB"|null, color: "#RRGGBB"|null,
- *             titleColor: "#RRGGBB"|null, size: number|null }
- * **bullets / bulletsRight 仍是 string[]**，视图与编解码都依赖这点。
- *
- * 草稿（draft）与模型分离：当前页的编辑状态留在草稿里（允许空行，方便连续输入），
- * 只有在 read() / 切页 / 结构变更时才经 normalizeBullets() 压缩回模型，
- * 所以切页不丢字，空文档也不会被"顺手清掉"。
- *
- * 撤销：任何落进模型的改动都经 commit() 进栈（栈深 HISTORY_MAX=60 ≥ 50），
- * 连续打字按合并键在 TEXT_COALESCE_MS=400ms 内算一步，快照含当前页下标（undo 不会跳页）。
- *
- * 放映：在窗口内覆盖一层只读放映视图（**不用浏览器全屏 API**），键盘翻页，
- * 全程不写模型；退出时摘干净监听并恢复编辑视图与滚动位置。
- *
- * 文案：界面字样一律走 `t.js` 的 `t('ppt.键', '中文原句')`，且只在 ribbon() / state() /
- * metric() / 渲染函数**调用时**现取（模块级常量只存 `[键, 中文原句]` 原料），
- * 所以切语言后功能区、状态栏、缩略图与纸面占位符都会跟着换。
- * 键全部带 `ppt.` 前缀避让其它视图；`{n}` 这类占位符由本文件的 fill() 现场填。
- * 注释、日志与要写进 .pptx 的数据字符串不在其列。
+ *             background/color/titleColor: "#RRGGBB"|null, size: number|null,
+ *             images: Array<{src: string, width: number, height: number, x: number, y: number}>,
+ *             notes: string, transition: "none"|"fade"|"push"|"wipe" }
+ * 草稿与模型分离：编辑态允许空行，read()/切页/结构变更时才经 normalizeBullets() 压回模型。
+ * 放映为窗口内只读覆盖层（不用浏览器全屏 API），键盘翻页，全程不写模型。
+ * 文案一律走 t('ppt.键', '中文原句') 且只在调用时现取（模块级常量只存 [键, 原句]），切语言即时生效。
  */
 
 import { el, useStyle } from "./view-style.js";
 import { t } from "./t.js";
+import { pickImage } from "./office-io.js";
 
 /**
  * 把文案里的 `{name}` 占位符换成实际值：内核 i18n 只回字符串，插值在这一层做。
@@ -98,7 +81,7 @@ const LAYOUT_IDS = ["titleContent", "titleOnly", "blank", "twoColumn"];
  *    （编解码侧 `bulletsRight` 也只在 twoColumn 下保留，两边口径一致）。
  * 4. 同版式互切（含重复选同一个）不动内容，只回一份副本：双栏 → 双栏**保留手工分好的
  *    左右两栏**，不再重新均分；只有**离开**双栏（并回左栏）或**从别处进**双栏才重分。
- * 5. title / background / color / titleColor / size 原样带走。
+ * 5. title / background / color / titleColor / size / images / notes / transition 原样带走。
  * @param {object} slide 当前页
  * @param {string} nextLayout 目标版式
  * @returns {{title: string, bullets: string[], bulletsRight: string[], layout: string,
@@ -130,7 +113,31 @@ export function migrateLayout(slide, nextLayout) {
         color: src.color == null ? null : src.color,
         titleColor: src.titleColor == null ? null : src.titleColor,
         size: src.size == null ? null : src.size,
+        images: normalizeViewImages(src.images),
+        notes: typeof src.notes === "string" ? src.notes : "",
+        transition: normalizeTransition(src.transition),
     };
+}
+
+/** 切换效果枚举；未知/缺省一律 none（与 codecs/pptx.js 同口径） */
+const TRANSITIONS = ["none", "fade", "push", "wipe"];
+
+/** 切换效果规整 */
+function normalizeTransition(value) {
+    return TRANSITIONS.includes(value) ? value : "none";
+}
+
+/** 切换效果下拉的 `[取值, 语言包键, 中文原句]` */
+const TRANSITION_TEXT = [
+    ["none", "ppt.transitionNone", "无"],
+    ["fade", "ppt.transitionFade", "淡出"],
+    ["push", "ppt.transitionPush", "推进"],
+    ["wipe", "ppt.transitionWipe", "擦除"],
+];
+
+/** 切换效果下拉：标签每次现取，切语言即时生效 */
+function transitionOptions() {
+    return TRANSITION_TEXT.map(([value, key, zh]) => ({ value, label: t(key, zh) }));
 }
 
 /** 亮度阈值：加权和低于它判为深色背景（见 pickTextColor 注释） */
@@ -283,6 +290,50 @@ function normalizeSize(value) {
     return Number.isFinite(n) && n >= 6 && n <= 200 ? Math.round(n) : null;
 }
 
+/** 图片缺失尺寸时的兜底（px），与 office-io 取自然尺寸失败时的兜底一致 */
+const IMAGE_FALLBACK_W = 200;
+const IMAGE_FALLBACK_H = 150;
+/** 图片坐标基准画布（px，96dpi）：与 codecs/pptx.js 的 960×540 同口径 */
+const IMAGE_CANVAS_W = 960;
+const IMAGE_CANVAS_H = 540;
+/** 旧图缺 x/y 时的默认排布：x=40，y=120 + 索引*16 */
+const IMAGE_DEFAULT_X = 40;
+const IMAGE_DEFAULT_Y = 120;
+const IMAGE_DEFAULT_STEP = 16;
+
+/** 坐标规整：非有限数用兜底值，再夹到 [0, max] */
+function normalizeViewCoord(value, fallback, max) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(max, Math.max(0, Math.round(n))) : fallback;
+}
+
+/**
+ * 规整页内图片数组：坏项丢弃、宽高兜底、缺 x/y 给默认排布；
+ * 缺省/非数组一律 []（兼容旧文档）。
+ * @param {unknown} list 原始数组
+ * @returns {Array<{src: string, width: number, height: number, x: number, y: number}>} 图片项
+ */
+function normalizeViewImages(list) {
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const raw of list) {
+        const img = raw || {};
+        if (typeof img.src !== "string" || !img.src) continue;
+        const w = Number(img.width);
+        const h = Number(img.height);
+        const width = Number.isFinite(w) && w > 0 ? Math.max(1, Math.round(w)) : IMAGE_FALLBACK_W;
+        const height = Number.isFinite(h) && h > 0 ? Math.max(1, Math.round(h)) : IMAGE_FALLBACK_H;
+        out.push({
+            src: img.src,
+            width: Math.min(IMAGE_CANVAS_W, width),
+            height: Math.min(IMAGE_CANVAS_H, height),
+            x: normalizeViewCoord(img.x, IMAGE_DEFAULT_X, IMAGE_CANVAS_W),
+            y: normalizeViewCoord(img.y, IMAGE_DEFAULT_Y + out.length * IMAGE_DEFAULT_STEP, IMAGE_CANVAS_H),
+        });
+    }
+    return out;
+}
+
 /**
  * 把一页洗成视图内部形态（缺字段补默认，未知版式退回 titleContent，颜色 / 字号只认约定值）。
  * @param {object} raw 外来页
@@ -301,6 +352,9 @@ function normalizeSlide(raw) {
         color: normalizeColorField(s.color),
         titleColor: normalizeColorField(s.titleColor),
         size: normalizeSize(s.size),
+        images: normalizeViewImages(s.images),
+        notes: typeof s.notes === "string" ? s.notes : "",
+        transition: normalizeTransition(s.transition),
     };
 }
 
@@ -351,8 +405,8 @@ export function createView(viewEl, opts) {
     let model = blankModel();
     let index = 0;
     let draft = { title: "", bullets: [], bulletsRight: [] };
-    /** 显示比例：true = 16:9。纯视图状态，模型里没有这个字段，导出不受影响 */
-    let wide = true;
+    /** 纸张尺寸（16:9 / 4:3）：属于文档内容，随文件保存、重新打开还原 */
+    let pageSize = "16:9";
     /** 放映层句柄（{ layer, stage, count, hint, exitBtn, page, bound, saved, canvas, prevFocus }），没在放映时为 null */
     let present = null;
     let disposed = false;
@@ -366,6 +420,8 @@ export function createView(viewEl, opts) {
     const sheet = el("div", "ppt-sheet");
     const titleInput = el("input", "ppt-title");
     titleInput.type = "text";
+    /** 纸面图片层：铺满纸面，按模型 x/y/宽高绝对定位，每张可拖动、带删除按钮 */
+    const picsBox = el("div", "ppt-pics");
     const bodyBox = el("div", "ppt-body");
     const bulletsBox = el("div", "ppt-bullets");
     const rightBox = el("div", "ppt-bullets ppt-bullets-right");
@@ -375,6 +431,14 @@ export function createView(viewEl, opts) {
     const addBulletRight = el("button", "ppt-addbullet ppt-addbullet-right");
     addBulletRight.type = "button";
     const bodyNote = el("p", "ppt-note");
+    /** 演讲者备注：纸面下方的纯文本编辑区，随当前页切换，内容写进 slide.notes 并持久化 */
+    const notesBox = el("div", "ppt-notes");
+    const notesLabel = el("label", "ppt-notes-label");
+    const notesInput = el("textarea", "ppt-notes-input");
+    notesLabel.append(notesInput);
+    notesBox.append(notesLabel);
+    const stage = el("div", "ppt-stage");
+    stage.append(sheet, notesBox);
 
     const mkTool = (act) => {
         const btn = el("button", "ppt-tool");
@@ -389,8 +453,8 @@ export function createView(viewEl, opts) {
 
     tools.append(addPageBtn, delPageBtn, upBtn, downBtn);
     side.append(tools, thumbList);
-    sheet.append(titleInput, bodyBox, addBullet, addBulletRight, bodyNote);
-    main.append(sheet);
+    sheet.append(titleInput, picsBox, bodyBox, addBullet, addBulletRight, bodyNote);
+    main.append(stage);
     root.append(side, main);
 
     /**
@@ -403,6 +467,9 @@ export function createView(viewEl, opts) {
         addBullet.textContent = t("ppt.btnAddBullet", "+ 添加要点");
         addBulletRight.textContent = t("ppt.btnAddBulletRight", "+ 右栏要点");
         bodyNote.textContent = t("ppt.noBodyNote", "该版式没有正文占位符，要点内容已保留（切回「标题和内容」或「双栏」即恢复显示）");
+        notesLabel.textContent = t("ppt.notes", "演讲者备注");
+        notesInput.placeholder = t("ppt.notesPlaceholder", "输入演讲者备注，随文件保存并在重新打开时回读");
+        notesInput.title = t("ppt.notesTip", "备注只保存文本，不参与放映画面");
         addPageBtn.textContent = t("ppt.toolAddPage", "添加页");
         delPageBtn.textContent = t("ppt.toolDeletePage", "删除当前页");
         upBtn.textContent = t("ppt.toolMoveUp", "上移");
@@ -438,7 +505,6 @@ export function createView(viewEl, opts) {
     syncChrome();
 
     const current = () => model.slides[index];
-    /** 事件目标属于哪一栏："r" = 右栏，其余按左栏 */
     const colOf = (input) => (input.dataset && input.dataset.col === "r" ? "right" : "left");
     const draftOf = (col) => (col === "right" ? draft.bulletsRight : draft.bullets);
     const boxOf = (col) => (col === "right" ? rightBox : bulletsBox);
@@ -529,7 +595,7 @@ export function createView(viewEl, opts) {
         const hasBody = layoutHasBody(slide);
         const derived = pickTextColor(slide.background);
 
-        root.classList.toggle("ppt-ratio43", !wide);
+        root.classList.toggle("ppt-ratio43", pageSize === "4:3");
         sheet.classList.toggle("ppt-on-dark", derived === TEXT_ON_DARK);
         sheet.style.background = slide.background || "";
 
@@ -550,13 +616,108 @@ export function createView(viewEl, opts) {
         bodyBox.style.fontSize = fs;
     }
 
+    /** 把图片模型坐标（960×540 基准）刷成百分比绝对定位，随纸面缩放 */
+    function paintPic(box, image) {
+        box.style.left = `${(image.x / IMAGE_CANVAS_W) * 100}%`;
+        box.style.top = `${(image.y / IMAGE_CANVAS_H) * 100}%`;
+        box.style.width = `${(image.width / IMAGE_CANVAS_W) * 100}%`;
+        box.style.height = `${(image.height / IMAGE_CANVAS_H) * 100}%`;
+    }
+
+    /**
+     * 画纸面图片层：按 x/y/宽高绝对定位在幻灯片容器内；删除按钮直接改模型并进撤销栈。
+     * @returns {void}
+     */
+    function renderPics() {
+        picsBox.replaceChildren();
+        const slide = current();
+        const list = slide && Array.isArray(slide.images) ? slide.images : [];
+        show(picsBox, list.length > 0);
+        list.forEach((image, i) => {
+            const box = el("div", "ppt-pic");
+            box.dataset.ix = String(i);
+            paintPic(box, image);
+            const pic = el("img", "ppt-pic-img");
+            pic.src = image.src;
+            pic.alt = t("ppt.imageAlt", "幻灯片图片 {n}").replace("{n}", String(i + 1));
+            pic.draggable = false;
+            const del = el("button", "ppt-pic-del", "×");
+            del.type = "button";
+            del.title = t("ppt.deleteImage", "删除这张图片");
+            del.setAttribute("aria-label", t("ppt.deleteImage", "删除这张图片"));
+            del.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const cur = current();
+                if (!cur || !Array.isArray(cur.images)) return;
+                cur.images.splice(i, 1);
+                structural();
+            });
+            box.append(pic, del);
+            picsBox.append(box);
+        });
+    }
+
+    /* ── 图片拖动：按预览缩放比换算回 960×540 基准 ── */
+    /** 当前拖动会话（{node, image, startX, startY, originX, originY, sx, sy, nextX, nextY, moved}） */
+    let dragPic = null;
+
+    const onPicDown = (e) => {
+        const box = e.target && e.target.closest ? e.target.closest(".ppt-pic") : null;
+        if (!box || (e.target.closest(".ppt-pic-del"))) return;
+        const slide = current();
+        const i = Number(box.dataset.ix);
+        const image = slide && Array.isArray(slide.images) ? slide.images[i] : null;
+        if (!image) return;
+        const rect = sheet.getBoundingClientRect ? sheet.getBoundingClientRect() : null;
+        const sx = rect && rect.width ? rect.width / IMAGE_CANVAS_W : 1;
+        const sy = rect && rect.height ? rect.height / IMAGE_CANVAS_H : 1;
+        dragPic = {
+            node: box, image,
+            startX: Number(e.clientX) || 0, startY: Number(e.clientY) || 0,
+            originX: image.x, originY: image.y,
+            nextX: image.x, nextY: image.y,
+            sx, sy, moved: false,
+        };
+        box.classList.add("ppt-dragging");
+        if (e.pointerId !== undefined && picsBox.setPointerCapture) picsBox.setPointerCapture(e.pointerId);
+        if (e.preventDefault) e.preventDefault();
+    };
+
+    const onPicMove = (e) => {
+        if (!dragPic) return;
+        const dx = (Number(e.clientX) || 0) - dragPic.startX;
+        const dy = (Number(e.clientY) || 0) - dragPic.startY;
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragPic.moved = true;
+        dragPic.nextX = Math.min(IMAGE_CANVAS_W, Math.max(0, Math.round(dragPic.originX + dx / dragPic.sx)));
+        dragPic.nextY = Math.min(IMAGE_CANVAS_H, Math.max(0, Math.round(dragPic.originY + dy / dragPic.sy)));
+        paintPic(dragPic.node, { ...dragPic.image, x: dragPic.nextX, y: dragPic.nextY });
+        if (e.preventDefault) e.preventDefault();
+    };
+
+    const onPicUp = (e) => {
+        if (!dragPic) return;
+        const session = dragPic;
+        dragPic = null;
+        session.node.classList.remove("ppt-dragging");
+        if (e.pointerId !== undefined && picsBox.releasePointerCapture) {
+            try { picsBox.releasePointerCapture(e.pointerId); } catch (err) { /* 已释放或未捕获 */ }
+        }
+        if (!session.moved) return;
+        session.image.x = session.nextX;
+        session.image.y = session.nextY;
+        changed();
+    };
+
     function renderEdit() {
         const slide = current();
         draft.title = slide ? slide.title : "";
         draft.bullets = slide ? slide.bullets.slice() : [];
         draft.bulletsRight = slide ? slide.bulletsRight.slice() : [];
         titleInput.value = draft.title;
+        notesInput.value = slide ? slide.notes : "";
         renderRows();
+        renderPics();
         paintSheet();
     }
 
@@ -594,6 +755,7 @@ export function createView(viewEl, opts) {
                 ...s,
                 bullets: s.bullets.slice(),
                 bulletsRight: s.bulletsRight.slice(),
+                images: normalizeViewImages(s.images),
             })),
         };
     }
@@ -730,6 +892,13 @@ export function createView(viewEl, opts) {
         changed("text");
     };
 
+    const onNotesInput = () => {
+        const slide = current();
+        if (!slide) return;
+        slide.notes = notesInput.value;
+        changed("notes");
+    };
+
     const onBulletInput = (e) => {
         const input = e.target.closest(".ppt-bullet");
         if (!input) return;
@@ -837,6 +1006,21 @@ export function createView(viewEl, opts) {
         titleInput.focus();
     }
 
+    /** 复制当前页：深拷贝插到本页之后并切过去（要点数组也要拷，不然两页共用一份） */
+    function duplicateSlide() {
+        const slide = current();
+        if (!slide) return;
+        pushDraft();
+        const copy = normalizeSlide({
+            ...slide,
+            bullets: slide.bullets.slice(),
+            bulletsRight: slide.bulletsRight.slice(),
+        });
+        model.slides.splice(index + 1, 0, copy);
+        index += 1;
+        structural();
+    }
+
     function removeSlide() {
         if (model.slides.length <= 1) return;
         pushDraft();
@@ -894,11 +1078,17 @@ export function createView(viewEl, opts) {
         const derived = pickTextColor(slide.background);
         present.stage.textContent = "";
         present.stage.className = "ppt-show-stage"
-            + (wide ? "" : " ppt-ratio43")
+            + (pageSize === "16:9" ? "" : " ppt-ratio43")
             + (derived === TEXT_ON_DARK ? " ppt-on-dark" : "");
         present.stage.style.background = slide.background || "";
 
         const page = el("div", "ppt-show-page");
+        const animClass = {
+            fade: "ppt-anim-fade",
+            push: "ppt-anim-push",
+            wipe: "ppt-anim-wipe",
+        }[normalizeTransition(slide.transition)];
+        if (present.anim && animClass) page.classList.add(animClass);
         if (slide.layout !== "blank") {
             const heading = el("h2", "ppt-show-title", slide.title || "");
             if (slide.titleColor || derived) heading.style.color = slide.titleColor || derived;
@@ -921,12 +1111,16 @@ export function createView(viewEl, opts) {
     /**
      * 跳到放映的第 i 页（越界自动夹到首 / 末页）
      * @param {number} i 页下标
+     * @param {boolean} [animate] 是否按目标页 transition 施加入场动画（翻页时为真，进入 / 重绘时不加）
      */
-    function showPresent(i) {
+    function showPresent(i, animate = false) {
         if (!present) return;
         const want = Number.isInteger(i) ? i : 0;
+        const from = present.page;
         present.page = Math.max(0, Math.min(want, model.slides.length - 1));
+        present.anim = !!animate && present.page !== from;
         renderPresent();
+        present.anim = false;
     }
 
     /**
@@ -935,7 +1129,7 @@ export function createView(viewEl, opts) {
      */
     function stepPresent(delta) {
         if (!present) return;
-        showPresent(present.page + delta);
+        showPresent(present.page + delta, true);
     }
 
     const onPresentKey = (e) => {
@@ -958,12 +1152,12 @@ export function createView(viewEl, opts) {
         }
         if (k === "Home") {
             e.preventDefault();
-            showPresent(0);
+            showPresent(0, true);
             return;
         }
         if (k === "End") {
             e.preventDefault();
-            showPresent(model.slides.length - 1);
+            showPresent(model.slides.length - 1, true);
         }
     };
 
@@ -1014,6 +1208,7 @@ export function createView(viewEl, opts) {
             hint,
             exitBtn,
             page: 0,
+            anim: false,
             bound: [],
             canvas,
             prevFocus: doc.activeElement || null,
@@ -1068,6 +1263,27 @@ export function createView(viewEl, opts) {
 
     /* ── 功能区命令实现 ── */
     /**
+     * 插入图片：选文件 -> data URL -> 自然尺寸 -> 进当前页模型（可撤销）。
+     * x/y 按旧回写排布递增（40 / 120+索引*16），用户随后可在纸面上拖动。
+     * @returns {Promise<void>}
+     */
+    async function addImage() {
+        const image = await pickImage();
+        if (!image || disposed) return;
+        const slide = current();
+        if (!slide) return;
+        pushDraft();
+        slide.images.push({
+            src: image.src,
+            width: Math.min(IMAGE_CANVAS_W, image.width),
+            height: Math.min(IMAGE_CANVAS_H, image.height),
+            x: IMAGE_DEFAULT_X,
+            y: IMAGE_DEFAULT_Y + slide.images.length * IMAGE_DEFAULT_STEP,
+        });
+        structural();
+    }
+
+    /**
      * 改当前页的某个样式字段并进撤销栈。
      * @param {string} field 字段名
      * @param {*} value 新值（已按模型口径洗过）
@@ -1117,6 +1333,9 @@ export function createView(viewEl, opts) {
             case "ppt.newSlide":
                 insertSlide();
                 return true;
+            case "ppt.duplicateSlide":
+                duplicateSlide();
+                return true;
             case "ppt.deleteSlide":
                 removeSlide();
                 return true;
@@ -1135,17 +1354,26 @@ export function createView(viewEl, opts) {
             case "ppt.background":
                 setSlideField("background", normalizeColorField(value));
                 return true;
+            case "ppt.transition":
+                setSlideField("transition", normalizeTransition(value));
+                return true;
             case "ppt.play":
-                // 放映只读，但外壳对已处理命令统一置脏，这里不绕过那条契约
+                // 放映只读、不动模型，不调 onInput —— 脏标记只认真改动，放映不该把文档标脏
                 startPresent(index);
                 return true;
             case "ppt.playFromStart":
                 startPresent(0);
                 return true;
+            case "ppt.insertImage":
+            case "insertImage":
+                void addImage();
+                return true;
             case "ppt.fitSlide":
-                wide = !wide;
+                // 纸张尺寸进模型（随文件落盘），因此要标脏；放映层同步重绘
+                pageSize = pageSize === "16:9" ? "4:3" : "16:9";
                 paintSheet();
                 renderPresent();
+                onInput();
                 onSelectionChange();
                 return true;
             default:
@@ -1193,6 +1421,7 @@ export function createView(viewEl, opts) {
                         label: t("ppt.groupSlides", "幻灯片"),
                         items: [
                             { id: "ppt.newSlide", label: t("ppt.cmdNewSlide", "新建页"), icon: "slide", size: "large", title: t("ppt.tipNewSlide", "在当前页之后插入一页") },
+                            { id: "ppt.duplicateSlide", label: t("ppt.cmdDuplicateSlide", "复制当前页"), icon: "page", size: "large", title: t("ppt.tipDuplicateSlide", "把当前页（含要点与版式）复制一份插到后面") },
                             { id: "ppt.deleteSlide", label: t("ppt.cmdDeleteSlide", "删除当前页"), icon: "clear", size: "large", title: t("ppt.tipDeleteSlide", "只剩一页时不可用") },
                             { id: "ppt.moveUp", label: t("ppt.cmdMoveUp", "上移"), icon: "decrease", size: "small", title: t("ppt.tipMoveUp", "当前页前移一位") },
                             { id: "ppt.moveDown", label: t("ppt.cmdMoveDown", "下移"), icon: "increase", size: "small", title: t("ppt.tipMoveDown", "当前页后移一位") },
@@ -1203,6 +1432,12 @@ export function createView(viewEl, opts) {
                         items: [
                             { id: "ppt.addBullet", label: t("ppt.cmdAddBullet", "添加要点"), icon: "listBullet", size: "large", title: t("ppt.tipAddBullet", "在当前页加一条要点") },
                             { id: "ppt.addBulletRight", label: t("ppt.cmdAddBulletRight", "右栏要点"), icon: "column", size: "large", title: t("ppt.tipAddBulletRight", "仅「双栏」版式可用") },
+                        ],
+                    },
+                    {
+                        label: t("ppt.groupImage", "图片"),
+                        items: [
+                            { id: "ppt.insertImage", label: t("insertImage", "插入图片"), icon: "image", size: "large", title: t("insertImageTip", "从本地选择 PNG/JPEG/GIF/WebP 图片，加到当前页") },
                         ],
                     },
                 ],
@@ -1223,6 +1458,12 @@ export function createView(viewEl, opts) {
                 id: "show",
                 label: t("ppt.tabSlideShow", "幻灯片放映"),
                 groups: [
+                    {
+                        label: t("ppt.groupTransition", "切换"),
+                        items: [
+                            { id: "ppt.transition", label: t("ppt.ctlTransition", "切换效果"), type: "menu", options: transitionOptions() },
+                        ],
+                    },
                     {
                         label: t("ppt.groupPresent", "放映"),
                         items: [
@@ -1264,7 +1505,8 @@ export function createView(viewEl, opts) {
             "ppt.color": slide.color || "",
             "ppt.titleColor": slide.titleColor || "",
             "ppt.background": slide.background || "",
-            "ppt.fitSlide": !wide,
+            "ppt.transition": slide.transition || "none",
+            "ppt.fitSlide": pageSize === "4:3",
             "!ppt.undo": !canUndo(),
             "!ppt.redo": !canRedo(),
             "!ppt.deleteSlide": model.slides.length <= 1,
@@ -1276,21 +1518,23 @@ export function createView(viewEl, opts) {
     }
 
     listen(titleInput, "input", onTitleInput);
+    listen(notesInput, "input", onNotesInput);
     listen(bodyBox, "input", onBulletInput);
     listen(bodyBox, "keydown", onBulletKeydown);
     listen(bodyBox, "click", onBulletClick);
     listen(bodyBox, "paste", onBulletPaste);
     listen(addBullet, "click", onAddBullet);
     listen(addBulletRight, "click", onAddBulletRight);
+    listen(picsBox, "pointerdown", onPicDown);
+    listen(picsBox, "pointermove", onPicMove);
+    listen(picsBox, "pointerup", onPicUp);
     listen(tools, "click", onToolClick);
     listen(thumbList, "click", onThumbClick);
 
     /**
-     * 切语言：外壳只会重画功能区与状态栏（ribbon / state / metric），
-     * 视图自己的占位符、侧栏按钮、缩略图字样与放映条都在 syncChrome() 里补齐。
-     * `languagechange` 由内核在 document 上派发且允许冒泡，冒泡到 window（菜单栏就是这么接的），
-     * 所以这里挂 window：既不吃掉视图在 document 上的监听名额（放映键盘监听独占它，dispose 对账），
-     * 也让 dispose 通过 bound 表把它一并摘掉。
+     * 切语言：外壳只重画功能区与状态栏，视图自己的字样（占位符 / 侧栏按钮 / 缩略图 / 放映条）
+     * 在 syncChrome() 里补齐。languagechange 冒泡到 window，挂在 window 上不占用 document 的
+     * 监听名额（放映键盘监听独占它），并由 bound 表在 dispose 时一并摘除。
      */
     const onLanguageChange = () => {
         if (disposed) return;
@@ -1311,6 +1555,7 @@ export function createView(viewEl, opts) {
     function loadModel(m) {
         if (disposed) return;
         stopPresent();
+        pageSize = m && m.page && m.page.size === "4:3" ? "4:3" : "16:9";
         model = cloneModel(m);
         index = 0;
         renderThumbs();
@@ -1334,6 +1579,60 @@ export function createView(viewEl, opts) {
         titleInput.focus();
     }
 
+    /**
+     * 查找导航（外壳「上一个 / 下一个」）：在全部页的标题与要点里循环找下一处命中，
+     * 找到就切页、聚焦该行并选中命中串。大小写敏感，与替换口径一致。
+     * @param {string} query 查找串
+     * @param {number} dir 1 向下，-1 向上
+     * @returns {boolean} 是否命中
+     */
+    function seek(query, dir) {
+        const q = String(query || "");
+        if (!q || disposed) return false;
+        pushDraft();
+        const forward = dir !== -1;
+        // 命中点清单：标题 where=-1，要点 where=行号（左栏 0、右栏 0.5 拉开同页顺序）
+        const hits = [];
+        model.slides.forEach((s, i) => {
+            const title = String(s.title || "");
+            if (title.indexOf(q) !== -1) hits.push({ slide: i, where: -1, col: "l", at: title.indexOf(q) });
+            s.bullets.forEach((text, r) => {
+                const at = String(text).indexOf(q);
+                if (at !== -1) hits.push({ slide: i, where: r, col: "l", at });
+            });
+            s.bulletsRight.forEach((text, r) => {
+                const at = String(text).indexOf(q);
+                if (at !== -1) hits.push({ slide: i, where: r, col: "r", at });
+            });
+        });
+        if (!hits.length) return false;
+        const order = (h) => h.slide * 10000 + (h.where + 1) + (h.col === "r" ? 0.5 : 0);
+        const activeEl = doc && doc.activeElement && typeof doc.activeElement.closest === "function"
+            ? doc.activeElement.closest(".ppt-bullet") : null;
+        const curPos = index * 10000 + ((activeEl ? Number(activeEl.dataset.ix) : -1) + 1);
+        let target = null;
+        if (forward) {
+            target = hits.find((h) => order(h) > curPos) || hits[0];
+        } else {
+            for (let i = hits.length - 1; i >= 0; i--) {
+                if (order(h) < curPos) { target = hits[i]; break; }
+            }
+            if (!target) target = hits[hits.length - 1];
+        }
+        gotoPage(target.slide);
+        if (target.where === -1) {
+            titleInput.focus();
+            if (typeof titleInput.setSelectionRange === "function") titleInput.setSelectionRange(target.at, target.at + q.length);
+        } else {
+            const col = target.col === "r" ? "right" : "left";
+            focusRow(target.where, col);
+            const input = Array.from(boxOf(col).querySelectorAll(".ppt-bullet"))[target.where];
+            if (input && typeof input.setSelectionRange === "function") input.setSelectionRange(target.at, target.at + q.length);
+        }
+        onSelectionChange();
+        return true;
+    }
+
     return {
         /**
          * 载入模型（会丢弃当前未保存的编辑态）
@@ -1345,11 +1644,12 @@ export function createView(viewEl, opts) {
 
         /**
          * 读回模型：全空要点已过滤；空文档原样返回（仍是"一页空壳"）
-         * @returns {object} { slides: [...] }
+         * @returns {object} { slides: [...], page: {size: string} }
          */
         read() {
             pushDraft();
             return {
+                page: { size: pageSize },
                 slides: model.slides.map((s) => ({
                     title: s.title,
                     bullets: s.bullets.slice(),
@@ -1359,6 +1659,9 @@ export function createView(viewEl, opts) {
                     color: s.color,
                     titleColor: s.titleColor,
                     size: s.size,
+                    images: s.images.map((img) => ({ ...img })),
+                    notes: String(s.notes || ""),
+                    transition: s.transition || "none",
                 })),
             };
         },
@@ -1398,7 +1701,7 @@ export function createView(viewEl, opts) {
                 layoutLabel(slide.layout),
             ];
             if (present) bits.push(fill(t("ppt.presenting", "放映中 {cur}/{total}"), { cur: present.page + 1, total: model.slides.length }));
-            bits.push(wide ? "16:9" : "4:3");
+            bits.push(pageSize);
             return bits.filter(Boolean).join(" · ");
         },
 
@@ -1410,5 +1713,6 @@ export function createView(viewEl, opts) {
         undo,
         redo,
         applyEdit,
+        seek,
     };
 }

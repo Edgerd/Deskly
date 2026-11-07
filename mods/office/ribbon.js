@@ -1,70 +1,32 @@
 /**
- * ribbon.js — Office 2016 风格功能区（Ribbon）框架
- *
- * 外壳只负责「画功能区 + 把点击转成命令 + 回灌控件状态」，**不知道任何格式语义**：
- * 每个视图模块自己声明 `ribbon()`（标签页与控件）、`command(id, value)`（执行）、
- * `state()`（当前按下态 / 下拉当前值）。这样文稿 / 表格 / 演示三套命令不会互相污染，
- * 也让新增控件只改一个视图文件。
- *
- * 三条实现约定：
- * 1. 结构只在 tabs 变化时重建，状态变化只改 class/value —— 打字时每敲一键都重建
- *    几十个节点会明显掉帧。
- * 2. 事件全部委托在容器上（一个 click + 一个 change），控件不设独立监听，
- *    重建时无需逐个摘除，`destroy()` 只要拆容器和这两个委托。
- * 3. 图标不用任何图标字体或第三方库：用 `createElementNS` 现画少量几何形状
- *    （对齐、缩进、列表、边框、填充），其余用文本符号。仓内不允许为外观引入新依赖。
+ * ribbon.js — Office 2016 风格功能区（Ribbon）框架：画功能区、把点击转成命令、回灌控件状态，
+ * 不含任何格式语义（视图自声明 ribbon() / command(id, value) / state()，新增控件只改一个视图文件）。
+ * 约定：结构只在 tabs 变化时重建，状态变化只改 class/value —— 打字时重建几十节点会明显掉帧；
+ * 事件全部委托在容器上（一个 click + 一个 change），destroy() 只拆容器与这两个委托；
+ * 图标用 icons.js 内联的 Material Symbols 路径（不引图标字体、不联网），未知图标回落文本字形。
  */
 
 import { t } from "./t.js";
+import { iconSvg } from "./icons.js";
 
-const NS = "http://www.w3.org/2000/svg";
-/** 文本型符号（B/I/U 这类正是 Office 自己的画法） */
+/** 兜底字形：仅当 icons.js 里没有该图标名时才用（正常情况下不会命中） */
 const GLYPH = {
     bold: "B", italic: "I", underline: "U", strike: "S",
     fontColor: "A", fill: "▧", clear: "⌫", undo: "↶", redo: "↷",
     find: "⌕", increase: "→▍", decrease: "←▍", page: "▤", slide: "▥",
 };
 
-/** 几何型图标：只画必需几种，键名即 `icon` 取值 */
-const SHAPE = {
-    alignLeft: [[0, 1, 12], [0, 2.6, 8], [0, 4.2, 12], [0, 5.8, 7]],
-    alignCenter: [[2, 1, 12], [0, 2.6, 8], [2, 4.2, 12], [4, 5.8, 7]],
-    alignRight: [[4, 1, 12], [0, 2.6, 8], [0, 4.2, 12], [0, 5.8, 7]],
-    alignJustify: [[0, 1, 12], [0, 2.6, 12], [0, 4.2, 12], [0, 5.8, 12]],
-    listBullet: [[0, 1, 2], [4, 1, 8], [0, 3.2, 2], [4, 3.2, 8], [0, 5.4, 2], [4, 5.4, 8]],
-    listNumber: [[0, 1, 2], [4, 1, 8], [0, 3.2, 2], [4, 3.2, 8], [0, 5.4, 2], [4, 5.4, 8]],
-    wrap: [[0, 1, 12], [0, 3, 9], [0, 5, 12]],
-    border: [[0, 0, 12, 6]],
-    row: [[0, 1, 12], [0, 3.4, 12], [0, 5.8, 12], [3, 0, 0.6, 7], [8, 0, 0.6, 7]],
-    column: [[1, 0, 10], [3.4, 0, 10], [5.8, 0, 10], [0, 3, 0.6, 12]],
-    sortAsc: [[0, 6, 2], [3, 4, 2], [6, 2, 2], [9.5, 0, 0.6, 8]],
-    sortDesc: [[0, 2, 2], [3, 4, 2], [6, 6, 2], [9.5, 0, 0.6, 8]],
-};
-
 /**
- * 画一个图标节点。
- * @param {string} name GLYPH 或 SHAPE 的键
+ * 画一个图标节点：优先用 icons.js 里的 Material Symbols 路径，
+ * 找不到再回落文本字形（保证新增控件不会出现空图标）。
+ * @param {string} name 图标名
  * @returns {HTMLElement} 图标容器
  */
 function makeIcon(name) {
     const wrap = document.createElement("span");
     wrap.className = "rb-icon";
-    if (SHAPE[name]) {
-        const svg = document.createElementNS(NS, "svg");
-        svg.setAttribute("viewBox", "0 0 12 7");
-        for (const bar of SHAPE[name]) {
-            const rect = document.createElementNS(NS, "rect");
-            rect.setAttribute("x", String(bar[0]));
-            rect.setAttribute("y", String(bar[1]));
-            if (bar.length === 4) {
-                rect.setAttribute("width", String(bar[2]));
-                rect.setAttribute("height", String(bar[3]));
-            } else {
-                rect.setAttribute("width", String(bar[2]));
-                rect.setAttribute("height", "1.2");
-            }
-            svg.appendChild(rect);
-        }
+    const svg = iconSvg(name);
+    if (svg) {
         wrap.appendChild(svg);
     } else {
         wrap.classList.add("rb-icon-text");

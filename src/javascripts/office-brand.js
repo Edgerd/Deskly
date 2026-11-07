@@ -105,9 +105,15 @@ export function probeBrandIcons() {
             msIconAvailable.set(file, false);
         }
     })).then(() => {
-        try {
-            sessionStorage.setItem(PROBE_CACHE, JSON.stringify(Object.fromEntries(msIconAvailable)));
-        } catch { /* 隐私模式：下次再探，不影响功能 */ }
+        // 只有「全部命中」才写缓存：缓存 false 会让「补齐图标后刷新即生效」落空 ——
+        // 同标签页刷新仍读旧缓存继续用 iWork 图标（BUG-45）。探测失败下次重探，
+        // 代价只是每次新标签页几个 404（HEAD），比永远看不到新图标便宜。
+        const allOk = [...msIconAvailable.values()].every((ok) => ok === true);
+        if (allOk) {
+            try {
+                sessionStorage.setItem(PROBE_CACHE, JSON.stringify(Object.fromEntries(msIconAvailable)));
+            } catch { /* 隐私模式：下次再探，不影响功能 */ }
+        }
         announce();
     });
 }

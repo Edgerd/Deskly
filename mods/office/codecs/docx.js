@@ -1,14 +1,11 @@
 /**
- * docx.js — .docx 包与 Block 文档模型的互转
- *
- * 只依赖同目录的 `xml.js`（迷你 XML 读写）与 `zip.js`（JSZip 包读写），
- * 不使用 DOMParser / XMLSerializer / document / window，因此浏览器与 Node 行为一致
- * （Node 侧才能跑「生成 -> 回读」的结构校验）。
+ * docx.js — .docx 包与 Block 文档模型的互转。
+ * 只依赖同目录的 `xml.js` 与 `zip.js`，不碰 DOM，浏览器与 Node 行为一致（Node 侧才能跑「生成 -> 回读」校验）。
  *
  * Block 契约（视图层按此假设，字段名不可改）：
  * ```
  * {
- *   kind: "paragraph" | "heading",
+ *   kind: "paragraph" | "heading" | "image",
  *   level: 1 | 2 | 3 | null,
  *   text: string,               // 块内换行存 \n
  *   bold: boolean, italic: boolean, underline: boolean, strike: boolean,
@@ -18,6 +15,15 @@
  *   size: number | null,        // 磅值 pt，写进 w:sz 时 *2（半磅制）
  *   color: string | null,       // "#RRGGBB"，写进 w:color/@w:val（不带 #）
  *   highlight: string | null,   // "#RRGGBB"，写进 w:shd/@w:fill
+ *   lineSpacing: number | null, // 1 | 1.5 | 2，null = 单倍（默认，不写 w:spacing）
+ *   spaceBefore: number,        // 段前 pt，0..72（默认 0，0 不写 w:spacing/@w:before）
+ *   spaceAfter: number,         // 段后 pt，0..72（默认 0，0 不写 w:spacing/@w:after）
+ *   list: "none"|"bullet"|"number", // 项目符号/编号，默认 "none"（w:numPr/@w:numId）
+ *   // 仅 kind === "image" 有下面四项（图片块不承载文字，text 为空串）
+ *   src: string,                // data:image/png;base64,…（支持 png/jpg/jpeg/gif/webp）
+ *   width: number,              // 显示宽（px，96dpi；写进 XML 时 *9525 换成 EMU）
+ *   height: number,             // 显示高（px）
+ *   alt: string,                // 替代文本（写进 wp:docPr/@descr）
  * }
  * ```
  *
@@ -30,15 +36,24 @@
  * 不是 `#RRGGBB` 的 color/highlight、枚举外的 align、非字符串或含控制字符的 font、越界的 level，
  * 全部落到该字段的安全默认值，绝不把脏值写进 XML 属性。
  *
- * 本迭代的已知降级：
+ * 已知降级（刻意为之）：
  * - **块内混排不保留**：一个 Block 只有一组字符格式；段落内部分加粗/斜体/字号/颜色时，
  *   取「有正文的 run 里的多数票」（无正文 run 时退化为对全部 run 取多数票，平票取先出现的）。
  * - **样式继承不解析**：只读 `w:pPr` / `w:rPr` 上**显式**写出的属性。靠 styles.xml
  *   （docDefaults / Normal / Heading1..3）继承来的字体字号不会变成 Block 字段；反过来，
  *   Block 上的 null 就表示「跟随样式」，往返时不会被补成具体值。
  * - 表格降级：`w:tbl` 内的段落展开成普通段落，非首单元格的段落文本前加一个制表符（空段落不加）。
- * - 忽略列表编号、图片、脚注/尾注/批注/书签、超链接的目标地址（只取其文本）、
+ * - 图片只按「一个段落一张图」建模：图文混排的段落拆成文字块 + 图片块；
+ *   图片位置/环绕方式/裁剪/效果不建模，回写一律居中嵌入（wp:inline）。
+ * - 忽略编号的层级语义：`w:numPr` 只按 `w:numId` 对应的 `w:abstractNum/w:numFmt` 归一成
+ *   bullet / decimal 两种（其它格式与悬空 numId 都当无列表）；多级列表的 `w:ilvl` 不建模。
+ * - 忽略脚注/尾注/批注/书签、超链接的目标地址（只取其文本）、
  *   文本框、分节符细节与域代码。
+ * - 页面设置只有 `{size: "a4"|"letter"|"a5", background: string|null, header: string, footer: string,
+ *   margins: {top, right, bottom, left}}`（margins 单位 pt，默认四边 72，写 `w:pgMar` 时 *20）；
+ *   页眉页脚按「每个 `w:p` 一段、段间 \n」读写纯文本，字段/图片/表格不建模。
+ * - 行距只认 `w:spacing/@w:line` + `@w:lineRule="auto"` 的 1/1.5/2 三档（其它倍数按最接近档规整）；
+ *   `w:before`/`w:after` 按 twip→pt 取整。
  * - 对齐只认 `w:jc`：`start`/`end`/`both`/`distribute` 归一成 left/right/justify；
  *   缩进只认 `w:ind/@w:left` 的 twip，中文文档里 Word 另写的 `@w:leftChars`（按字符数）不参与计算。
  * - 换行统一降级为 `\n`：`w:br`/`w:cr` 读成 `\n`；生成时 `\r\n`/`\r` 先归一为 `\n`。
@@ -46,7 +61,7 @@
  */
 
 import { escapeXml, parseXml, children, allText, findAll, localNameOf, firstChild } from "./xml.js";
-import { unzipXmlParts, zipParts } from "./zip.js";
+import { unzipPackage, zipParts } from "./zip.js";
 
 /** wordprocessingml 主命名空间 */
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -58,11 +73,23 @@ const RT = {
     styles: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles",
     coreProperties: "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
     extendedProperties: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties",
+    image: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+    header: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+    footer: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+    numbering: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering",
 };
+
+/** 1px = 9525 EMU（96dpi）；读回时按同值反算 */
+const EMU_PER_PX = 9525;
+/** 图片扩展名 -> MIME（只支持这五种，svg 不插入） */
+const IMAGE_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+/** 图片缺失尺寸时的兜底（px），与视图层插入图片的兜底一致 */
+const IMAGE_FALLBACK_W = 200;
+const IMAGE_FALLBACK_H = 150;
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-/* --------------------------------------------------------------- 顺序常量模板 --------------------------------------------------------------- */
+/* 顺序常量模板 */
 
 /**
  * `w:pPr` / `w:rPr` 的子元素在 OOXML 里是 **xsd:sequence**（先后顺序属于 schema 本身），
@@ -70,8 +97,8 @@ const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
  * 一律把片段按名字塞进 frag，再由 `emitInOrder()` 按下面两条常量模板顺序落笔。
  *
  * - `PPR_ORDER`：本模块可能写出的 `w:pPr` 子元素顺序（`word/styles.xml` 的 `w:pPrDefault`
- *   用的是同一条序列，所以也走这个模板）。`numPr` / `spacing` / `rPr`
- *   只是模板里按 schema 摆好的空槽，本模块当前不写它们。
+ *   用的是同一条序列，所以也走这个模板）。`pStyle` / `numPr` / `spacing` / `ind` / `jc` 都按
+ *   CT_PPr 的 sequence 摆好（numPr 在 spacing 之前），业务分支只填空槽。
  * - `RPR_ORDER`：run 字符属性顺序。`bCs` / `iCs` / `szCs` 是 Complex Script 变体
  *   （中文、阿拉伯文那套字形），Word 对中文文档常把主属性与 Cs 变体成对写出、
  *   历史文档里甚至只剩 Cs 那一侧，故写入时成对写、读取时任一侧命中即算生效（见 `flagWithCs()`）。
@@ -81,7 +108,7 @@ const PPR_ORDER = ["pStyle", "numPr", "spacing", "ind", "jc", "rPr"];
 // 我们只写其中这些键，顺序必须照抄，否则 Word 直接判文件损坏。
 const RPR_ORDER = ["rFonts", "b", "bCs", "i", "iCs", "strike", "color", "sz", "szCs", "u", "shd"];
 
-/* ------------------------------------------------------------------ 值域常量 ------------------------------------------------------------------ */
+/* 值域常量 */
 
 /** 模型层的对齐枚举；值域外一律规整成 null（跟随样式） */
 const ALIGN_VALUES = ["left", "center", "right", "justify"];
@@ -103,6 +130,28 @@ const JC_TO_MODEL = {
 const INDENT_TWIP_PER_LEVEL = 420;
 const INDENT_MAX_LEVELS = 8;
 
+/** 纸张尺寸（twip，1 英寸 = 1440 twip）：只支持这三档，够覆盖常见文档 */
+const PAGE_SIZES = {
+    a4: { w: 11906, h: 16838 },
+    letter: { w: 12240, h: 15840 },
+    a5: { w: 8391, h: 11906 },
+};
+const PAGE_SIZE_ORDER = ["a4", "letter", "a5"];
+/** 页边距合法区间（pt）：默认四边 72，非数字/负数回落 72，超过 4 英寸（288pt）夹到 288 */
+const MARGIN_DEFAULT_PT = 72;
+const MARGIN_MAX_PT = 288;
+const MARGIN_TWIP_PER_PT = 20;
+const DEFAULT_MARGINS = { top: MARGIN_DEFAULT_PT, right: MARGIN_DEFAULT_PT, bottom: MARGIN_DEFAULT_PT, left: MARGIN_DEFAULT_PT };
+/** 页面设置缺省值：A4、无自定义底色、无页眉页脚文本、四边 72pt 页边距 */
+const DEFAULT_PAGE = { size: "a4", background: null, header: "", footer: "", margins: DEFAULT_MARGINS };
+
+/** 行距/段前段后的值域：行距只认 1 / 1.5 / 2（null=单倍）；段前段后 0..72pt */
+const LINE_SPACING_OPTIONS = [1, 1.5, 2];
+const SPACE_MAX_PT = 72;
+
+/** 列表类型：numId 1 -> bullet，2 -> number（numbering.xml 内的固定分配） */
+const LIST_NUM_IDS = { bullet: 1, number: 2 };
+
 /** 字号合法区间（磅）。越界即视为脏数据 -> null（跟随样式） */
 const SIZE_MIN_PT = 1;
 const SIZE_MAX_PT = 400;
@@ -113,12 +162,13 @@ const HEX_COLOR_RE = /^#([0-9a-fA-F]{6})$/;
 /** 字体名长度上限（正常中文字体名远小于此），超限视为脏数据 */
 const FONT_NAME_MAX = 64;
 
-/* ------------------------------------------------------------------ 对外 API ------------------------------------------------------------------ */
+/* 对外 API */
 
 /**
  * 读一个 .docx 包为文档模型。
  * @param {ArrayBuffer|Uint8Array} bytes 包字节
- * @returns {Promise<{blocks: Array<object>}>} Block 列表，字段见文件头契约
+ * @returns {Promise<{blocks: Array<object>, page: {size: string, background: string|null, header: string, footer: string}}>}
+ *          Block 列表（字段见文件头契约）+ 页面设置（纸张尺寸、纯色页背景、页眉页脚文本）
  */
 export async function parseDocx(bytes) {
     const parts = await readParts(bytes);
@@ -138,35 +188,448 @@ export async function parseDocx(bytes) {
         throw new Error("不是有效的 .docx 文件：word/document.xml 缺少 w:body");
     }
 
+    const media = readImageContext(parts);
+    const numbering = readNumberingMap(parts);
     const blocks = [];
     for (const node of children(body)) {
         const ln = localNameOf(node);
-        if (ln === "p") blocks.push(readParagraph(node));
-        else if (ln === "tbl") readTable(node, blocks);
-        // 其余块级元素（sectPr / bookmarkStart / 图片容器等）跳过
+        if (ln === "p") pushParagraph(node, blocks, media, numbering);
+        else if (ln === "tbl") readTable(node, blocks, numbering);
+        // 其余块级元素（sectPr / bookmarkStart 等）跳过
     }
-    return { blocks };
+    return { blocks, page: readPage(root, body, parts) };
+}
+
+/**
+ * 读 `word/numbering.xml`：`numId -> abstractNum -> w:numFmt` 归一成 bullet / number。
+ * 缺失部件、悬空 numId、非 bullet/decimal 的格式一律不登记（读取端当 "none"），不抛错。
+ * 多级列表只取 `w:ilvl=0` 的格式语义，深层编号仍归到一级。
+ * @param {Map<string, string|{base64: string}|null>} parts 部件表
+ * @returns {Map<string, "bullet"|"number">} numId -> 列表类型
+ */
+function readNumberingMap(parts) {
+    const text = partTextAt(parts, "word/numbering.xml");
+    const root = text ? parseXml(text) : null;
+    const map = new Map();
+    if (!root) return map;
+    const fmtByAbstract = new Map();
+    for (const abs of findAll(root, "abstractNum")) {
+        const absId = attrOf(abs, "abstractNumId");
+        if (absId === undefined) continue;
+        const levels = children(abs).filter((node) => localNameOf(node) === "lvl");
+        const lvl0 = levels.find((node) => String(attrOf(node, "ilvl") || "0") === "0") || levels[0];
+        const fmtNode = lvl0 ? childOf(lvl0, "numFmt") : null;
+        const fmt = fmtNode ? String(attrOf(fmtNode, "val") || "").trim().toLowerCase() : "";
+        fmtByAbstract.set(String(absId), fmt === "bullet" ? "bullet" : fmt === "decimal" ? "number" : "none");
+    }
+    for (const num of children(root).filter((node) => localNameOf(node) === "num")) {
+        const numId = attrOf(num, "numId");
+        const absRef = childOf(num, "abstractNumId");
+        const absId = absRef ? attrOf(absRef, "val") : undefined;
+        if (numId === undefined || absId === undefined) continue;
+        const fmt = fmtByAbstract.get(String(absId));
+        if (fmt === "bullet" || fmt === "number") map.set(String(numId), fmt);
+    }
+    return map;
+}
+
+/**
+ * 图片上下文：`word/_rels/document.xml.rels` 里的图片关系（rId -> 包内 media 路径）。
+ * @param {Map<string, string|{base64: string}|null>} parts 部件表
+ * @returns {{rels: Map<string, string>, parts: Map}} 图片关系与原始部件表
+ */
+function readImageContext(parts) {
+    const rels = new Map();
+    const relsText = parts.get("word/_rels/document.xml.rels");
+    const root = typeof relsText === "string" ? parseXml(relsText) : null;
+    if (root) {
+        for (const node of findAll(root, "Relationship")) {
+            const id = node.attrs.Id || node.attrs.id;
+            const type = String(node.attrs.Type || "");
+            if (id && type.endsWith("/image")) rels.set(id, joinPartPath("word", node.attrs.Target));
+        }
+    }
+    return { rels, parts };
+}
+
+/**
+ * 段落入列：有可读图片时写成图片块（纯图片段落不再产空文字块），文字与图片都保留。
+ * @param {object} p `w:p` 节点
+ * @param {object[]} out 收集结果的数组
+ * @param {{rels: Map<string, string>, parts: Map}} media 图片上下文
+ * @param {Map<string, "bullet"|"number">} numbering numId -> 列表类型
+ */
+function pushParagraph(p, out, media, numbering) {
+    const images = readParagraphImages(p, media);
+    if (!images.length) {
+        out.push(readParagraph(p, numbering));
+        return;
+    }
+    const block = readParagraph(p, numbering);
+    if (block.text !== "") out.push(block);
+    images.forEach((img) => out.push(img));
+}
+
+/**
+ * 读段落里的 `w:drawing`：rId -> media 部件 -> data URL + 尺寸（EMU 反算 px）。
+ * 关系悬空、部件缺失或不是支持的图片格式时跳过，不抛错。
+ * @param {object} p `w:p` 节点
+ * @param {{rels: Map<string, string>, parts: Map}} media 图片上下文
+ * @returns {object[]} image Block
+ */
+function readParagraphImages(p, media) {
+    const out = [];
+    for (const drawing of findAll(p, "drawing")) {
+        const blip = findAll(drawing, "blip")[0];
+        if (!blip) continue;
+        const rid = attrByLocal(blip, ["embed", "link"]);
+        const path = rid ? media.rels.get(rid) : null;
+        const base64 = path ? binaryAt(media.parts, path) : null;
+        const ext = path ? imageExtOf(path) : "";
+        const mime = IMAGE_MIME[ext];
+        if (!base64 || !mime) continue;
+        const extent = findAll(drawing, "extent")[0] || findAll(drawing, "ext")[0];
+        const docPr = findAll(drawing, "docPr")[0];
+        out.push(normalizeBlock({
+            kind: "image",
+            src: `data:${mime};base64,${base64}`,
+            width: emuToPx(extent ? extent.attrs.cx : null, IMAGE_FALLBACK_W),
+            height: emuToPx(extent ? extent.attrs.cy : null, IMAGE_FALLBACK_H),
+            alt: docPr ? (docPr.attrs.descr !== undefined ? String(docPr.attrs.descr) : String(docPr.attrs.name || "")) : "",
+        }));
+    }
+    return out;
+}
+
+/**
+ * 取属性值（本地名匹配，兼容带/不带前缀的写法）。
+ * @param {object|null} node XML 节点
+ * @param {string[]} names 候选本地名
+ * @returns {string|null}
+ */
+function attrByLocal(node, names) {
+    if (!node || !node.attrs) return null;
+    for (const want of names) {
+        for (const key of Object.keys(node.attrs)) {
+            const ix = key.indexOf(":");
+            const local = (ix === -1 ? key : key.slice(ix + 1)).toLowerCase();
+            if (local === want.toLowerCase()) return node.attrs[key];
+        }
+    }
+    return null;
+}
+
+/**
+ * 按包内路径取图片 base64（大小写不敏感，兼容第三方包）。
+ * @param {Map} parts 部件表
+ * @param {string} path 期望路径
+ * @returns {string|null}
+ */
+function binaryAt(parts, path) {
+    const exact = parts.get(path);
+    if (exact && typeof exact === "object" && typeof exact.base64 === "string") return exact.base64;
+    let hit = null;
+    parts.forEach((value, real) => {
+        if (hit || real.toLowerCase() !== path.toLowerCase()) return;
+        if (value && typeof value === "object" && typeof value.base64 === "string") hit = value.base64;
+    });
+    return hit;
+}
+
+/**
+ * 包内相对路径拼接（`word` + `media/image1.png`）。
+ * @param {string} baseDir 基准目录
+ * @param {string} target 关系 Target
+ * @returns {string} 规整后的包内路径
+ */
+function joinPartPath(baseDir, target) {
+    const raw = String(target || "").trim().replace(/\\/g, "/");
+    const segs = raw.startsWith("/") ? [] : baseDir.split("/").filter(Boolean);
+    for (const seg of raw.replace(/^\/+/, "").split("/")) {
+        if (!seg || seg === ".") continue;
+        if (seg === "..") segs.pop();
+        else segs.push(seg);
+    }
+    return segs.join("/");
+}
+
+/**
+ * 图片扩展名（小写，不带点）。
+ * @param {string} path 部件路径
+ * @returns {string}
+ */
+function imageExtOf(path) {
+    const m = /\.([A-Za-z0-9]+)$/.exec(String(path || ""));
+    return m ? m[1].toLowerCase() : "";
+}
+
+/**
+ * EMU -> px（四舍五入，至少 1）；非数字用兜底值。
+ * @param {*} raw EMU 数值
+ * @param {number} fallback 兜底 px
+ * @returns {number}
+ */
+function emuToPx(raw, fallback) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    return Math.max(1, Math.round(n / EMU_PER_PX));
+}
+
+/**
+ * 读页面设置：`w:sectPr/w:pgSz` 的纸张尺寸 + `w:background/@w:color` 的纯色页背景
+ * + `w:headerReference` / `w:footerReference` 指向的页眉页脚文本。
+ * 尺寸按最近预设匹配（容差 40 twip，约 0.7mm）；匹配不到就回落 A4，不把自定义尺寸半途截断。
+ * @param {object} root `w:document` 根节点
+ * @param {object} body `w:body` 节点
+ * @param {Map<string, string|{base64: string}|null>} parts 部件表（读页眉页脚部件用）
+ * @returns {{size: string, background: string|null, header: string, footer: string, margins: {top: number, right: number, bottom: number, left: number}}}
+ */
+function readPage(root, body, parts) {
+    let size = DEFAULT_PAGE.size;
+    const pgSz = firstChild(body, "sectPr", "pgSz");
+    if (pgSz) {
+        const w = Number(attrOf(pgSz, "w"));
+        const h = Number(attrOf(pgSz, "h"));
+        if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+            const short = Math.min(w, h);
+            const long = Math.max(w, h);
+            const hit = PAGE_SIZE_ORDER.find((key) => {
+                const s = PAGE_SIZES[key];
+                return Math.abs(Math.min(s.w, s.h) - short) <= 40 && Math.abs(Math.max(s.w, s.h) - long) <= 40;
+            });
+            if (hit) size = hit;
+        }
+    }
+    const bg = firstChild(root, "background");
+    // OOXML 的 w:color 不带 #，而 normColor 认 #RRGGBB，补上前缀再规整
+    const bgRaw = bg ? String(attrOf(bg, "color") || "").trim() : "";
+    return {
+        size,
+        background: bgRaw && !/^auto$/i.test(bgRaw) ? normColor(`#${bgRaw}`) : null,
+        header: readHeaderFooterText(parts, body, "headerReference", RT.header),
+        footer: readHeaderFooterText(parts, body, "footerReference", RT.footer),
+        margins: readMargins(body),
+    };
+}
+
+/**
+ * `w:sectPr/w:pgMar` -> 四边页边距（twip -> pt）；缺失或非法边回落默认 72pt。
+ * @param {object} body `w:body` 节点
+ * @returns {{top: number, right: number, bottom: number, left: number}}
+ */
+function readMargins(body) {
+    const pgMar = firstChild(body, "sectPr", "pgMar");
+    if (!pgMar) return { ...DEFAULT_MARGINS };
+    return {
+        top: readMarginPt(pgMar, "top"),
+        right: readMarginPt(pgMar, "right"),
+        bottom: readMarginPt(pgMar, "bottom"),
+        left: readMarginPt(pgMar, "left"),
+    };
+}
+
+/**
+ * 单边页边距 twip -> pt：非数字/负数回落 72，超过 288 夹到 288。
+ * @param {object} pgMar `w:pgMar` 节点
+ * @param {string} attr `top` / `right` / `bottom` / `left`
+ * @returns {number} 0..288
+ */
+function readMarginPt(pgMar, attr) {
+    const twip = toFiniteNumber(attrOf(pgMar, attr));
+    if (twip === null || twip < 0) return MARGIN_DEFAULT_PT;
+    return Math.min(MARGIN_MAX_PT, twip / MARGIN_TWIP_PER_PT);
+}
+
+/**
+ * 读 `w:sectPr` 里的页眉/页脚引用：`w:type="default"` 优先，否则取第一条；
+ * 关系悬空、部件缺失或解析失败都返回 ""（不抛错，坏包仍能打开）。
+ * @param {Map<string, string|{base64: string}|null>} parts 部件表
+ * @param {object} body `w:body` 节点
+ * @param {string} refName 本地名（headerReference / footerReference）
+ * @param {string} relType 关系类型 URI
+ * @returns {string} 段落文本（段落间以 \n 分隔）
+ */
+function readHeaderFooterText(parts, body, refName, relType) {
+    const sectPr = firstChild(body, "sectPr");
+    if (!sectPr) return "";
+    const refs = children(sectPr).filter((node) => localNameOf(node) === refName);
+    if (!refs.length) return "";
+    const chosen = refs.find((node) => String(attrByLocal(node, ["type"]) || "").toLowerCase() === "default") || refs[0];
+    const rid = attrByLocal(chosen, ["id"]);
+    if (!rid) return "";
+
+    const relsText = partTextAt(parts, "word/_rels/document.xml.rels");
+    const relsRoot = relsText ? parseXml(relsText) : null;
+    if (!relsRoot) return "";
+    const rel = findAll(relsRoot, "Relationship").find((node) => {
+        const id = node.attrs.Id || node.attrs.id;
+        return id === rid && String(node.attrs.Type || "").endsWith(relType.slice(relType.lastIndexOf("/")));
+    });
+    if (!rel) return "";
+    const partXml = partTextAt(parts, joinPartPath("word", rel.attrs.Target));
+    if (!partXml) return "";
+    const root = parseXml(partXml);
+    if (!root) return "";
+    return findAll(root, "p")
+        .map((p) => findAll(p, "t").map((t) => t.text).join(""))
+        .join("\n");
+}
+
+/**
+ * 按包内路径取文本部件：缺失、或该路径上是图片（{base64}）时返回 ""。
+ * ZIP 条目名大小写不一，故做一次大小写不敏感兜底。
+ * @param {Map<string, string|{base64: string}|null>} parts 部件表
+ * @param {string} path 包内路径
+ * @returns {string} 文本内容
+ */
+function partTextAt(parts, path) {
+    const want = String(path || "").replace(/^\/+/, "");
+    if (!want) return "";
+    if (typeof parts.get(want) === "string") return parts.get(want);
+    const lower = want.toLowerCase();
+    for (const [key, value] of parts) {
+        if (String(key).toLowerCase() === lower && typeof value === "string") return value;
+    }
+    return "";
+}
+
+/**
+ * 按本地名取属性值：Word 的 XML 属性都带 `w:` 前缀，但手写或第三方包可能不带，
+ * 两种都认，取不到返回 undefined。
+ * @param {object|null} node 节点
+ * @param {string} local 属性本地名（w / h / color 等）
+ * @returns {string|undefined} 属性值
+ */
+function attrOf(node, local) {
+    const attrs = node && node.attrs ? node.attrs : {};
+    const prefixed = `w:${local}`;
+    return attrs[prefixed] === undefined ? attrs[local] : attrs[prefixed];
+}
+
+/**
+ * 页面设置规整：非法尺寸回落 A4，非法颜色回落 null（无自定义底色）；
+ * 页眉页脚只接受字符串，其它类型回落 ""；页边距四边各自规整（默认 72，0..288）。
+ * @param {unknown} page 原始页面设置
+ * @returns {{size: string, background: string|null, header: string, footer: string, margins: {top: number, right: number, bottom: number, left: number}}}
+ */
+function normPage(page) {
+    const src = page && typeof page === "object" ? page : {};
+    const size = PAGE_SIZE_ORDER.includes(src.size) ? src.size : DEFAULT_PAGE.size;
+    return {
+        size,
+        background: normColor(src.background),
+        header: typeof src.header === "string" ? src.header : "",
+        footer: typeof src.footer === "string" ? src.footer : "",
+        margins: {
+            top: normMarginPt(src.margins && src.margins.top),
+            right: normMarginPt(src.margins && src.margins.right),
+            bottom: normMarginPt(src.margins && src.margins.bottom),
+            left: normMarginPt(src.margins && src.margins.left),
+        },
+    };
+}
+
+/**
+ * 单边页边距规整：非数字或负数回落 72pt，超过 288pt 夹到 288。
+ * @param {unknown} value 原始值（pt）
+ * @returns {number} 0..288
+ */
+function normMarginPt(value) {
+    const n = toFiniteNumber(value);
+    if (n === null || n < 0) return MARGIN_DEFAULT_PT;
+    return Math.min(MARGIN_MAX_PT, n);
 }
 
 /**
  * 写一个 .docx 包。
  * @param {Array<object|string>} blocks 文档模型（缺字段或非法值只规整，不抛错）
+ * @param {{size?: string, background?: string|null, header?: string, footer?: string, margins?: object}} [page] 页面设置（可省略，默认 A4 无底色、四边 72pt）
  * @returns {Promise<Uint8Array>} 合法的 .docx 包字节
  */
-export async function buildDocx(blocks) {
+export async function buildDocx(blocks, page) {
     if (!Array.isArray(blocks)) {
         throw new Error("buildDocx 需要 Block 数组，收到的是 " + (blocks === null ? "null" : typeof blocks));
     }
     const list = blocks.map(normalizeBlock);
-    return zipParts({
-        "[Content_Types].xml": contentTypesXml(),
+    const pageState = normPage(page);
+    const media = collectImages(list);
+    const hf = headerFooterRefs(pageState, media.entries.length);
+    const hasNumbering = list.some((block) => block.list !== "none");
+    const parts = {
+        "[Content_Types].xml": contentTypesXml(media.entries, hf, hasNumbering),
         "_rels/.rels": rootRelsXml(),
-        "word/document.xml": documentXml(list),
-        "word/_rels/document.xml.rels": documentRelsXml(),
+        "word/document.xml": documentXml(list, pageState, media.bySrc, hf),
+        "word/_rels/document.xml.rels": documentRelsXml(media.entries, hf, hasNumbering),
         "word/styles.xml": stylesXml(),
         "docProps/core.xml": coreXml(),
         "docProps/app.xml": appXml(),
-    });
+    };
+    // 只有存在 bullet/number 块时才产 numbering.xml；无列表文档的包结构保持原样
+    if (hasNumbering) parts["word/numbering.xml"] = numberingXml();
+    // 页眉页脚只在文本非空时写部件；空值不产生任何额外文件，包结构保持原样
+    if (hf.header) parts["word/header1.xml"] = headerFooterXml(pageState.header, "hdr");
+    if (hf.footer) parts["word/footer1.xml"] = headerFooterXml(pageState.footer, "ftr");
+    // 只在实际有图时写 media 部件；无图文档的包结构保持原样
+    for (const entry of media.entries) parts[entry.path] = { base64: entry.base64 };
+    return zipParts(parts);
+}
+
+/**
+ * 收集图片块：按 src 去重（同一张图多处引用共用一份 media），分配文件名与关系 id。
+ * 非法 data URL 的图片块会被跳过（不写 media，也不写 drawing）。
+ * @param {object[]} list 已规整的 Block 列表
+ * @returns {{entries: Array<{src: string, path: string, ext: string, base64: string, rid: string}>, bySrc: Map<string, object>}}
+ */
+function collectImages(list) {
+    const entries = [];
+    const bySrc = new Map();
+    for (const block of list) {
+        if (block.kind !== "image") continue;
+        const info = dataUrlImage(block.src);
+        if (!info || bySrc.has(block.src)) continue;
+        const name = `image${entries.length + 1}.${info.ext}`;
+        const entry = {
+            src: block.src,
+            path: `word/media/${name}`,
+            ext: info.ext,
+            base64: info.base64,
+            rid: `rId${entries.length + 2}`, // rId1 留给 styles
+        };
+        entries.push(entry);
+        bySrc.set(block.src, entry);
+    }
+    return { entries, bySrc };
+}
+
+/**
+ * 分配页眉页脚关系 id：rId1 是 styles，图片从 rId2 起连续编号，页眉页脚接在其后。
+ * 文本 trim 后为空即视为「没有」，不占 id、不写部件。
+ * @param {{header: string, footer: string}} page 规范页面设置
+ * @param {number} imageCount 图片部件数量
+ * @returns {{header: string, footer: string}} 关系 id（空串表示不写）
+ */
+function headerFooterRefs(page, imageCount) {
+    const refs = { header: "", footer: "" };
+    let next = imageCount + 2;
+    if (page.header.trim()) {
+        refs.header = `rId${next}`;
+        next += 1;
+    }
+    if (page.footer.trim()) refs.footer = `rId${next}`;
+    return refs;
+}
+
+/**
+ * 页眉/页脚部件：根元素 `w:hdr` / `w:ftr`，每行一个 `w:p`，行内空白用 `xml:space` 保留。
+ * @param {string} text 页眉页脚文本
+ * @param {"hdr"|"ftr"} rootName 根元素本地名
+ * @returns {string} XML 文本
+ */
+function headerFooterXml(text, rootName) {
+    const paragraphs = String(text).split(/\r?\n/)
+        .map((line) => (line === "" ? "<w:p/>" : `<w:p><w:r>${textXml(line)}</w:r></w:p>`))
+        .join("");
+    return `${XML_DECL}<w:${rootName} xmlns:w="${W}">${paragraphs}</w:${rootName}>`;
 }
 
 /**
@@ -180,19 +643,19 @@ export function docxToText(blocks) {
 }
 
 /**
- * 空文档模型：一个字段齐全的空段落。
- * @returns {{blocks: Array<object>}} 可直接交给 buildDocx
+ * 空文档模型：一个字段齐全的空段落 + 默认页面设置（四边 72pt 页边距）。
+ * @returns {{blocks: Array<object>, page: {size: string, background: string|null, header: string, footer: string, margins: object}}} 可直接交给 buildDocx
  */
 export function emptyDocx() {
-    return { blocks: [normalizeBlock({})] };
+    return { blocks: [normalizeBlock({})], page: { ...DEFAULT_PAGE, margins: { ...DEFAULT_MARGINS } } };
 }
 
-/* ------------------------------------------------------------------ 读取 ------------------------------------------------------------------ */
+/* 读取 */
 
 /**
  * 解包并把失败转成中文可读错误。
  * @param {ArrayBuffer|Uint8Array} bytes 包字节
- * @returns {Promise<Map<string, string|null>>} 部件表
+ * @returns {Promise<Map<string, string|{base64: string}|null>>} 部件表（图片部件带 base64）
  */
 async function readParts(bytes) {
     const empty =
@@ -200,7 +663,7 @@ async function readParts(bytes) {
         (bytes instanceof ArrayBuffer ? bytes.byteLength === 0 : bytes instanceof Uint8Array ? bytes.length === 0 : false);
     if (empty) throw new Error("不是有效的 .docx 文件：内容为空");
     try {
-        return await unzipXmlParts(bytes);
+        return await unzipPackage(bytes);
     } catch (err) {
         const reason = err && err.message ? String(err.message) : "未知原因";
         throw new Error("不是有效的 .docx 文件：无法解开压缩包（" + reason + "）");
@@ -210,13 +673,15 @@ async function readParts(bytes) {
 /**
  * 段落 -> Block：`w:pPr` 给层级/对齐/缩进，run 的多数票给正文与字符格式。
  * @param {object} p `w:p` 节点
+ * @param {Map<string, "bullet"|"number">} numbering numId -> 列表类型
  * @returns {object} Block
  */
-function readParagraph(p) {
+function readParagraph(p, numbering) {
     const pPr = firstChild(p, "pPr");
     const styleNode = pPr ? firstChild(pPr, "pStyle") : null;
     const level = headingLevelOf(styleNode ? styleNode.attrs["w:val"] : "");
     const runs = findAll(p, "r").map(readRun);
+    const spacing = readSpacing(pPr);
     return {
         kind: level ? "heading" : "paragraph",
         level,
@@ -231,6 +696,8 @@ function readParagraph(p) {
         size: majorityValue(runs, "size"),
         color: majorityValue(runs, "color"),
         highlight: majorityValue(runs, "highlight"),
+        ...spacing,
+        list: readList(pPr, numbering),
     };
 }
 
@@ -239,14 +706,15 @@ function readParagraph(p) {
  * （同一单元格内的多段都带同一前缀，空段落不加，免得只剩一个孤零零的制表符）。
  * @param {object} tbl `w:tbl` 节点
  * @param {object[]} out 收集结果的数组
+ * @param {Map<string, "bullet"|"number">} numbering numId -> 列表类型
  */
-function readTable(tbl, out) {
+function readTable(tbl, out, numbering) {
     for (const row of findAll(tbl, "tr")) {
         const cells = children(row).filter((c) => localNameOf(c) === "tc");
         cells.forEach((cell, cellIndex) => {
             for (const p of children(cell)) {
                 if (localNameOf(p) !== "p") continue;
-                const block = readParagraph(p);
+                const block = readParagraph(p, numbering);
                 if (cellIndex > 0 && block.text !== "") block.text = "\t" + block.text;
                 out.push(block);
             }
@@ -392,6 +860,60 @@ function readIndent(pPr) {
 }
 
 /**
+ * `w:pPr/w:spacing` -> 行距与段前段后：`w:line` 按 240 为 1 倍、只认 1/1.5/2（其它按最接近档），
+ * `w:before`/`w:after` 由 twip 反算 pt 四舍五入并夹到 0..72；缺失一律默认（null / 0 / 0）。
+ * @param {object|null} pPr `w:pPr` 节点
+ * @returns {{lineSpacing: number|null, spaceBefore: number, spaceAfter: number}}
+ */
+function readSpacing(pPr) {
+    const node = childOf(pPr, "spacing");
+    if (!node) return { lineSpacing: null, spaceBefore: 0, spaceAfter: 0 };
+    const line = toFiniteNumber(attrOf(node, "line"));
+    return {
+        lineSpacing: line === null || line <= 0 ? null : nearestLineSpacing(line / 240),
+        spaceBefore: readSpacePt(node, "before"),
+        spaceAfter: readSpacePt(node, "after"),
+    };
+}
+
+/**
+ * 段落间距 twip -> pt：四舍五入后夹到 0..72（非数字/负数归 0）。
+ * @param {object} node `w:spacing` 节点
+ * @param {string} attr `before` / `after`
+ * @returns {number} 0..72
+ */
+function readSpacePt(node, attr) {
+    const twip = toFiniteNumber(attrOf(node, attr));
+    if (twip === null || twip <= 0) return 0;
+    return Math.min(SPACE_MAX_PT, Math.round(twip / MARGIN_TWIP_PER_PT));
+}
+
+/**
+ * 行距倍数按最接近的 1 / 1.5 / 2 档规整（等距时取小档，保证 1.25 归 1）。
+ * @param {number} mult 倍数
+ * @returns {number} 1 | 1.5 | 2
+ */
+function nearestLineSpacing(mult) {
+    return LINE_SPACING_OPTIONS.reduce((best, v) => (Math.abs(v - mult) < Math.abs(best - mult) ? v : best), LINE_SPACING_OPTIONS[0]);
+}
+
+/**
+ * `w:pPr/w:numPr` -> 列表类型：只看 `w:numId` 指向的 numFmt（忽略 `w:ilvl` 的层级）。
+ * 无部件 / 悬空 numId / 非 bullet/decimal -> "none"。
+ * @param {object|null} pPr `w:pPr` 节点
+ * @param {Map<string, "bullet"|"number">} numbering numId -> 列表类型
+ * @returns {"none"|"bullet"|"number"}
+ */
+function readList(pPr, numbering) {
+    const numPr = childOf(pPr, "numPr");
+    if (!numPr) return "none";
+    const numIdNode = childOf(numPr, "numId");
+    const numId = numIdNode ? attrOf(numIdNode, "val") : undefined;
+    if (numId === undefined) return "none";
+    return numbering.get(String(numId)) || "none";
+}
+
+/**
  * 段落级取多数 run 的开关：只在有正文的 run 上投票，全空时退化为对全部 run 投票。
  * @param {Array<{text: string}>} runs run 列表
  * @param {string} key 开关名
@@ -440,7 +962,7 @@ function headingLevelOf(val) {
     return null;
 }
 
-/* ------------------------------------------------------------------ 规整 ------------------------------------------------------------------ */
+/* 规整 */
 
 /**
  * 补齐 Block 缺失字段、把非法值规整成安全默认值，并把行尾归一为 `\n`。
@@ -452,6 +974,31 @@ function normalizeBlock(raw) {
     const rawLevel = toFiniteNumber(b.level);
     const level = rawLevel === null ? NaN : Math.round(rawLevel);
     const isHeading = b.kind === "heading" && level >= 1 && level <= 3;
+    if (b.kind === "image") {
+        return {
+            kind: "image",
+            level: null,
+            text: "",
+            bold: false,
+            italic: false,
+            underline: false,
+            strike: false,
+            align: null,
+            indent: 0,
+            font: null,
+            size: null,
+            color: null,
+            highlight: null,
+            lineSpacing: null,
+            spaceBefore: 0,
+            spaceAfter: 0,
+            list: "none",
+            src: typeof b.src === "string" ? b.src.trim() : "",
+            width: normImagePx(b.width, IMAGE_FALLBACK_W),
+            height: normImagePx(b.height, IMAGE_FALLBACK_H),
+            alt: typeof b.alt === "string" ? b.alt : "",
+        };
+    }
     return {
         kind: isHeading ? "heading" : "paragraph",
         level: isHeading ? level : null,
@@ -466,6 +1013,10 @@ function normalizeBlock(raw) {
         size: normSize(b.size),
         color: normColor(b.color),
         highlight: normColor(b.highlight),
+        lineSpacing: normLineSpacing(b.lineSpacing),
+        spaceBefore: normSpacePt(b.spaceBefore),
+        spaceAfter: normSpacePt(b.spaceAfter),
+        list: normList(b.list),
     };
 }
 
@@ -512,6 +1063,40 @@ function clampIndent(n) {
 }
 
 /**
+ * 行距：null/非数字/<=0 -> null（单倍且不写 XML）；其它按最接近的 1 / 1.5 / 2 档规整。
+ * @param {unknown} value 原始值
+ * @returns {number|null} 1 | 1.5 | 2 | null
+ */
+function normLineSpacing(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const n = toFiniteNumber(value);
+    if (n === null || n <= 0) return null;
+    return nearestLineSpacing(n);
+}
+
+/**
+ * 段前/段后：pt，四舍五入并夹到 0..72；非数字或负数归 0。
+ * @param {unknown} value 原始值（pt）
+ * @returns {number} 0..72
+ */
+function normSpacePt(value) {
+    const n = toFiniteNumber(value);
+    if (n === null || n < 0) return 0;
+    return Math.min(SPACE_MAX_PT, Math.round(n));
+}
+
+/**
+ * 列表类型：只认 bullet / number，其余（含大小写外的值）归 "none"。
+ * @param {unknown} value 原始值
+ * @returns {"none"|"bullet"|"number"}
+ */
+function normList(value) {
+    if (typeof value !== "string") return "none";
+    const key = value.trim().toLowerCase();
+    return key === "bullet" || key === "number" ? key : "none";
+}
+
+/**
  * 字体名：必须是非空字符串，去空白后不含控制字符或尖括号（这类值会撑坏属性），
  * 长度不超过 FONT_NAME_MAX，否则 null。引号可以留，写属性时统一转义。
  * @param {unknown} value 原始值
@@ -540,6 +1125,31 @@ function normSize(value) {
 }
 
 /**
+ * 图片像素尺寸：非数字/非正数用兜底值，其余四舍五入成整数 px。
+ * @param {unknown} value 原始值
+ * @param {number} fallback 兜底 px
+ * @returns {number}
+ */
+function normImagePx(value, fallback) {
+    const n = toFiniteNumber(value);
+    if (n === null || n <= 0) return fallback;
+    return Math.max(1, Math.round(n));
+}
+
+/**
+ * 解析图片 data URL（只认 png/jpeg/gif/webp 的 base64 形式）。
+ * @param {unknown} src data URL
+ * @returns {{mime: string, ext: string, base64: string}|null}
+ */
+function dataUrlImage(src) {
+    const m = /^data:image\/(png|jpe?g|gif|webp);base64,([\s\S]+)$/i.exec(String(src || "").trim());
+    if (!m) return null;
+    const kind = m[1].toLowerCase();
+    const mime = kind === "jpg" || kind === "jpeg" ? "image/jpeg" : `image/${kind}`;
+    return { mime, ext: kind === "jpeg" ? "jpg" : kind, base64: m[2].replace(/\s/g, "") };
+}
+
+/**
  * 颜色：只认 `#RRGGBB`（容忍大小写与首尾空白，输出统一大写），
  * 其余（`red`、`#FFF`、少 `#`、`auto`、非字符串）一律 null。
  * @param {unknown} value 原始值
@@ -553,7 +1163,7 @@ function normColor(value) {
     return m ? "#" + m[1].toUpperCase() : null;
 }
 
-/* ------------------------------------------------------------------ 写入 ------------------------------------------------------------------ */
+/* 写入 */
 
 /**
  * 按常量模板输出片段：frag 里没有值的槽跳过，有值的严格按 order 的先后落笔。
@@ -568,26 +1178,96 @@ function emitInOrder(order, frag) {
 
 /**
  * `word/document.xml`。
+ * `w:background` 是 `w:document` 的直接子元素、且必须排在 `w:body` 之前（schema 顺序），
+ * 所以单独拼在根下，不进 body。
  * @param {object[]} blocks 规范 Block 列表
+ * @param {{size: string, background: string|null, header: string, footer: string}} page 规范页面设置
+ * @param {Map<string, object>} bySrc 图片 src -> media 登记
+ * @param {{header: string, footer: string}} hf 页眉页脚关系 id（空串表示不写）
  * @returns {string} XML 文本
  */
-function documentXml(blocks) {
-    const body = blocks.map(blockXml).join("") + sectPrXml();
-    return `${XML_DECL}<w:document xmlns:w="${W}"><w:body>${body}</w:body></w:document>`;
+function documentXml(blocks, page, bySrc, hf) {
+    const body = blocks.map((b, i) => blockXml(b, bySrc, i + 1)).join("") + sectPrXml(page, hf);
+    const bg = page.background ? `<w:background w:color="${page.background.slice(1)}"/>` : "";
+    // 图片需要 wp/a/pic 与 r 关系前缀；无图文档多声明几个命名空间是合法的，故始终写齐
+    return `${XML_DECL}<w:document xmlns:w="${W}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"`
+        + ` xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"`
+        + ` xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"`
+        + ` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
+        + `${bg}<w:body>${body}</w:body></w:document>`;
 }
 
 /**
- * 一个 Block -> `w:p`：块级属性写在 `w:pPr` 上，顺序走 PPR_ORDER。
+ * 一个 Block -> `w:p`：块级属性写在 `w:pPr` 上，顺序走 PPR_ORDER；图片块改写成内嵌 drawing 段落。
  * @param {object} b 规范 Block
- * @returns {string} XML 片段
+ * @param {Map<string, object>} bySrc 图片 src -> media 登记（图片块用）
+ * @param {number} docPrId 本文档内唯一且非 0 的 drawing 编号
+ * @returns {string} XML 片段（图片无法落盘时返回空串）
  */
-function blockXml(b) {
+function blockXml(b, bySrc, docPrId) {
+    if (b.kind === "image") {
+        const ref = bySrc ? bySrc.get(b.src) : null;
+        return ref ? imageParagraphXml(b, ref, docPrId) : "";
+    }
     const pPr = emitInOrder(PPR_ORDER, {
         pStyle: b.kind === "heading" ? `<w:pStyle w:val="Heading${b.level}"/>` : "",
+        numPr: listNumPrXml(b.list),
+        spacing: spacingXml(b),
         ind: b.indent > 0 ? `<w:ind w:left="${b.indent * INDENT_TWIP_PER_LEVEL}"/>` : "",
         jc: b.align ? `<w:jc w:val="${JC_FROM_MODEL[b.align]}"/>` : "",
     });
     return `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ""}${runXml(b)}</w:p>`;
+}
+
+/**
+ * `w:pPr/w:numPr`：一级列表固定 `w:ilvl=0`，numId 按 LIST_NUM_IDS 分配（bullet=1 / number=2）。
+ * @param {"none"|"bullet"|"number"} list 列表类型
+ * @returns {string} XML 片段（none 返回空串，不写 numPr）
+ */
+function listNumPrXml(list) {
+    const numId = LIST_NUM_IDS[list];
+    if (!numId) return "";
+    return `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr>`;
+}
+
+/**
+ * `w:pPr/w:spacing`：只写非默认项——`lineSpacing` 为 null 不写 `w:line`，
+ * 段前段后为 0 不写 `w:before`/`w:after`；有行距时固定 `w:lineRule="auto"`。
+ * @param {object} b 规范 Block
+ * @returns {string} XML 片段（全默认时返回空串）
+ */
+function spacingXml(b) {
+    const attrs = [];
+    if (b.lineSpacing !== null) attrs.push(`w:line="${Math.round(b.lineSpacing * 240)}"`, 'w:lineRule="auto"');
+    if (b.spaceBefore > 0) attrs.push(`w:before="${Math.round(b.spaceBefore * MARGIN_TWIP_PER_PT)}"`);
+    if (b.spaceAfter > 0) attrs.push(`w:after="${Math.round(b.spaceAfter * MARGIN_TWIP_PER_PT)}"`);
+    return attrs.length ? `<w:spacing ${attrs.join(" ")}/>` : "";
+}
+
+/**
+ * 图片 Block -> 段落内的标准 `w:drawing/wp:inline`（居中嵌入，不写环绕/裁剪/效果）。
+ * 结构按 ECMA-376：wp:inline → wp:extent → wp:docPr → wp:cNvGraphicFramePr →
+ * a:graphic/a:graphicData/pic:pic（nvPicPr → blipFill → spPr）。
+ * @param {object} b 规范图片 Block
+ * @param {{path: string, ext: string, rid: string}} ref media 登记
+ * @param {number} docPrId 文档内唯一且非 0 的编号
+ * @returns {string} `w:p` XML
+ */
+function imageParagraphXml(b, ref, docPrId) {
+    const cx = Math.round(b.width * EMU_PER_PX);
+    const cy = Math.round(b.height * EMU_PER_PX);
+    const alt = escapeXml(b.alt || "");
+    return `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>`
+        + `<wp:inline distT="0" distB="0" distL="0" distR="0">`
+        + `<wp:extent cx="${cx}" cy="${cy}"/>`
+        + `<wp:docPr id="${docPrId}" name="图片 ${docPrId}" descr="${alt}"/>`
+        + `<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
+        + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">`
+        + `<pic:pic><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="图片 ${docPrId}" descr="${alt}"/><pic:cNvPicPr/></pic:nvPicPr>`
+        + `<pic:blipFill><a:blip r:embed="${ref.rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+        + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>`
+        + `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>`
+        + `</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 }
 
 /**
@@ -645,19 +1325,73 @@ function textXml(segment) {
     return `<w:t${preserve}>${escapeXml(segment)}</w:t>`;
 }
 
-/** 结尾 `w:sectPr`：A4 页面（twip 单位） */
-function sectPrXml() {
-    return '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
-        + '<w:pgMar w:top="1440" w:right="1800" w:bottom="1440" w:left="1800" w:header="851" w:footer="992" w:gutter="0"/></w:sectPr>';
+/**
+ * 结尾 `w:sectPr`：页眉页脚引用（schema 要求排在 `w:pgSz` 之前）+ 纸张尺寸（twip 单位）
+ * + 四边页边距（`w:pgMar` 紧随 `w:pgSz`；只写 top/right/bottom/left，不写 header/footer/gutter）。
+ * @param {{size: string, background: string|null, header: string, footer: string, margins: object}} page 规范页面设置
+ * @param {{header: string, footer: string}} hf 页眉页脚关系 id（空串表示不写）
+ * @returns {string} XML 片段
+ */
+function sectPrXml(page, hf) {
+    const s = PAGE_SIZES[page.size] || PAGE_SIZES.a4;
+    const refs = (hf.header ? `<w:headerReference w:type="default" r:id="${hf.header}"/>` : "")
+        + (hf.footer ? `<w:footerReference w:type="default" r:id="${hf.footer}"/>` : "");
+    const m = page.margins;
+    const pgMar = [["top", m.top], ["right", m.right], ["bottom", m.bottom], ["left", m.left]]
+        .map(([key, pt]) => `w:${key}="${Math.round(pt * MARGIN_TWIP_PER_PT)}"`)
+        .join(" ");
+    return `<w:sectPr>${refs}<w:pgSz w:w="${s.w}" w:h="${s.h}"/><w:pgMar ${pgMar}/></w:sectPr>`;
 }
 
-/** `[Content_Types].xml`：Default 覆盖 rels/xml，Override 覆盖各具体部件 */
-function contentTypesXml() {
+/**
+ * `word/numbering.xml`：两个 abstractNum（0=bullet 用 `w:numFmt="bullet"` + `w:lvlText="•"`，
+ * 1=decimal 用 `w:numFmt="decimal"` + `w:lvlText="%1."`），各配一个 `w:num`
+ * （numId 1 -> abstract 0，numId 2 -> abstract 1，与 LIST_NUM_IDS 对齐）。
+ * @returns {string} XML 文本
+ */
+function numberingXml() {
+    const level = (fmt, text) =>
+        '<w:lvl w:ilvl="0"><w:start w:val="1"/>'
+        + `<w:numFmt w:val="${fmt}"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/>`
+        + '<w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>';
+    return `${XML_DECL}<w:numbering xmlns:w="${W}">`
+        + `<w:abstractNum w:abstractNumId="0">${level("bullet", "•")}</w:abstractNum>`
+        + `<w:abstractNum w:abstractNumId="1">${level("decimal", "%1.")}</w:abstractNum>`
+        + '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+        + '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>'
+        + "</w:numbering>";
+}
+
+/**
+ * `[Content_Types].xml`：Default 覆盖 rels/xml/图片扩展名，Override 覆盖各具体部件。
+ * @param {Array<{ext: string}>} [images] 需要登记 Default 的图片（按扩展名去重）
+ * @param {{header: string, footer: string}} [hf] 页眉页脚关系 id（非空才写对应 Override）
+ * @param {boolean} [hasNumbering] 是否写了 `word/numbering.xml`
+ * @returns {string} XML 文本
+ */
+function contentTypesXml(images = [], hf = { header: "", footer: "" }, hasNumbering = false) {
+    const exts = [];
+    for (const img of images) if (img.ext && !exts.includes(img.ext)) exts.push(img.ext);
+    const imageDefaults = exts
+        .map((ext) => `<Default Extension="${ext}" ContentType="${IMAGE_MIME[ext] || "application/octet-stream"}"/>`)
+        .join("");
+    const hfOverrides = (hf.header
+        ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'
+        : "")
+        + (hf.footer
+            ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
+            : "");
+    const numberingOverride = hasNumbering
+        ? '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>'
+        : "";
     return `${XML_DECL}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
         + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         + '<Default Extension="xml" ContentType="application/xml"/>'
+        + imageDefaults
         + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+        + numberingOverride
+        + hfOverrides
         + '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
         + '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
         + "</Types>";
@@ -684,9 +1418,22 @@ function rootRelsXml() {
     ]);
 }
 
-/** 文档级关系：只指向 styles.xml */
-function documentRelsXml() {
-    return relationshipsXml([{ Type: RT.styles, Target: "styles.xml" }]);
+/**
+ * 文档级关系：rId1 指向 styles.xml，其后按顺序写图片关系（与 collectImages 的 rid 对齐），
+ * 最后追加页眉页脚关系（与 headerFooterRefs 的编号对齐），再追加 numbering 关系。
+ * @param {Array<{path: string}>} [images] media 登记
+ * @param {{header: string, footer: string}} [hf] 页眉页脚关系 id
+ * @param {boolean} [hasNumbering] 是否写了 `word/numbering.xml`
+ * @returns {string} XML 文本
+ */
+function documentRelsXml(images = [], hf = { header: "", footer: "" }, hasNumbering = false) {
+    return relationshipsXml([
+        { Type: RT.styles, Target: "styles.xml" },
+        ...images.map((img) => ({ Type: RT.image, Target: img.path.replace(/^word\//, "") })),
+        ...(hf.header ? [{ Type: RT.header, Target: "header1.xml" }] : []),
+        ...(hf.footer ? [{ Type: RT.footer, Target: "footer1.xml" }] : []),
+        ...(hasNumbering ? [{ Type: RT.numbering, Target: "numbering.xml" }] : []),
+    ]);
 }
 
 /**

@@ -1,13 +1,17 @@
 /**
- * xlsx.js — 电子表格编解码（.xlsx 读写 + .csv 读写）
- *
- * 与 `word.js`/`pptx.js` 同层：只依赖同目录的 `xml.js`（迷你 XML 读写）与
- * `zip.js`（OOXML 包读写），不用 DOMParser / XMLSerializer / document / window，
- * 所以浏览器和 Node 都能跑（Node 里跑才能做「生成 → 回读」的结构自校验）。
+ * xlsx.js — 电子表格编解码（.xlsx 读写 + .csv 读写）。
+ * 只依赖同目录的 `xml.js` 与 `zip.js`，不碰 DOM，浏览器和 Node 都能跑
+ * （Node 里跑才能做「生成 → 回读」的结构自校验）。
  *
  * 数据契约（UI 层依赖，勿改签名）：
- *   Sheet     = { name: string, rows: string[][], styles: CellStyle[][] }
- *   CellStyle = { bold, italic, underline, strike, color, fill, align, wrap, format } | null
+ *   Sheet     = { name: string, rows: string[][], styles: CellStyle[][], images: ImageItem[],
+ *                 filter: {col: number, value: string} | null, widths: number[] | null,
+ *                 heights: number[] | null,                          // 行高 pt（索引=行，0/缺省=默认，null=全默认）
+ *                 freeze: { row: boolean, col: boolean },             // 冻结首行 / 首列（落进 <pane>）
+ *                 merges: [r1, c1, r2, c2][] }                        // 合并区（0 基闭区间，最多 200 区）
+ *   ImageItem = { src: string, width: number, height: number }   // src 是 data URL，宽高是 px（96dpi）
+ *   CellStyle = { bold, italic, underline, strike, color, fill, align, wrap, format,
+ *                 font: string | null, fontSize: number | null } | null   // font=字体名，fontSize=pt（1..400）
  *   - rows 全是字符串（数字也存成字符串），且一定是**矩形**：每行等长，长度 = 该表的最大列数，空格子为 ""。
  *   - styles 与 rows **同矩形**（行列下标一一对应）：无格式的格子为 null，入参缺位补 null、多位裁掉，
  *     csv 没有样式也必须给出同矩形的 null，否则视图按下标取值时会崩。
@@ -33,10 +37,17 @@
  *     后行数列数分毫不差（往返保真优先于包体积）。
  *   - 解析按最大 `@r` 展开成矩形：若来源文件把格式刷到了第 1048576 行，会真的分配
  *     一百来万行（不做截断，宁慢不丢）。
+ *   - 图片只支持 png/jpg/jpeg/gif/webp：每张表一组 `xl/drawings/drawingK.xml` + media，
+ *     读取时只按 blip 与 `xdr:ext` 还原 src/宽高；锚点位置/裁剪/旋转/链接图片都不建模，
+ *     回写一律落在 A1 附近的 `oneCellAnchor`（已知降级）。
+ *   - 字体只搬 `<font>` 的 name/sz，主题字体（theme 属性）/family/charset 忽略；读回时
+ *     Calibri + 11pt 视为「继承默认」（null），其余值原样回读，保证自己的包往返一致。
+ *   - 合并区只写结构不搬内容：被覆盖格子的原文照旧保存（Excel 打开时同样只显示左上格）。
+ *   - 行高只认 `@ht` + `@customHeight`，且限制 12..200 pt；其它（自动行高、隐藏行）不建模。
  */
 
-import { escapeXml, parseXml, children, allText, localNameOf, firstChild } from "./xml.js";
-import { unzipXmlParts, zipParts } from "./zip.js";
+import { escapeXml, parseXml, children, allText, findAll, localNameOf, firstChild } from "./xml.js";
+import { unzipPackage, zipParts } from "./zip.js";
 
 /** 纯数字判定：命中即按数值单元格写出，否则按文本写出 */
 const NUM_RE = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/;
@@ -50,6 +61,18 @@ const ARGB_RE = /^[0-9a-fA-F]{8}$|^[0-9a-fA-F]{6}$/;
 const ALIGN_VALUES = new Set(["left", "center", "right"]);
 /** 读回时 horizontal -> 枚举：只认三种，general 等一律 null */
 const ALIGN_READ = new Map([["left", "left"], ["center", "center"], ["right", "right"]]);
+
+/** 行高模型边界（pt）：与视图层「行高 + / -」命令同一口径 */
+const HEIGHT_MIN_PT = 12;
+const HEIGHT_MAX_PT = 200;
+/** 字号模型边界（pt） */
+const FONT_SIZE_MIN_PT = 1;
+const FONT_SIZE_MAX_PT = 400;
+/** 合并区数量上限（先到先得，超出丢弃） */
+const MERGE_MAX = 200;
+/** 无字体 / 字号格式的格子沿用这套默认字体记录（读回时视为 null=继承） */
+const DEFAULT_FONT_NAME = "Calibri";
+const DEFAULT_FONT_SIZE_PT = 11;
 
 /**
  * 内置数字格式契约表：格式串 -> numFmtId（General 不在表里，恒为 0/null）。
@@ -81,29 +104,45 @@ const CT_WORKSHEET = "application/vnd.openxmlformats-officedocument.spreadsheetm
 const CT_STYLES = "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml";
 const CT_CORE = "application/vnd.openxmlformats-package.core-properties+xml";
 const CT_APP = "application/vnd.openxmlformats-officedocument.spreadsheetml.extended-properties+xml";
+const CT_DRAWING = "application/vnd.openxmlformats-officedocument.drawing+xml";
 
-/* ============================ 对外 API ============================ */
+/** 1px = 9525 EMU（96dpi） */
+const EMU_PER_PX = 9525;
+/** 图片扩展名 -> MIME（只支持这五种，svg 不插入） */
+const IMAGE_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+/** 图片缺失尺寸时的兜底（px），与视图层插入图片的兜底一致 */
+const IMAGE_FALLBACK_W = 200;
+const IMAGE_FALLBACK_H = 150;
+/** drawing 命名空间（spreadsheetDrawing 与 DrawingML 主命名空间） */
+const NS_XDR = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
+const NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+
+/* 对外 API */
 
 /**
  * 造一个空白工作表。
  * @param {string} name 表名
- * @returns {{name: string, rows: string[][], styles: Array<Array<object|null>>}} 1x1 空格子、无格式的工作表
+ * @returns {{name: string, rows: string[][], styles: Array<Array<object|null>>, images: object[], filter: null, widths: null, heights: null, freeze: {row: boolean, col: boolean}, merges: array}} 1x1 空格子、无格式、无筛选与自定义列宽的工作表
  */
 export function emptySheet(name = "工作表1") {
-    return { name, rows: [[""]], styles: [[null]] };
+    return {
+        name, rows: [[""]], styles: [[null]], images: [],
+        filter: null, widths: null, heights: null,
+        freeze: { row: false, col: false }, merges: [],
+    };
 }
 
 /**
  * 解析 .xlsx 字节，取出全部工作表（顺序与 workbook.xml 一致）。
  * styles 与 rows 同矩形；无样式部件 / `s` 缺失或越界的格子给 null。
  * @param {ArrayBuffer|Uint8Array} bytes .xlsx 文件字节
- * @returns {Promise<{sheets: Array<{name: string, rows: string[][], styles: Array<Array<object|null>>}>}>}
+ * @returns {Promise<{sheets: Array<{name: string, rows: string[][], styles: Array<Array<object|null>>, images: object[]}>}>}
  * @throws {Error} 中文错误：不是 zip 包 / 缺 workbook.xml
  */
 export async function parseXlsx(bytes) {
     let parts;
     try {
-        parts = await unzipXmlParts(bytes);
+        parts = await unzipPackage(bytes);
     } catch (err) {
         throw new Error(`不是有效的 .xlsx 文件：压缩包无法解出部件（${err && err.message ? err.message : String(err)}）`);
     }
@@ -122,10 +161,14 @@ export async function parseXlsx(bytes) {
     const sheets = [];
     sheetNodes.forEach((node, i) => {
         const name = node.attrs.name || `工作表${i + 1}`;
-        const text = resolveSheetText(parts, index, rels, node, i);
+        const found = resolveSheetPart(parts, index, rels, node, i);
         // 部件找不到时给空表而不是炸：真实产物里偶有悬空引用，表格能开比报错有用
-        if (text == null) sheets.push({ name, rows: [], styles: [] });
-        else sheets.push(Object.assign({ name }, readSheet(text, shared, xfs)));
+        if (found == null) sheets.push(emptySheet(name));
+        else {
+            sheets.push(Object.assign({ name }, readSheet(found.text, shared, xfs), {
+                images: readSheetImages(parts, index, found.path, found.text),
+            }));
+        }
     });
     if (!sheets.length) sheets.push(emptySheet());
     return { sheets };
@@ -141,6 +184,7 @@ export async function parseXlsx(bytes) {
 export async function buildXlsx(sheets) {
     const list = normalizeSheetList(sheets);
     const reg = collectStyles(list); // 顺带给每个 sheet 补上 styleIds（cellXfs 下标矩阵）
+    const media = collectSheetImages(list);
     const parts = {};
     const overrides = [
         { part: "/xl/workbook.xml", type: CT_SHEET },
@@ -148,33 +192,130 @@ export async function buildXlsx(sheets) {
         { part: "/xl/styles.xml", type: CT_STYLES },
         { part: "/docProps/core.xml", type: CT_CORE },
         { part: "/docProps/app.xml", type: CT_APP },
+        ...media.drawings.map((d) => ({ part: `/xl/drawings/drawing${d.k}.xml`, type: CT_DRAWING })),
     ];
 
-    parts["[Content_Types].xml"] = contentTypesXml(overrides);
+    parts["[Content_Types].xml"] = contentTypesXml(media.entries, overrides);
     parts["_rels/.rels"] = rootRelsXml();
     parts["xl/workbook.xml"] = workbookXml(list);
     parts["xl/_rels/workbook.xml.rels"] = workbookRelsXml(list.length);
     parts["xl/styles.xml"] = stylesXml(reg);
     parts["docProps/core.xml"] = coreXml();
     parts["docProps/app.xml"] = appXml(list);
+    const drawingOf = new Map(media.drawings.map((d) => [d.sheet, d]));
     list.forEach((sheet, i) => {
-        parts[`xl/worksheets/sheet${i + 1}.xml`] = worksheetXml(sheet);
+        const drawing = drawingOf.get(i);
+        parts[`xl/worksheets/sheet${i + 1}.xml`] = worksheetXml(sheet, Boolean(drawing));
+        if (drawing) {
+            parts[`xl/worksheets/_rels/sheet${i + 1}.xml.rels`] = sheetDrawingRelsXml(drawing.k);
+        }
     });
+    // 图片部件与 drawing 只在有图时写，无图工作簿的包结构保持原样
+    for (const entry of media.entries) parts[entry.path] = { base64: entry.base64 };
+    for (const drawing of media.drawings) {
+        parts[`xl/drawings/drawing${drawing.k}.xml`] = sheetDrawingXml(drawing.refs);
+        parts[`xl/drawings/_rels/drawing${drawing.k}.xml.rels`] = drawingRelsXml(drawing.refs);
+    }
     return zipParts(parts);
 }
 
 /**
+ * 收集各表图片：按 src 去重（跨表共用 media 部件），给每张有图的表分配 drawing 序号。
+ * 非法 data URL 的图片被丢弃，不写 media / drawing。
+ * @param {object[]} list 已规整的工作表
+ * @returns {{entries: Array<{src: string, path: string, ext: string, base64: string}>, drawings: Array<{sheet: number, k: number, refs: object[]}>}}
+ */
+function collectSheetImages(list) {
+    const entries = [];
+    const bySrc = new Map();
+    const drawings = [];
+    list.forEach((sheet, i) => {
+        if (!sheet.images.length) return;
+        const refs = [];
+        for (const img of sheet.images) {
+            const info = dataUrlImage(img.src);
+            if (!info) continue;
+            let entry = bySrc.get(img.src);
+            if (!entry) {
+                entry = {
+                    src: img.src,
+                    path: `xl/media/image${entries.length + 1}.${info.ext}`,
+                    ext: info.ext,
+                    base64: info.base64,
+                };
+                entries.push(entry);
+                bySrc.set(img.src, entry);
+            }
+            refs.push({ entry, width: img.width, height: img.height });
+        }
+        if (!refs.length) return;
+        drawings.push({ sheet: i, k: drawings.length + 1, refs });
+    });
+    return { entries, drawings };
+}
+
+/**
+ * 规整单张图片项：src 非 data URL 时丢弃（返回 null），宽高非正数用兜底值。
+ * @param {object} raw 原始图片项
+ * @returns {{src: string, width: number, height: number}|null}
+ */
+function normalizeImage(raw) {
+    const img = raw || {};
+    const src = typeof img.src === "string" ? img.src.trim() : "";
+    if (!dataUrlImage(src)) return null;
+    return { src, width: normImagePx(img.width, IMAGE_FALLBACK_W), height: normImagePx(img.height, IMAGE_FALLBACK_H) };
+}
+
+/**
+ * 规整图片数组：去坏项、缺省给 []（旧文档无 images 字段也能安全加载）。
+ * @param {unknown} list 原始数组
+ * @returns {Array<{src: string, width: number, height: number}>}
+ */
+function normalizeImages(list) {
+    if (!Array.isArray(list)) return [];
+    return list.map(normalizeImage).filter(Boolean);
+}
+
+/**
+ * 图片像素尺寸：非数字/非正数用兜底值，其余四舍五入成整数 px。
+ * @param {unknown} value 原始值
+ * @param {number} fallback 兜底 px
+ * @returns {number}
+ */
+function normImagePx(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    return Math.max(1, Math.round(n));
+}
+
+/**
+ * 解析图片 data URL（只认 png/jpeg/gif/webp 的 base64 形式）。
+ * @param {unknown} src data URL
+ * @returns {{mime: string, ext: string, base64: string}|null}
+ */
+function dataUrlImage(src) {
+    const m = /^data:image\/(png|jpe?g|gif|webp);base64,([\s\S]+)$/i.exec(String(src || "").trim());
+    if (!m) return null;
+    const kind = m[1].toLowerCase();
+    const mime = kind === "jpg" || kind === "jpeg" ? "image/jpeg" : `image/${kind}`;
+    return { mime, ext: kind === "jpeg" ? "jpg" : kind, base64: m[2].replace(/\s/g, "") };
+}
+
+/**
  * 解析 CSV 文本（RFC4180 子集：只认逗号分隔）。
- * 支持引号包裹、引号内的逗号/换行/`""` 转义、`\r\n` 与 `\n` 与 `\r`、BOM 剥离；
- * 文首的 BOM 会被剥掉，文末连续的空行不产生空行（中间的空白行保留）。
+ * 支持引号包裹、引号内的逗号/换行/`""` 转义、`\r\n`/`\n`/`\r`；文首 BOM 剥掉，
+ * 文末连续的空行不产生空行（中间的空白行保留）。
  * 注意：`["a",""]` 这类**含逗号**的行能安全往返；只有「整行没有任何内容」的尾行会被削掉。
  * csv 不带样式，但 styles 仍给出与 rows 同矩形的 null（视图层按下标取值，缺位会崩）。
  * @param {string} text CSV 文本
- * @returns {Array<{name: string, rows: string[][], styles: Array<Array<object|null>>}>} 单元素数组
+ * @returns {Array<{name: string, rows: string[][], styles: Array<Array<object|null>>, images: object[], filter: null, widths: null, heights: null, freeze: {row: boolean, col: boolean}, merges: array}>} 单元素数组
  */
 export function parseCsv(text) {
     const rows = rectangleFromGrid(csvGrid(text));
-    return [{ name: "工作表1", rows, styles: rectangleStyleGrid(null, rows.length, colsOf(rows)) }];
+    return [{
+        name: "工作表1", rows, styles: rectangleStyleGrid(null, rows.length, colsOf(rows)), images: [],
+        filter: null, widths: null, heights: null, freeze: { row: false, col: false }, merges: [],
+    }];
 }
 
 /**
@@ -202,7 +343,7 @@ export function sheetToTsv(sheet) {
         .join("\n");
 }
 
-/* ============================ xlsx 读取 ============================ */
+/* xlsx 读取 */
 
 /**
  * 部件名大小写索引：不同厂商写法（`xl/SharedStrings.xml`）都能命中。
@@ -355,7 +496,7 @@ function findBySuffix(index, tail) {
  * @param {number} i sheet 序号（0 起）
  * @returns {string|null} worksheet 部件文本
  */
-function resolveSheetText(parts, index, rels, node, i) {
+function resolveSheetPart(parts, index, rels, node, i) {
     const relsPath = "xl/_rels/workbook.xml.rels";
     const rid = attrByLocal(node, ["id", "relid", "relationshipid"]);
     const candidates = [];
@@ -369,7 +510,7 @@ function resolveSheetText(parts, index, rels, node, i) {
     candidates.push(`xl/worksheets/sheet${i + 1}.xml`);
     for (const cand of candidates) {
         const text = pickPart(parts, index, cand);
-        if (text != null) return text;
+        if (text != null) return { text, path: index.get(cand.toLowerCase()) || cand };
     }
     return null;
 }
@@ -452,7 +593,7 @@ function colLetter(col) {
  * @param {string} text worksheet 部件文本
  * @param {string[]} shared 共享字符串表
  * @param {Array<object|null>} xfs cellXfs 归一化结果（下标即 `<c s="i">` 的 i）
- * @returns {{rows: string[][], styles: Array<Array<object|null>>}} 同矩形的值网格与样式网格
+ * @returns {{rows: string[][], styles: Array<Array<object|null>>, filter: object|null, widths: number[]|null, heights: number[]|null, freeze: {row: boolean, col: boolean}, merges: Array<[number, number, number, number]>}} 同矩形的值网格与样式网格 + 自动筛选 + 自定义列宽 + 行高 + 冻结 + 合并区
  */
 function readSheet(text, shared, xfs) {
     const root = parseXml(text);
@@ -479,7 +620,10 @@ function readSheet(text, shared, xfs) {
 
     const rows = [];
     const styles = [];
-    if (maxRow === 0 || maxCol === 0) return { rows, styles };
+    const freeze = readFreeze(root);
+    if (maxRow === 0 || maxCol === 0) {
+        return { rows, styles, filter: readAutoFilter(root), widths: readColWidths(root), heights: null, freeze, merges: [] };
+    }
     for (let r = 0; r < maxRow; r++) {
         rows.push(new Array(maxCol).fill(""));
         styles.push(new Array(maxCol).fill(null));
@@ -488,7 +632,257 @@ function readSheet(text, shared, xfs) {
         rows[cell.row - 1][cell.col - 1] = cell.value;
         styles[cell.row - 1][cell.col - 1] = cell.style;
     }
-    return { rows, styles };
+    return {
+        rows,
+        styles,
+        filter: readAutoFilter(root),
+        widths: readColWidths(root),
+        heights: readRowHeights(root, maxRow),
+        freeze,
+        merges: readMerges(root, maxRow, maxCol),
+    };
+}
+
+/**
+ * 读行高：只认 `<row @ht @customHeight>` 且 pt 落在 12..200（取整），其余丢弃；
+ * 数组索引 = 行号，0 = 默认，没有任何自定义行高时返回 null。
+ * @param {object|null} root worksheet 根节点
+ * @param {number} rowCount 数据行数（行高数组按它对齐）
+ * @returns {number[]|null}
+ */
+function readRowHeights(root, rowCount) {
+    const sheetData = firstChild(root, "sheetData");
+    if (!sheetData || rowCount <= 0) return null;
+    const out = new Array(rowCount).fill(0);
+    let any = false;
+    kids(sheetData, "row").forEach((node, i) => {
+        if (!isOn(node.attrs.customHeight)) return;
+        const rAttr = parseInt(node.attrs.r, 10);
+        const rowNum = Number.isFinite(rAttr) && rAttr > 0 ? rAttr : i + 1;
+        if (rowNum > rowCount) return;
+        const ht = Number(node.attrs.ht);
+        if (!Number.isFinite(ht)) return;
+        const pt = Math.round(ht);
+        if (pt < HEIGHT_MIN_PT || pt > HEIGHT_MAX_PT) return;
+        out[rowNum - 1] = pt;
+        any = true;
+    });
+    return any ? out : null;
+}
+
+/**
+ * 读冻结：`<sheetViews><sheetView><pane xSplit / ySplit>` 是否 > 0，其它属性忽略。
+ * @param {object|null} root worksheet 根节点
+ * @returns {{row: boolean, col: boolean}}
+ */
+function readFreeze(root) {
+    const views = firstChild(root, "sheetViews");
+    const view = views ? firstChild(views, "sheetView") : null;
+    const pane = view ? firstChild(view, "pane") : null;
+    if (!pane) return { row: false, col: false };
+    const x = Number(pane.attrs.xSplit);
+    const y = Number(pane.attrs.ySplit);
+    return { row: Number.isFinite(y) && y > 0, col: Number.isFinite(x) && x > 0 };
+}
+
+/**
+ * 读合并区：`<mergeCells><mergeCell ref="A1:B2">` → 0 基闭区间，再按数据矩形做
+ * 非法 / 单格 / 越界 / 重叠（先到先得）与 200 区上限的规整。
+ * @param {object|null} root worksheet 根节点
+ * @param {number} rowCount 数据行数
+ * @param {number} colCount 数据列数
+ * @returns {Array<[number, number, number, number]>}
+ */
+function readMerges(root, rowCount, colCount) {
+    const box = firstChild(root, "mergeCells");
+    if (!box) return [];
+    const list = [];
+    for (const node of kids(box, "mergeCell")) {
+        const range = parseMergeRef(node.attrs.ref);
+        if (range) list.push(range);
+    }
+    return normMerges(list, rowCount, colCount);
+}
+
+/**
+ * `A1:B2` → `[r1, c1, r2, c2]`（0 基，允许单格写法；非法返回 null）。
+ * @param {string} ref 合并区 ref
+ * @returns {[number, number, number, number]|null}
+ */
+function parseMergeRef(ref) {
+    const m = /^([A-Za-z]+)(\d+)(?::([A-Za-z]+)(\d+))?$/.exec(String(ref || "").trim());
+    if (!m) return null;
+    const c1 = colFromRef(m[1]) - 1;
+    const r1 = parseInt(m[2], 10) - 1;
+    const c2 = m[3] ? colFromRef(m[3]) - 1 : c1;
+    const r2 = m[4] ? parseInt(m[4], 10) - 1 : r1;
+    if (c1 < 0 || c2 < 0 || !(r1 >= 0) || !(r2 >= 0)) return null;
+    return [r1, c1, r2, c2];
+}
+
+/**
+ * 读 `<autoFilter>`：只认第一条 `filterColumn/customFilters/customFilter` 且 `operator="equal"`；
+ * `colId` 在 OOXML 里就是 0 起列号，与模型列号一致。其它运算符/结构一律返回 null。
+ * @param {object|null} root worksheet 根节点
+ * @returns {{col: number, value: string}|null} 筛选条件
+ */
+function readAutoFilter(root) {
+    const autoFilter = firstChild(root, "autoFilter");
+    if (!autoFilter) return null;
+    const column = firstChild(autoFilter, "filterColumn");
+    if (!column) return null;
+    const col = parseInt(attrByLocal(column, ["colid"]), 10);
+    if (!Number.isFinite(col) || col < 0) return null;
+    const custom = firstChild(column, "customFilters", "customFilter");
+    if (!custom) return null;
+    const operator = String(attrByLocal(custom, ["operator"]) || "equal").toLowerCase();
+    if (operator !== "equal") return null;
+    return { col, value: String(attrByLocal(custom, ["val"]) || "") };
+}
+
+/**
+ * 读 `<cols>` 下的 `<col>`：`min/max` 是 1 起列号，按 `min-1` 索引铺开，长度取出现的最大列；
+ * 未声明或宽度非法（非正数）的列保留 0（= 默认列宽）。
+ * @param {object|null} root worksheet 根节点
+ * @returns {number[]|null} 列宽数组（字符宽，0 表示默认）；没有任何 col 时 null
+ */
+function readColWidths(root) {
+    const cols = firstChild(root, "cols");
+    if (!cols) return null;
+    const entries = kids(cols, "col");
+    if (!entries.length) return null;
+    let maxCol = 0;
+    const rows = [];
+    for (const node of entries) {
+        const min = parseInt(node.attrs.min, 10);
+        const max = parseInt(node.attrs.max !== undefined ? node.attrs.max : node.attrs.min, 10);
+        const width = Number(node.attrs.width);
+        if (!Number.isFinite(min) || min < 1) continue;
+        const end = Number.isFinite(max) && max >= min ? max : min;
+        if (!Number.isFinite(width) || width <= 0) continue;
+        for (let col = min - 1; col < end; col++) rows[col] = Math.round(width * 10) / 10;
+        maxCol = Math.max(maxCol, end);
+    }
+    if (!maxCol) return null;
+    const out = new Array(maxCol).fill(0);
+    for (let i = 0; i < maxCol; i++) if (rows[i]) out[i] = rows[i];
+    return out;
+}
+
+/**
+ * 读一张表里的图片：worksheet 的 `<drawing>` -> worksheet rels -> drawing 部件 ->
+ * 每个 anchor 的 `a:blip r:embed` -> drawing rels -> media 二进制 -> data URL + `xdr:ext` 尺寸。
+ * 悬空关系、缺部件、非支持格式一律跳过；只认 oneCellAnchor/twoCellAnchor/absoluteAnchor。
+ * @param {Map} parts 部件表
+ * @param {Map<string, string>} index 小写路径索引
+ * @param {string} partPath worksheet 实际部件路径
+ * @param {string} text worksheet XML 文本
+ * @returns {Array<{src: string, width: number, height: number}>} 图片项
+ */
+function readSheetImages(parts, index, partPath, text) {
+    const root = parseXml(text);
+    const drawingNode = root ? firstChild(root, "drawing") : null;
+    if (!drawingNode) return [];
+    const rid = attrByLocal(drawingNode, ["id", "relid", "relationshipid"]);
+    if (!rid) return [];
+
+    const sheetRels = readRels(pickPart(parts, index, relsPathOf(partPath)), relsPathOf(partPath));
+    const rel = sheetRels.get(rid);
+    if (!rel || rel.external) return [];
+    const drawingPath = findRelatedPart(parts, index, rel.target, relsPathOf(partPath));
+    if (!drawingPath) return [];
+    const drawingRoot = parseXml(pickPart(parts, index, drawingPath));
+    if (!drawingRoot) return [];
+
+    const drawingRels = readRels(pickPart(parts, index, relsPathOf(drawingPath)), relsPathOf(drawingPath));
+    const out = [];
+    for (const child of children(drawingRoot)) {
+        const ln = localNameOf(child);
+        if (ln !== "oneCellAnchor" && ln !== "twoCellAnchor" && ln !== "absoluteAnchor") continue;
+        const blip = findAll(child, "blip")[0];
+        if (!blip) continue;
+        const embed = attrByLocal(blip, ["embed", "link"]);
+        const imgRel = embed ? drawingRels.get(embed) : null;
+        if (!imgRel || imgRel.external) continue;
+        const mediaPath = findRelatedPart(parts, index, imgRel.target, relsPathOf(drawingPath));
+        const base64 = mediaPath ? binaryAt(parts, index, mediaPath) : null;
+        const ext = mediaPath ? imageExtOf(mediaPath) : "";
+        const mime = IMAGE_MIME[ext];
+        if (!base64 || !mime) continue;
+        const extNode = firstChild(child, "ext");
+        out.push(normalizeImage({
+            src: `data:${mime};base64,${base64}`,
+            width: emuToPx(extNode ? extNode.attrs.cx : null, IMAGE_FALLBACK_W),
+            height: emuToPx(extNode ? extNode.attrs.cy : null, IMAGE_FALLBACK_H),
+        }));
+    }
+    return out;
+}
+
+/**
+ * 关系 Target -> 实际部件路径（优先按 Target 解析，其次按尾段搜）。
+ * @param {Map} parts 部件表
+ * @param {Map<string, string>} index 小写路径索引
+ * @param {string} target 关系 Target
+ * @param {string} relsPath 关系所在 rels 部件路径（定位基准）
+ * @returns {string|null} 部件实际路径
+ */
+function findRelatedPart(parts, index, target, relsPath) {
+    const candidates = targetCandidates(target, relsPath);
+    findBySuffix(index, targetSuffix(target)).forEach((p) => candidates.push(p));
+    for (const cand of candidates) {
+        if (pickPart(parts, index, cand) != null || binaryAt(parts, index, cand)) {
+            return index.get(cand.toLowerCase()) || cand;
+        }
+    }
+    return null;
+}
+
+/**
+ * 部件路径对应的 rels 路径：`a/b/c.xml` -> `a/b/_rels/c.xml.rels`。
+ * @param {string} path 部件路径
+ * @returns {string} rels 路径
+ */
+function relsPathOf(path) {
+    const slash = path.lastIndexOf("/");
+    const dir = slash === -1 ? "" : path.slice(0, slash + 1);
+    const name = slash === -1 ? path : path.slice(slash + 1);
+    return `${dir}_rels/${name}.rels`;
+}
+
+/**
+ * 按包内路径取图片 base64（大小写不敏感）。
+ * @param {Map} parts 部件表
+ * @param {Map<string, string>} index 小写路径索引
+ * @param {string} path 期望路径
+ * @returns {string|null} base64
+ */
+function binaryAt(parts, index, path) {
+    const real = index.get(String(path).toLowerCase());
+    const value = real === undefined ? null : parts.get(real);
+    return value && typeof value === "object" && typeof value.base64 === "string" ? value.base64 : null;
+}
+
+/**
+ * 图片扩展名（小写，不带点）。
+ * @param {string} path 部件路径
+ * @returns {string}
+ */
+function imageExtOf(path) {
+    const m = /\.([A-Za-z0-9]+)$/.exec(String(path || ""));
+    return m ? m[1].toLowerCase() : "";
+}
+
+/**
+ * EMU -> px（四舍五入，至少 1）；非数字用兜底值。
+ * @param {*} raw EMU 数值
+ * @param {number} fallback 兜底 px
+ * @returns {number}
+ */
+function emuToPx(raw, fallback) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    return Math.max(1, Math.round(n / EMU_PER_PX));
 }
 
 /**
@@ -543,7 +937,7 @@ function formulaOf(cell) {
     return f ? allText(f).trim() : "";
 }
 
-/* ============================ 样式表读取（xl/styles.xml） ============================ */
+/* 样式表读取（xl/styles.xml） */
 
 /**
  * 读 cellXfs：逐个 `<xf>` 用 fontId/fillId/numFmtId 反查 fonts/fills/numFmts，
@@ -568,15 +962,23 @@ function readCellXfs(text) {
  * 读一个 `<font>`：`<b/>`/`<i/>`/`<strike/>` 看有无子元素（显式 val="0"/"false" 算关），
  * `<u>` 只要不是 val="none" 就算有下划线，颜色只认 rgb 属性。
  * @param {object} node `<font>` 节点
- * @returns {{bold: boolean, italic: boolean, underline: boolean, strike: boolean, color: string|null}}
+ * @returns {{bold: boolean, italic: boolean, underline: boolean, strike: boolean, color: string|null, font: string|null, fontSize: number|null}}
  */
 function readFontRecord(node) {
+    const nameNode = firstChild(node, "name");
+    const sizeNode = firstChild(node, "sz");
+    const rawName = nameNode && typeof nameNode.attrs.val === "string" ? nameNode.attrs.val.trim() : "";
+    const rawSize = sizeNode ? Number(sizeNode.attrs.val) : NaN;
     return {
         bold: onFlag(node, "b"),
         italic: onFlag(node, "i"),
         strike: onFlag(node, "strike"),
         underline: underlined(node),
         color: colorOf(firstChild(node, "color")),
+        font: rawName || null,
+        fontSize: Number.isFinite(rawSize) && rawSize >= FONT_SIZE_MIN_PT && rawSize <= FONT_SIZE_MAX_PT
+            ? Math.round(rawSize * 10) / 10
+            : null,
     };
 }
 
@@ -699,7 +1101,31 @@ function readXfStyle(xf, fonts, fills, custom) {
         align: alignNode ? ALIGN_READ.get(String(alignNode.attrs.horizontal || "").trim().toLowerCase()) || null : null,
         wrap: alignNode ? isOn(alignNode.attrs.wrapText) : false,
         format: numFmtCode(Number.isFinite(numFmtId) && numFmtId >= 0 ? numFmtId : -1, custom),
+        font: inheritedFontName(font),
+        fontSize: inheritedFontSize(font),
     });
+}
+
+/**
+ * 字体名回读口径：包的默认字体（Calibri）视为「继承」（null），其余原样返回 ——
+ * 刚好抵消「无字体格式的 font 记录也写着 Calibri」，保证自己的包往返一致。
+ * @param {object|undefined} font fonts 集合里的记录
+ * @returns {string|null}
+ */
+function inheritedFontName(font) {
+    const name = font && typeof font.font === "string" ? font.font : "";
+    if (!name) return null;
+    return name.toLowerCase() === DEFAULT_FONT_NAME.toLowerCase() ? null : name;
+}
+
+/**
+ * 字号回读口径：11pt（包的默认字号）视为「继承」（null），其余原样返回。
+ * @param {object|undefined} font fonts 集合里的记录
+ * @returns {number|null}
+ */
+function inheritedFontSize(font) {
+    const size = font && typeof font.fontSize === "number" ? font.fontSize : null;
+    return size === DEFAULT_FONT_SIZE_PT ? null : size;
 }
 
 /**
@@ -713,7 +1139,7 @@ function inRangeIndex(raw, length) {
     return Number.isFinite(n) && n >= 0 && n < length ? n : -1;
 }
 
-/* ============================ xlsx 写出 ============================ */
+/* xlsx 写出 */
 
 /**
  * 规范入参：确保是 `{name, rows, styles}` 数组，行矩形化、值转字符串、样式与行同矩形、
@@ -728,9 +1154,22 @@ function normalizeSheetList(sheets) {
         const name = uniqueSheetName(sheet.name || `工作表${i + 1}`, names);
         const rows = rectangleFromGrid(sheet.rows);
         // 样式网格以 rows 的矩形为准：缺位补 null，多出来的行列裁掉
-        return { name, rows, styles: rectangleStyleGrid(sheet.styles, rows.length, colsOf(rows)) };
+        return {
+            name,
+            rows,
+            styles: rectangleStyleGrid(sheet.styles, rows.length, colsOf(rows)),
+            images: normalizeImages(sheet.images),
+            filter: normFilter(sheet.filter),
+            widths: normWidths(sheet.widths),
+            heights: normHeights(sheet.heights),
+            freeze: normFreeze(sheet.freeze),
+            merges: normMerges(sheet.merges, rows.length, colsOf(rows)),
+        };
     });
-    return out.length ? out : [{ name: "工作表1", rows: [], styles: [] }];
+    return out.length ? out : [{
+        name: "工作表1", rows: [], styles: [], images: [],
+        filter: null, widths: null, heights: null, freeze: { row: false, col: false }, merges: [],
+    }];
 }
 
 /**
@@ -820,6 +1259,8 @@ function sanitizeStyle(raw) {
         align: normAlign(raw.align),
         wrap: raw.wrap === true,
         format: normFormat(raw.format),
+        font: normFontName(raw.font),
+        fontSize: normFontSize(raw.fontSize),
     };
     return isBlankStyle(style) ? null : style;
 }
@@ -832,7 +1273,32 @@ function sanitizeStyle(raw) {
 function isBlankStyle(style) {
     if (!style) return true;
     return !style.bold && !style.italic && !style.underline && !style.strike
-        && !style.color && !style.fill && !style.align && !style.wrap && style.format === null;
+        && !style.color && !style.fill && !style.align && !style.wrap && style.format === null
+        && !style.font && style.fontSize === null;
+}
+
+/**
+ * 字体名规整：非字符串 / 空白 → null（= 继承默认），有效名去首尾空格并截到 64 字符。
+ * @param {*} raw 原始字体名
+ * @returns {string|null}
+ */
+function normFontName(raw) {
+    if (typeof raw !== "string") return null;
+    const s = raw.trim();
+    return s ? s.slice(0, 64) : null;
+}
+
+/**
+ * 字号规整：数字且落在 1..400 pt 内，保留一位小数；其余（字符串 / 越界 / NaN）→ null。
+ * @param {*} raw 原始字号
+ * @returns {number|null}
+ */
+function normFontSize(raw) {
+    if (typeof raw === "number") {
+        if (!Number.isFinite(raw) || raw < FONT_SIZE_MIN_PT || raw > FONT_SIZE_MAX_PT) return null;
+        return Math.round(raw * 10) / 10;
+    }
+    return null;
 }
 
 /**
@@ -867,7 +1333,98 @@ function normFormat(raw) {
     return s;
 }
 
-/* ============================ 样式表写出（去重建索引） ============================ */
+/** 自定义列宽合法区间（字符宽）：低于 4 或高于 40 视为非法，按默认列宽处理 */
+const WIDTH_MIN_CHARS = 4;
+const WIDTH_MAX_CHARS = 40;
+
+/**
+ * 自动筛选规整：只接受 `{col: 整数 >= 0, value: string}`，其余（缺值、非字符串列号）成 null。
+ * @param {*} raw 原始筛选条件
+ * @returns {{col: number, value: string}|null}
+ */
+function normFilter(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const col = Number(raw.col);
+    if (!Number.isInteger(col) || col < 0) return null;
+    if (typeof raw.value !== "string") return null;
+    return { col, value: raw.value };
+}
+
+/**
+ * 自定义列宽规整：索引 = 列号，值 = 字符宽（4..40，保留一位小数）；非法位置记 0（= 默认）。
+ * 没有任何自定义列宽时返回 null（而不是全 0 数组），与契约的「默认 null」一致。
+ * @param {*} raw 原始列宽数组
+ * @returns {number[]|null}
+ */
+function normWidths(raw) {
+    if (!Array.isArray(raw)) return null;
+    const out = [];
+    raw.forEach((value, i) => {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < WIDTH_MIN_CHARS || n > WIDTH_MAX_CHARS) return;
+        out[i] = Math.round(n * 10) / 10;
+    });
+    if (!out.some((value) => value > 0)) return null;
+    return out;
+}
+
+/**
+ * 行高规整：索引 = 行号，值 = pt（12..200，取整）；非法 / 越界记 0（= 默认）。
+ * 没有任何自定义行高时返回 null（契约默认），避免给旧文档凭空添字段值。
+ * @param {*} raw 原始行高数组
+ * @returns {number[]|null}
+ */
+function normHeights(raw) {
+    if (!Array.isArray(raw)) return null;
+    const out = [];
+    raw.forEach((value, i) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return;
+        const pt = Math.round(n);
+        // 0 与越界值都记 0（保留下标 = 行号），只有合法 pt 才是自定义行高
+        out[i] = pt >= HEIGHT_MIN_PT && pt <= HEIGHT_MAX_PT ? pt : 0;
+    });
+    if (!out.some((value) => value > 0)) return null;
+    return out;
+}
+
+/**
+ * 冻结规整：只认 `{row, col}` 两个布尔，缺省 / 非法一律 false（旧文档无该字段也能开）。
+ * @param {*} raw 原始冻结对象
+ * @returns {{row: boolean, col: boolean}}
+ */
+function normFreeze(raw) {
+    if (!raw || typeof raw !== "object") return { row: false, col: false };
+    return { row: !!raw.row, col: !!raw.col };
+}
+
+/**
+ * 合并区规整：0 基闭区间，行列序归一后丢弃非法 / 单格 / 越界 / 与已收区重叠的项
+ * （先到先得），最多 MERGE_MAX 区。
+ * @param {*} raw 原始合并区数组
+ * @param {number} rowCount 表格行数（越界判断）
+ * @param {number} colCount 表格列数（越界判断）
+ * @returns {Array<[number, number, number, number]>}
+ */
+function normMerges(raw, rowCount, colCount) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const item of raw) {
+        if (out.length >= MERGE_MAX) break;
+        if (!Array.isArray(item) || item.length !== 4) continue;
+        const nums = item.map((v) => Number(v));
+        if (!nums.every((n) => Number.isInteger(n) && n >= 0)) continue;
+        const [r1, c1, r2, c2] = [Math.min(nums[0], nums[2]), Math.min(nums[1], nums[3]),
+            Math.max(nums[0], nums[2]), Math.max(nums[1], nums[3])];
+        if (r1 === r2 && c1 === c2) continue;
+        if (r2 >= rowCount || c2 >= colCount) continue;
+        if (out.some((m) => r1 <= m[2] && m[0] <= r2 && c1 <= m[3] && m[1] <= c2)) continue;
+        out.push([r1, c1, r2, c2]);
+    }
+    return out;
+}
+
+/* 样式表写出（去重建索引） */
 
 /**
  * 建全簿共用的样式登记簿：把每格 CellStyle 折进 fonts/fills/numFmts/cellXfs 四张表，
@@ -883,8 +1440,8 @@ function normFormat(raw) {
  */
 function collectStyles(list) {
     const reg = {
-        fonts: [{ bold: false, italic: false, underline: false, strike: false, color: null }],
-        fontIds: new Map([["0000|", 0]]),
+        fonts: [{ bold: false, italic: false, underline: false, strike: false, color: null, font: null, fontSize: null }],
+        fontIds: new Map([[fontKey({ bold: false, italic: false, underline: false, strike: false, color: null, font: null, fontSize: null }), 0]]),
         fills: DEFAULT_FILL_MARKERS.slice(),
         fillIds: new Map([["", 0], ["gray125", 1]]),
         customNumFmts: [],
@@ -904,9 +1461,9 @@ function xfKey(xf) {
     return `${xf.numFmtId}|${xf.fontId}|${xf.fillId}|${xf.align || ""}|${xf.wrap ? 1 : 0}`;
 }
 
-/** font 去重键：模型只关心四个布尔与字色（默认字体即 "0000|"，复用 0 号） */
+/** font 去重键：四个布尔 + 字色 + 字体名 + 字号（无字体/字号格式的格子与 0 号同键） */
 function fontKey(style) {
-    return `${style.bold ? 1 : 0}${style.italic ? 1 : 0}${style.underline ? 1 : 0}${style.strike ? 1 : 0}|${style.color || ""}`;
+    return `${style.bold ? 1 : 0}${style.italic ? 1 : 0}${style.underline ? 1 : 0}${style.strike ? 1 : 0}|${style.color || ""}|${style.font || ""}|${style.fontSize === null ? "" : style.fontSize}`;
 }
 
 /**
@@ -948,6 +1505,8 @@ function fontIdOf(reg, style) {
         underline: style.underline,
         strike: style.strike,
         color: style.color,
+        font: style.font,
+        fontSize: style.fontSize,
     });
     reg.fontIds.set(key, id);
     return id;
@@ -986,13 +1545,19 @@ function numFmtIdOf(reg, code) {
 }
 /**
  * 生成 `[Content_Types].xml`。
+ * @param {Array<{ext: string}>} images 图片登记（只取扩展名声明 Default）
  * @param {Array<{part: string, type: string}>} overrides Override 列表
  * @returns {string} XML 文本
  */
-function contentTypesXml(overrides) {
+function contentTypesXml(images, overrides) {
+    const exts = [];
+    for (const img of images || []) if (img.ext && !exts.includes(img.ext)) exts.push(img.ext);
+    const imageDefaults = exts
+        .map((ext) => `<Default Extension="${ext}" ContentType="${IMAGE_MIME[ext] || "application/octet-stream"}"/>`)
+        .join("");
     const body = overrides.map((o) => `<Override PartName="${escapeXml(o.part)}" ContentType="${escapeXml(o.type)}"/>`).join("");
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="${CT_REL}"/><Default Extension="xml" ContentType="${CT_XML}"/>${body}</Types>`;
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="${CT_REL}"/><Default Extension="xml" ContentType="${CT_XML}"/>${imageDefaults}${body}</Types>`;
 }
 
 /**
@@ -1055,8 +1620,8 @@ function stylesXml(reg) {
 
 /**
  * 一条字体记录。子元素顺序按 CT_Font 的序列（b i strike u sz color name family），
- * 顺序错了严格校验器会报错；字号/字体名固定 Calibri 11（模型里没有这两项）。
- * @param {{bold: boolean, italic: boolean, underline: boolean, strike: boolean, color: string|null}} font 字体
+ * 顺序错了严格校验器会报错；未指定字体 / 字号时沿用默认 Calibri 11。
+ * @param {{bold: boolean, italic: boolean, underline: boolean, strike: boolean, color: string|null, font?: string|null, fontSize?: number|null}} font 字体
  * @returns {string} XML 片段
  */
 function fontXml(font) {
@@ -1065,10 +1630,11 @@ function fontXml(font) {
     if (font.italic) parts.push("<i/>");
     if (font.strike) parts.push("<strike/>");
     if (font.underline) parts.push('<u val="single"/>');
-    parts.push('<sz val="11"/>');
+    const size = font.fontSize === null || font.fontSize === undefined ? DEFAULT_FONT_SIZE_PT : font.fontSize;
+    parts.push(`<sz val="${size}"/>`);
     // 默认字体保留 theme="1"（Excel 自己的写法），有字色时写 ARGB
     parts.push(font.color ? `<color rgb="FF${font.color.slice(1)}"/>` : '<color theme="1"/>');
-    parts.push('<name val="Calibri"/>');
+    parts.push(`<name val="${escapeXml(font.font || DEFAULT_FONT_NAME)}"/>`);
     parts.push('<family val="2"/>');
     return `<font>${parts.join("")}</font>`;
 }
@@ -1143,20 +1709,140 @@ function appXml(list) {
  * @param {{name: string, rows: string[][], styleIds?: number[][]}} sheet 工作表（styleIds 由 collectStyles 补齐）
  * @returns {string} XML 文本
  */
-function worksheetXml(sheet) {
+function worksheetXml(sheet, hasDrawing = false) {
     const rows = sheet.rows;
     const ids = sheet.styleIds || [];
+    const heights = Array.isArray(sheet.heights) ? sheet.heights : [];
     const maxCols = rows.reduce((m, r) => Math.max(m, r.length), 0);
     const dimension = rows.length && maxCols ? `A1:${colLetter(maxCols)}${rows.length}` : "A1";
     const body = rows
         .map((row, r) => {
             const idRow = ids[r] || [];
             const cells = row.map((value, c) => cellXml(`${colLetter(c + 1)}${r + 1}`, value, idRow[c] || 0)).join("");
-            return `<row r="${r + 1}" spans="1:${Math.max(row.length, 1)}">${cells}</row>`;
+            const ht = heights[r] > 0 ? ` ht="${heights[r]}" customHeight="1"` : "";
+            // 已有属性（spans）保留，只在有自定义行高时增量追加 ht / customHeight
+            return `<row r="${r + 1}"${ht} spans="1:${Math.max(row.length, 1)}">${cells}</row>`;
         })
         .join("");
+    // schema 顺序：sheetViews -> sheetFormatPr -> cols -> sheetData -> autoFilter -> mergeCells -> drawing
+    const cols = colsXml(sheet.widths);
+    const autoFilter = autoFilterXml(sheet.filter, Math.max(maxCols, 1), Math.max(rows.length, 1));
+    const merges = mergeCellsXml(sheet.merges);
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_REL}"><dimension ref="${dimension}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="14.4"/><sheetData>${body}</sheetData></worksheet>`;
+<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_REL}"><dimension ref="${dimension}"/>${sheetViewsXml(sheet.freeze)}<sheetFormatPr defaultRowHeight="14.4"/>${cols}<sheetData>${body}</sheetData>${autoFilter}${merges}${hasDrawing ? '<drawing r:id="rId1"/>' : ""}</worksheet>`;
+}
+
+/**
+ * 生成 `<sheetViews>`：冻结首行 / 首列写成 `<pane>`，无冻结时不写（旧包零新增）。
+ * 双冻结必须同时给 xSplit / ySplit / topLeftCell / activePane="bottomRight"。
+ * @param {{row: boolean, col: boolean}|undefined} freeze 冻结开关
+ * @returns {string} XML 片段
+ */
+function sheetViewsXml(freeze) {
+    const row = !!(freeze && freeze.row);
+    const col = !!(freeze && freeze.col);
+    let pane = "";
+    if (row && col) pane = '<pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/>';
+    else if (row) pane = '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>';
+    else if (col) pane = '<pane xSplit="1" topLeftCell="B1" activePane="topRight" state="frozen"/>';
+    return `<sheetViews><sheetView workbookViewId="0">${pane}</sheetView></sheetViews>`;
+}
+
+/**
+ * 生成 `<mergeCells>`：ref 用 A1:B2 形式（0 基闭区间转 1 基），无合并不写。
+ * @param {Array<[number, number, number, number]>|undefined} merges 合并区
+ * @returns {string} XML 片段
+ */
+function mergeCellsXml(merges) {
+    if (!Array.isArray(merges) || !merges.length) return "";
+    const refs = merges.map(([r1, c1, r2, c2]) =>
+        `<mergeCell ref="${colLetter(c1 + 1)}${r1 + 1}:${colLetter(c2 + 1)}${r2 + 1}"/>`).join("");
+    return `<mergeCells count="${merges.length}">${refs}</mergeCells>`;
+}
+
+/**
+ * 生成 `<cols>`：只写自定义列宽（0 视为默认），相邻同宽列合并成一个 `<col min..max>`。
+ * @param {number[]|null} widths 列宽数组（字符宽，索引 = 列号）
+ * @returns {string} XML 片段（无自定义列宽时为空串）
+ */
+function colsXml(widths) {
+    if (!Array.isArray(widths)) return "";
+    const items = [];
+    for (let i = 0; i < widths.length;) {
+        const width = widths[i];
+        if (!(width > 0)) { i += 1; continue; }
+        let end = i + 1;
+        while (end < widths.length && widths[end] === width) end += 1;
+        items.push(`<col min="${i + 1}" max="${end}" width="${width}" customWidth="1"/>`);
+        i = end;
+    }
+    return items.length ? `<cols>${items.join("")}</cols>` : "";
+}
+
+/**
+ * 生成 `<autoFilter>`：ref 覆盖数据区（筛选列超出数据列时以筛选列为末列），
+ * `colId` 直接是 0 起列号，值走 XML 转义。
+ * @param {{col: number, value: string}|null} filter 筛选条件
+ * @param {number} dataCols 数据列数
+ * @param {number} dataRows 数据行数
+ * @returns {string} XML 片段（无筛选时为空串）
+ */
+function autoFilterXml(filter, dataCols, dataRows) {
+    if (!filter) return "";
+    const lastCol = colLetter(Math.max(dataCols, filter.col + 1));
+    return `<autoFilter ref="A1:${lastCol}${dataRows}"><filterColumn colId="${filter.col}">`
+        + `<customFilters><customFilter operator="equal" val="${escapeXml(filter.value)}"/></customFilters>`
+        + "</filterColumn></autoFilter>";
+}
+
+/**
+ * 生成一张表的 drawing 部件：每张图一个 `xdr:oneCellAnchor`，from 固定 A1 起点，
+ * 大小由 `xdr:ext` 决定（px * 9525）。图片实际落点/裁剪/旋转不建模（已知降级）。
+ * @param {Array<{entry: {path: string}, width: number, height: number}>} refs 图片登记
+ * @returns {string} XML 文本
+ */
+function sheetDrawingXml(refs) {
+    const anchors = refs.map((ref, i) => {
+        const rid = `rId${i + 1}`;
+        const cx = Math.round(ref.width * EMU_PER_PX);
+        const cy = Math.round(ref.height * EMU_PER_PX);
+        return `<xdr:oneCellAnchor>`
+            + `<xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`
+            + `<xdr:ext cx="${cx}" cy="${cy}"/>`
+            + `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i + 1}" name="图片 ${i + 1}"/>`
+            + `<xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
+            + `<xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`
+            + `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>`
+            + `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`
+            + `<xdr:clientData/></xdr:oneCellAnchor>`;
+    }).join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="${NS_XDR}" xmlns:a="${NS_A}" xmlns:r="${NS_REL}">${anchors}</xdr:wsDr>`;
+}
+
+/**
+ * 生成 drawing 的关系：每张图一条 image 关系，Target 指向 `../media/…`。
+ * @param {Array<{entry: {path: string}}>} refs 图片登记
+ * @returns {string} XML 文本
+ */
+function drawingRelsXml(refs) {
+    const items = refs.map((ref, i) => {
+        // drawing 部件在 xl/drawings/ 下，media 在 xl/media/：相对路径必须回退一级
+        const target = `../${ref.entry.path.replace(/^xl\//, "")}`;
+        return `<Relationship Id="rId${i + 1}" Type="${NS_REL}/image" Target="${escapeXml(target)}"/>`;
+    }).join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="${NS_PKG_REL}">${items}</Relationships>`;
+}
+
+/**
+ * 生成 worksheet 的关系：只含一条 drawing 关系（rId1，与 `<drawing r:id>` 对齐）。
+ * @param {number} k drawing 序号
+ * @returns {string} XML 文本
+ */
+function sheetDrawingRelsXml(k) {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${NS_REL}/drawing" Target="../drawings/drawing${k}.xml"/></Relationships>`;
 }
 
 /**
@@ -1195,7 +1881,7 @@ function formulaCellXml(ref, raw, st) {
     return `<c r="${ref}"${st}><f>${escapeXml(expr)}</f><v>0</v></c>`;
 }
 
-/* ============================ csv ============================ */
+/* csv */
 
 /**
  * CSV 单字段转义。

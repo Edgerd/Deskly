@@ -1,26 +1,25 @@
 /**
- * script.js — 办公套件外壳（多应用插件，Office 2016 Ribbon 形态）
- *
- * 分工：
- * - 外壳（本文件）：生命周期、Ribbon 装配与命令路由、文件（Backstage）页、
- *   新建 / 打开 / 保存 / 下载 / 打印 / 最近打开、查找替换、快捷键、状态栏。
- * - 视图模块（view-*.js）：文档内容的渲染与编辑、`ribbon()` 声明自己的标签页与控件、
- *   `command(id, value)` 执行格式化命令、`state()` 回报控件按下态、撤销/重做栈。
- * - 编解码（codecs/*.js）：模型 ↔ 文件字节。
- *
- * 三条不妥协的实现约定：
- * 1. **视图与编解码首次打开该应用时才 dynamic import**：只开文稿不会加载表格与演示的代码，
- *    ZIP 分发下这条尤其要紧（整包 0.9MB，视图 + 编解码占大头）。
- * 2. 未知命令一律先问视图（`command` 返回 false 才落到外壳），外壳不猜格式语义。
- * 3. 保存统一写进根目录 /文档（文本与 OOXML 二进制同一条内核通道），浏览器下载只作为
- *    显式「导出副本」；权限没批时如实报「需要重新授权」，不做「假装已保存」。
+ * script.js — 办公套件外壳（多应用插件，Office 2016 Ribbon 形态）：生命周期、Ribbon 装配与命令路由、
+ * 文件（Backstage）页、新建 / 打开 / 保存 / 下载 / 打印 / 最近打开、查找替换、快捷键、状态栏。
+ * 视图模块（view-*.js）管文档渲染与编辑（ribbon() / command(id, value) / state() / 撤销重做栈）；
+ * 编解码（codecs/*.js）管模型 ↔ 文件字节。
+ * 约定：视图与编解码首次打开该应用时才 dynamic import（ZIP 整包 0.9MB，视图 + 编解码占大头）；
+ * 未知命令先问视图（command 返回 false 才落到外壳），外壳不猜格式语义；
+ * 保存默认原地回写来源路径，只有没有来源或格式改变时才落根目录 /文档（文本与 OOXML 同一内核通道），
+ * 浏览器下载仅作显式「导出副本」，权限没批如实报「需要重新授权」。
+ * 多窗：manifest.multiWindow 放行后，同一应用可开多扇窗口，实例按窗口元素归属（instances 以 win 为键）。
  */
 
 import { useStyle } from "./view-style.js";
 import { createRibbon } from "./ribbon.js";
-import { KIND, kindOf, extOf, baseOf, fileName, pickFile, readVfsFile, toBytes, download, saveToDocuments, rememberRecent, listRecent } from "./office-io.js";
+import { confirmDiscardIfDirty } from "./dirty-guard.js";
+import { KIND, kindOf, extOf, baseOf, fileName, pickFile, readVfsFile, toBytes, download, saveDocumentFile, rememberRecent, listRecent } from "./office-io.js";
+import { TEMPLATES, templateLabel, buildTemplate } from "./templates.js";
 import { t } from "./t.js";
+import { iconSvg } from "./icons.js";
 import { i18n } from "../../src/javascripts/i18n.js";
+// Quick Look 预览 provider 注册（只挂注册表，编解码器首次预览时才载入）
+import "./quicklook-provider.js";
 
 /** 内核只自动翻 data-i18n（文本），标题栏按钮的 title / aria-label 由这里补一遍。 */
 function applyChromeI18n(win) {
@@ -40,7 +39,7 @@ useStyle(import.meta.url, "ribbon.css");
 
 const PLUGIN_ID = "office";
 const MENU_KEYS = [
-    "officeNewDocument", "officeOpenDocument", "officeSaveDocument", "officeSaveAsDocument",
+    "officeNewWindow", "officeNewDocument", "officeOpenDocument", "officeSaveDocument", "officeSaveAsDocument",
     "officePrintDocument", "officeFindDocument", "officeUndoDocument", "officeRedoDocument",
 ];
 
@@ -72,9 +71,11 @@ const APPS = {
 /** 某应用「新建」时的默认文档主干名（按当前语言取）。 */
 const blankNameFor = (appId) => t(APPS[appId].blankKey, APPS[appId].blankName);
 
-/** appId -> 实例；外壳常驻，必须随 plugin-app-unload 精准释放 */
+/** 窗口元素 -> 实例；同一 appId 可多开，实例必须按窗口归属，不能按 appId 互相覆盖 */
 const instances = new Map();
-/** 路径先到、窗口还在装配时暂存 */
+/** appId -> 最近绑定的窗口元素（顶栏菜单命令按应用定位用） */
+const lastWindow = new Map();
+/** appId -> 装配中的窗口待打开文件队列（多窗时按窗口装配顺序逐个消费） */
 const pending = new Map();
 
 /* ───────────────────────── 编解码适配 ───────────────────────── */
@@ -104,14 +105,14 @@ async function adapter(appId, kind) {
             parse: asText
                 ? (bytes, text) => ({ blocks: text.split(/\r?\n/).map((line) => ({ kind: "paragraph", text: line })) })
                 : (bytes) => codec.parseDocx(bytes),
-            build: asText ? (model) => model.blocks.map((b) => b.text).join("\n") : (model) => codec.buildDocx(model.blocks || model),
+            build: asText ? (model) => model.blocks.map((b) => b.text).join("\n") : (model) => codec.buildDocx(model.blocks || model, model.page),
         };
     }
     return {
         saveKind: KIND.PPTX,
-        blank: () => ({ slides: [codec.emptySlide()] }),
+        blank: () => ({ slides: [codec.emptySlide()], page: { size: "16:9" } }),
         parse: (bytes) => codec.parsePptx(bytes),
-        build: (model) => codec.buildPptx(model.slides || model),
+        build: (model) => codec.buildPptx(model.slides || model, model.page),
     };
 }
 
@@ -141,6 +142,8 @@ async function bindApp(win, appId) {
         appId,
         win,
         name: blankNameFor(appId),
+        /** 当前文档的来源 VFS 路径：保存时写回这里；空串表示没有可回写的来源（本地选择器 / 新建） */
+        path: "",
         kind: recipe.kind,
         dirty: false,
         view: null,
@@ -156,6 +159,17 @@ async function bindApp(win, appId) {
         ribbonEl: win.querySelector('[data-role="ribbon"]'),
         qat: win.querySelector(".office-qat"),
     };
+
+    // 快速访问工具栏换成与功能区同一套 Material Symbols 图标；
+    // HTML 里的文本字形只作脚本失效时的兜底，注入成功后清掉避免叠字
+    if (inst.qat) {
+        inst.qat.querySelectorAll("[data-qat]").forEach((btn) => {
+            const svg = iconSvg(btn.dataset.qat);
+            if (!svg) return;
+            btn.textContent = "";
+            btn.appendChild(svg);
+        });
+    }
 
     const module = await recipe.view();
     inst.view = module.createView(inst.viewEl, {
@@ -176,14 +190,17 @@ async function bindApp(win, appId) {
     });
     on(inst, inst.win, "keydown", (e) => onShortcut(inst, e));
 
-    instances.set(appId, inst);
+    instances.set(win, inst);
+    lastWindow.set(appId, win);
     await newDocument(inst);
     syncRibbon(inst);
 
-    const lateFile = pending.get(appId);
-    if (lateFile) {
-        pending.delete(appId);
-        openByPath(inst, lateFile);
+    // 多窗时每个新窗口消费一个待打开文件；窗口装配与文件事件是异步并行的
+    const queued = pending.get(appId);
+    if (queued && queued.length) {
+        const file = queued.shift();
+        if (!queued.length) pending.delete(appId);
+        openByPath(inst, file);
     }
 }
 
@@ -219,20 +236,27 @@ function runCommand(inst, id, value) {
         note(inst, t("statusCommandUnimpl", "未实现的命令：{id}").replace("{id}", id));
         return;
     }
-    setDirty(inst, true);
+    // 脏标记只认真改动：内容 / 格式改动由各视图经 onInput 上报，缩放、段落标记、
+    // 冻结行列、放映这类视图态命令不该把文档标脏（选区变化走 onSelectionChange，也不算改动）
     syncRibbon(inst);
 }
 
-/** 文件（Backstage）标签项：固定动作 + 最近打开 */
+/** 文件（Backstage）标签项：固定动作 + 模板 + 最近打开 */
 function fileTabItems(inst) {
     const items = [
         { id: "file:new", label: t("fileNew", "新建"), hint: "⌘N" },
+        { id: "file:newWindow", label: t("fileNewWindow", "新建窗口"), hint: "" },
+    ];
+    (TEMPLATES[inst.appId] || []).forEach((tp) => {
+        items.push({ id: "file:template", label: t("fileNewFromTemplate", "新建自模板：{name}").replace("{name}", templateLabel(inst.appId, tp.id)), value: tp.id });
+    });
+    items.push(
         { id: "file:open", label: t("fileOpen", "打开…"), hint: "⇧⌘O" },
         { id: "file:save", label: t("fileSave", "保存"), hint: "⌘S" },
         { id: "file:download", label: t("fileDownload", "下载副本"), hint: "⇧⌘S" },
         { id: "file:print", label: t("filePrint", "打印 / 导出 PDF"), hint: "⌘P" },
         { id: "file:find", label: t("fileFind", "查找与替换"), hint: "⌘F" },
-    ];
+    );
     listRecent(inst.appId).slice(0, 5).forEach((r, i) => {
         if (r.path) items.push({ id: "file:recent", label: r.name, hint: r.path, value: String(i) });
     });
@@ -244,6 +268,8 @@ function fileTabItems(inst) {
 function handleFileCommand(inst, action, value) {
     switch (action) {
         case "new": guard(inst, () => newDocument(inst)); break;
+        case "newWindow": guard(inst, () => openNewWindow(inst.appId)); break;
+        case "template": guard(inst, () => applyTemplate(inst, value)); break;
         case "open": openByPicker(inst); break;
         case "save": guard(inst, () => saveDocument(inst)); break;
         case "download": guard(inst, () => downloadDocument(inst)); break;
@@ -259,6 +285,19 @@ function handleFileCommand(inst, action, value) {
         }
         default: note(inst, t("statusFileCmdUnknown", "未知的文件命令：{action}").replace("{action}", action));
     }
+}
+
+/**
+ * 另开一个本应用窗口。必须走内核 Deskly.apps.launch 的多窗准入闸（manifest.multiWindow:true），
+ * 插件不自己造窗口：未声明时内核会以信封 ok:false 拒绝，这里如实报到状态栏。
+ * @param {string} appId 应用 id
+ * @returns {Promise<void>}
+ */
+async function openNewWindow(appId) {
+    const api = window.Deskly;
+    if (!api || !api.apps || typeof api.apps.launch !== "function") throw new Error("窗口服务未就绪");
+    const env = await api.apps.launch(appId, { newWindow: true });
+    if (env && env.ok === false) throw new Error(env.reason || "窗口系统拒绝新窗口");
 }
 
 /** 快捷键：浏览器保留键（⌘W / ⌘M）不拦，其余按 Office 习惯 */
@@ -322,15 +361,50 @@ function note(inst, text) {
 
 /* ───────────────────────── 文档动作 ───────────────────────── */
 
+/**
+ * 覆盖性入口的公共闸：当前文档有未保存改动时先三选（保存并继续 / 不保存 / 取消），
+ * 取消或保存失败都返回 false —— 调用方必须原样中止，留在当前文档。
+ * @param {object} inst 实例
+ * @returns {Promise<boolean>} true = 可以继续覆盖
+ */
+function confirmDiscard(inst) {
+    return confirmDiscardIfDirty(inst, () => saveDocument(inst));
+}
+
 /** 新建空白文档 */
 async function newDocument(inst) {
+    if (!(await confirmDiscard(inst))) return;
     const ad = await adapter(inst.appId, APPS[inst.appId].kind);
     inst.kind = ad.saveKind;
     inst.name = fileName(inst.kind, blankNameFor(inst.appId));
+    inst.path = "";
     inst.view.clear();
     inst.dirty = false;
     note(inst, t("statusBlank", "空白文档"));
     paint(inst);
+    inst.view.focus();
+}
+
+/**
+ * 新建自模板：装入模板初始模型，按模板名命名（仍是未保存的新文档，与「新建」同口径）。
+ * @param {object} inst 实例
+ * @param {string} templateId 模板 id
+ * @returns {Promise<void>}
+ */
+async function applyTemplate(inst, templateId) {
+    const model = buildTemplate(inst.appId, templateId);
+    if (!model) return;
+    if (!(await confirmDiscard(inst))) return;
+    const ad = await adapter(inst.appId, APPS[inst.appId].kind);
+    inst.kind = ad.saveKind;
+    inst.name = fileName(inst.kind, templateLabel(inst.appId, templateId));
+    inst.path = "";
+    openFindGuard(inst);
+    inst.view.load(model);
+    inst.dirty = false;
+    note(inst, t("statusTemplate", "已按模板新建：{name}").replace("{name}", templateLabel(inst.appId, templateId)));
+    paint(inst);
+    syncRibbon(inst);
     inst.view.focus();
 }
 
@@ -343,6 +417,7 @@ async function openBytes(inst, bytes, name, path) {
     const model = await ad.parse(bytes, text);
     inst.kind = ad.saveKind;
     inst.name = name;
+    inst.path = path || "";
     inst.view.load(model);
     inst.dirty = false;
     note(inst, path ? t("statusOpened", "已打开 {path}").replace("{path}", path) : t("statusOpenedLocal", "已打开本地文件"));
@@ -353,6 +428,7 @@ async function openBytes(inst, bytes, name, path) {
 
 /** 工具栏「打开…」：系统文件选择器 */
 async function openByPicker(inst) {
+    if (!(await confirmDiscard(inst))) return;
     const file = await pickFile(APPS[inst.appId].accepts);
     if (!file) return;
     await guard(inst, async () => { openFindGuard(inst); await openBytes(inst, await toBytes(file), file.name, ""); });
@@ -360,6 +436,7 @@ async function openByPicker(inst) {
 
 /** 访达「打开方式」递进来的内核路径 */
 async function openByPath(inst, path) {
+    if (!(await confirmDiscard(inst))) return;
     await guard(inst, async () => {
         const file = await readVfsFile(path);
         if (!file) {
@@ -370,23 +447,39 @@ async function openByPath(inst, path) {
     });
 }
 
-/** 保存当前文档 */
+/**
+ * 保存当前文档。
+ * @param {object} inst 实例
+ * @returns {Promise<boolean>} 是否真正落盘（确认闸「保存并继续」靠它决定能不能往下走：
+ *   false = 留在当前文档，调用方不得继续覆盖性操作）
+ */
 async function saveDocument(inst) {
-    await guard(inst, async () => {
-        const ad = await adapter(inst.appId, inst.kind);
-        const data = await ad.build(inst.view.read());
-        const name = fileName(inst.kind, baseOf(inst.name));
-        const result = await saveToDocuments(name, data);
-        if (!result.ok) {
-            note(inst, result.reauth
-                ? t("statusSaveReauth", "保存失败：根目录权限需要重新授权")
-                : t("statusSaveFail", "保存失败：{error}").replace("{error}", result.error || t("statusUnknownError", "未知错误")));
-            return;
-        }
-        inst.name = name;
-        setDirty(inst, false);
-        note(inst, t("statusSaved", "已保存：{path}").replace("{path}", result.path));
-    });
+    let saved = false;
+    await guard(inst, async () => { saved = await persistDocument(inst); });
+    return saved;
+}
+
+/** 实际写盘一次：失败原因进状态栏并返回 false，不假装成功 */
+async function persistDocument(inst) {
+    const ad = await adapter(inst.appId, inst.kind);
+    const data = await ad.build(inst.view.read());
+    const name = fileName(inst.kind, baseOf(inst.name));
+    const result = await saveDocumentFile(name, data, inst.kind, inst.path);
+    if (!result.ok) {
+        note(inst, result.reauth
+            ? t("statusSaveReauth", "保存失败：根目录权限需要重新授权")
+            : t("statusSaveFail", "保存失败：{error}").replace("{error}", result.error || t("statusUnknownError", "未知错误")));
+        return false;
+    }
+    inst.name = name;
+    // 落点即新的文档来源：原地回写后与打开路径一致，落到 /文档后指向那份副本
+    inst.path = result.path || "";
+    setDirty(inst, false);
+    note(inst, result.inPlace
+        ? t("statusSaved", "已保存：{path}").replace("{path}", result.path)
+        : t("statusSavedCopy", "已保存到「文档」：{path}（原文件未改动）").replace("{path}", result.path));
+    rememberRecent(inst.appId, { name, path: inst.path, kind: inst.kind });
+    return true;
 }
 
 /** 下载一份副本（不改当前文档名） */
@@ -455,11 +548,20 @@ function toggleFind(inst) {
     replRow.append(replInput, mkBtn(t("replaceAll", "替换全部"), () => doReplace(findInput, replInput, inst, countEl)));
 
     const actionRow = mkRow();
+    actionRow.append(mkBtn(t("findPrev", "上一个"), () => doSeek(findInput, inst, countEl, -1)));
+    actionRow.append(mkBtn(t("findNext", "下一个"), () => doSeek(findInput, inst, countEl, 1)));
     actionRow.append(mkBtn(t("count", "计数"), () => countMatches(findInput, inst, countEl)));
     actionRow.append(mkBtn(t("close", "关闭"), () => closeFind(inst)));
 
     findInput.addEventListener("input", () => countMatches(findInput, inst, countEl));
-    box.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFind(inst); });
+    box.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { closeFind(inst); return; }
+        // 查找框里回车 = 下一个，Shift+回车 = 上一个（与 Office / 浏览器查找一致）
+        if (e.key === "Enter" && e.target === findInput) {
+            e.preventDefault();
+            doSeek(findInput, inst, countEl, e.shiftKey ? -1 : 1);
+        }
+    });
 
     inst.win.appendChild(box);
     inst.find = { box, findInput };
@@ -491,6 +593,22 @@ function countMatches(findInput, inst, out) {
     const model = inst.view.read();
     walkText(inst.appId, model, (text) => { hits += countOccurrences(text, q); return text; });
     out.textContent = q ? t("matches", "{n} 处").replace("{n}", String(hits)) : "";
+}
+
+/**
+ * 查找导航：交给视图的 seek()（各视图自己决定怎么定位与选中），
+ * 老视图没有 seek 时退化为只计数，不报错。
+ * @param {HTMLInputElement} findInput 查找输入
+ * @param {object} inst 实例
+ * @param {HTMLElement} out 计数显示元素
+ * @param {number} dir 1 向下，-1 向上
+ * @returns {void}
+ */
+function doSeek(findInput, inst, out, dir) {
+    const q = findInput.value;
+    if (!q || !inst.view || typeof inst.view.seek !== "function") return;
+    const hit = inst.view.seek(q, dir);
+    out.textContent = hit ? "" : t("noMatch", "无匹配");
 }
 
 /** 替换全部命中 */
@@ -553,9 +671,11 @@ async function guard(inst, fn) {
     }
 }
 
-/** 取目标实例：菜单命令带 appId 时精确定位，否则用最后打开的 */
+/** 取目标实例：菜单命令带 appId 时用该应用最近绑定的窗口（多窗下即最靠后打开的那扇），否则用最后打开的 */
 function targetInstance(appId) {
-    if (appId && instances.has(appId)) return instances.get(appId);
+    const win = appId ? lastWindow.get(appId) : null;
+    const inst = win ? instances.get(win) : null;
+    if (inst) return inst;
     const all = Array.from(instances.values());
     return all[all.length - 1];
 }
@@ -563,6 +683,7 @@ function targetInstance(appId) {
 /* ───────────────────────── 顶栏菜单命令 ───────────────────────── */
 
 const commands = {
+    officeNewWindow: (appId) => { const id = appId || (targetInstance() || {}).appId; if (id) openNewWindow(id).catch((err) => console.warn("[office] 新建窗口失败：", err)); },
     officeNewDocument: (appId) => { const i = targetInstance(appId); if (i) guard(i, () => newDocument(i)); },
     officeOpenDocument: (appId) => { const i = targetInstance(appId); if (i) openByPicker(i); },
     officeSaveDocument: (appId) => { const i = targetInstance(appId); if (i) guard(i, () => saveDocument(i)); },
@@ -577,27 +698,38 @@ const commands = {
 
 function onAppLoad(e) {
     const { id, appId, el } = e.detail || {};
-    if (id !== PLUGIN_ID || !el || instances.has(appId)) return;
+    if (id !== PLUGIN_ID || !el || instances.has(el)) return;
     bindApp(el, appId).catch((err) => console.warn("[office] 装配应用失败：", appId, err));
 }
 
 function onAppOpen(e) {
     const { id, appId, file } = e.detail || {};
     if (id !== PLUGIN_ID || !file) return;
-    const inst = instances.get(appId);
-    if (!inst) { pending.set(appId, file); return; }
+    const inst = targetInstance(appId);
+    if (!inst) {
+        const queue = pending.get(appId) || [];
+        queue.push(file);
+        pending.set(appId, queue);
+        return;
+    }
     openFindGuard(inst);
     openByPath(inst, file);
 }
 
+/**
+ * 内核按 appId 广播卸载，而同一应用可能有多扇窗口：关闭的那扇此刻已从 DOM 摘除，
+ * 因而按「不再连接」精准释放它自己的实例，其余窗口与外壳都不受影响（NW-7）。
+ */
 function onAppUnload(e) {
-    const { id, appId } = e.detail || {};
+    const { id } = e.detail || {};
     if (id !== PLUGIN_ID) return;
-    const inst = instances.get(appId);
-    if (!inst) return;
-    disposeInstance(inst);
-    instances.delete(appId);
-    pending.delete(appId);
+    instances.forEach((inst, win) => {
+        if (win.isConnected === false) {
+            disposeInstance(inst);
+            instances.delete(win);
+            if (lastWindow.get(inst.appId) === win) lastWindow.delete(inst.appId);
+        }
+    });
 }
 
 function disposeInstance(inst) {
@@ -614,12 +746,11 @@ function disposeInstance(inst) {
 
 function onUnload(e) {
     if ((e.detail || {}).id !== PLUGIN_ID) return;
-    Array.from(instances.keys()).forEach((appId) => {
-        const inst = instances.get(appId);
-        if (!inst) return;
+    instances.forEach((inst, win) => {
         disposeInstance(inst);
-        instances.delete(appId);
+        instances.delete(win);
     });
+    lastWindow.clear();
     pending.clear();
     document.removeEventListener("plugin-app-load", onAppLoad);
     document.removeEventListener("plugin-app-open", onAppOpen);

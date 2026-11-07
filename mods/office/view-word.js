@@ -1,34 +1,20 @@
 /**
- * view-word.js — 文稿视图（Office 2016 功能区形态）：块级 contenteditable + A4 纸张
- *
- * 外壳（script.js）只给一个 `.office-view` 容器、一个 Ribbon 挂载点与三个回调，
- * 纸张长什么样、块怎么编辑、功能区里有哪些命令全在本文件：
- * - `ribbon()` 声明标签页与控件（结构常量，不随状态重建）
- * - `command(id, value)` 执行控件命令，**显式** return true/false（false = 本视图不认这个 id）
- * - `state()` 以「当前聚焦块」为准回报控件按下态 / 下拉当前值
- *
- * 模型与 docx 编解码共用同一份 Block 契约（本模块不 import 编解码，只按字段名读写）：
- * ```
- * Block = { kind:"paragraph"|"heading", level:1|2|3|null, text,
- *           bold, italic, underline, strike,
- *           align:"left"|"center"|"right"|"justify"|null, indent:0..8,
- *           font:string|null, size:number(pt)|null, color:"#RRGGBB"|null, highlight:"#RRGGBB"|null }
- * ```
- *
- * 四条实现取向值得说明：
- * 1. 块的全部格式字段一律写在**该块的 `data-*`** 上，`read()` 只认 `data-*`（文本另走 DOM 遍历）。
- *    标题不换成 `<h1>` 而是 `<p data-kind="heading" data-level>` + `role="heading"`，因为换标签要
- *    重建元素，会丢焦点与光标；`data-*` 让功能区切换只改属性，语义与无障碍也不缺。
- * 2. 能枚举的字段（kind/level/四个字符开关/align）用 CSS 属性选择器渲染；不能枚举的
- *    （font 名、磅值、`#RRGGBB`、0..8 级缩进）只能由 JS 写成行内 style —— CSS 里没法穷举任意值。
- * 3. 文本读取自己遍历子节点（BR → `\n`、`.word-tab` → `\t`），不用 `innerText`：
- *    `innerText` 会按布局归一空白（制表符可能被折成空格），模型就会漂。
- * 4. 结构变动（Enter 拆块 / 块首退格合并 / 方向键跨块）都靠 Range 自己接管并 `preventDefault`，
- *    否则浏览器会往块里塞 `<div>`/`<br>`。
+ * view-word.js — 文稿视图（Office 2016 功能区形态）：块级 contenteditable + A4 纸张。
+ * 模型与 docx 编解码共用 Block 契约（本模块不 import，只按字段名读写）：
+ *   Block = { kind:"paragraph"|"heading"|"image", level, text, bold, italic, underline, strike,
+ *             align, indent, font, size, color, highlight,
+ *             lineSpacing:number|null, spaceBefore:number, spaceAfter:number,
+ *             list:"none"|"bullet"|"number",
+ *             src:"data:image/…", width:px, height:px, alt:string }   // 后四项仅 image 块有
+ * 要点：格式字段全写块的 `data-*`，标题用 <p data-kind="heading"> + role="heading" 而非 <h1>
+ * （换标签要重建元素，会丢焦点与光标）；可枚举字段走 CSS 属性选择器，任意值（字体/磅值/色值/
+ * 缩进级）走行内 style；文本读取自遍历子节点，不用 innerText（它按布局归一空白，模型会漂）；
+ * Enter/退格/方向键的结构变动靠 Range 接管并 preventDefault（否则浏览器往块里塞 <div>/<br>）。
  */
 
 import { el, useStyle } from "./view-style.js";
 import { t } from "./t.js";
+import { pickImage } from "./office-io.js";
 
 /* ───────────────────────── 模型常量与规整 ───────────────────────── */
 
@@ -52,11 +38,54 @@ const SIZE_MAX_PT = 400;
 const SIZE_FALLBACK_PT = 10.5;
 const ZOOM_MIN = 75;
 const ZOOM_MAX = 150;
+/** 图片缺失尺寸时的兜底（px），与 office-io 取自然尺寸失败时的兜底一致 */
+const IMAGE_FALLBACK_W = 200;
+const IMAGE_FALLBACK_H = 150;
 const WIDTH_CLASSES = {
     narrow: "word-width-narrow",
     standard: "word-width-standard",
     wide: "word-width-wide",
 };
+
+/** 按背景亮度选文字色：亮底用深字，暗底用浅字（自定义页面底色时用） */
+function pickTextColor(color) {
+    const m = /^#([0-9a-fA-F]{6})$/.exec(String(color || ""));
+    if (!m) return "#24252a";
+    const n = parseInt(m[1], 16);
+    const r = (n >> 16) & 255;
+    const g = (n >> 8) & 255;
+    const b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#24252a" : "#f2f2f5";
+}
+
+/** 纸张尺寸（CSS px，96dpi；与 docx 的 twip 值同一组预设） */
+const PAGE_SIZES = {
+    a4: { w: 794, h: 1122 },
+    letter: { w: 816, h: 1056 },
+    a5: { w: 559, h: 794 },
+};
+const PAGE_SIZE_ORDER = ["a4", "letter", "a5"];
+/** 页面设置缺省值：A4、无自定义底色（跟随主题）、无页眉页脚文本、四边 72pt 页边距 */
+const MARGIN_DEFAULT_PT = 72;
+const MARGIN_MAX_PT = 288;
+const MARGIN_MIN_PT = 0;
+const DEFAULT_MARGINS = { top: MARGIN_DEFAULT_PT, right: MARGIN_DEFAULT_PT, bottom: MARGIN_DEFAULT_PT, left: MARGIN_DEFAULT_PT };
+const DEFAULT_PAGE = { size: "a4", background: null, header: "", footer: "", margins: DEFAULT_MARGINS };
+/** pt -> CSS px：纸张按 96dpi 布局，页边距/段前段后都用这个换算 */
+const PT_TO_PX = 96 / 72;
+const pageSizeOptions = () => [
+    { label: "A4", value: "a4" },
+    { label: "Letter", value: "letter" },
+    { label: t("word.pageSizeA5", "A5"), value: "a5" },
+];
+const pageBgOptions = () => [
+    { label: t("word.pageBgNone", "无（跟随主题）"), value: "" },
+    { label: t("word.pageBgWhite", "白"), value: "#FFFFFF" },
+    { label: t("word.pageBgCream", "米色"), value: "#FFF8E7" },
+    { label: t("word.pageBgGray", "浅灰"), value: "#F2F2F7" },
+    { label: t("word.pageBgBlue", "浅蓝"), value: "#DEEAF6" },
+    { label: t("word.pageBgGreen", "浅绿"), value: "#E2EFDA" },
+];
 
 /** 字体族菜单：「默认」是界面标签（要翻译），字体名是要写进 data-font 的数据（不翻译） */
 const fontOptions = () => [
@@ -69,6 +98,15 @@ const fontOptions = () => [
     { label: "Georgia", value: "Georgia" },
 ];
 const SIZE_OPTIONS = [10.5, 12, 14, 18, 24, 36].map((pt) => ({ label: String(pt), value: String(pt) }));
+/** 行距三档：1 / 1.5 / 2（模型空值 = 单倍，下拉仍显示 1） */
+const LINE_SPACING_OPTIONS = [
+    { label: t("word.lineSpacing1", "1 倍"), value: "1" },
+    { label: t("word.lineSpacing15", "1.5 倍"), value: "1.5" },
+    { label: t("word.lineSpacing2", "2 倍"), value: "2" },
+];
+/** 段前/段后可选磅值 */
+const SPACE_PT_OPTIONS = [0, 6, 12, 18, 24, 36, 48, 72];
+const spaceOptions = () => SPACE_PT_OPTIONS.map((pt) => ({ label: `${pt} ${t("word.spaceUnit", "磅")}`, value: String(pt) }));
 /** 字色「自动」= 模型里的 null（跟随纸张前景色）；标签是界面文案，色值是数据 */
 const colorOptions = () => [
     { label: t("word.colorAuto", "自动"), value: "" },
@@ -143,6 +181,13 @@ const buildTabs = () => [
                     { id: "word.alignCenter", label: t("word.alignCenter", "居中"), icon: "alignCenter", type: "toggle" },
                     { id: "word.alignRight", label: t("word.alignRight", "右对齐"), icon: "alignRight", type: "toggle" },
                     { id: "word.alignJustify", label: t("word.alignJustify", "两端"), icon: "alignJustify", type: "toggle" },
+                    { id: "word.sepSpacing", separator: true },
+                    { id: "word.lineSpacing", label: t("word.lineSpacing", "行距"), type: "menu", options: LINE_SPACING_OPTIONS },
+                    { id: "word.spaceBefore", label: t("word.spaceBefore", "段前"), type: "menu", options: spaceOptions() },
+                    { id: "word.spaceAfter", label: t("word.spaceAfter", "段后"), type: "menu", options: spaceOptions() },
+                    { id: "word.sepList", separator: true },
+                    { id: "word.listBullet", label: t("word.listBullet", "项目符号"), icon: "listBullet", title: t("word.listBulletTip", "切换当前段落的项目符号") },
+                    { id: "word.listNumber", label: "1.", title: t("word.listNumberTip", "切换当前段落的编号（同列表连续序号）") },
                     { id: "word.sepIndent", separator: true },
                     { id: "word.indentInc", label: t("word.indentInc", "增加缩进"), icon: "increase", title: t("word.indentIncTip", "整块右移一级（最多 8 级）") },
                     { id: "word.indentDec", label: t("word.indentDec", "减少缩进"), icon: "decrease", title: t("word.indentDecTip", "整块左移一级（最少 0 级）") },
@@ -183,6 +228,12 @@ const buildTabs = () => [
                     { id: "word.blankBelow", label: t("word.blankBelow", "下方空块"), icon: "slide", size: "large", title: t("word.blankBelowTip", "在当前块下方插入一个空块（沿用其对齐与缩进）") },
                 ],
             },
+            {
+                label: t("word.groupImage", "图片"),
+                items: [
+                    { id: "word.insertImage", label: t("insertImage", "插入图片"), icon: "image", size: "large", title: t("insertImageTip", "从本地选择 PNG/JPEG/GIF/WebP 图片，插到当前块之后") },
+                ],
+            },
         ],
     },
     {
@@ -196,6 +247,16 @@ const buildTabs = () => [
             {
                 label: t("word.groupLayout", "版式"),
                 items: [{ id: "word.width", label: t("word.width", "页宽"), type: "menu", options: widthOptions() }],
+            },
+            {
+                label: t("word.groupPage", "页面"),
+                items: [
+                    { id: "word.pageSize", label: t("word.pageSize", "纸张大小"), type: "menu", options: pageSizeOptions() },
+                    { id: "word.pageBg", label: t("word.pageBg", "页面背景"), type: "menu", options: pageBgOptions() },
+                    { id: "word.margins", label: t("word.margins", "页边距"), icon: "page", title: t("word.marginsTip", "设置纸张四边页边距（0–288 pt）") },
+                    { id: "word.header", label: t("word.header", "页眉"), icon: "header", size: "large", title: t("word.headerTip", "编辑页眉文本（每行一段，存进文件并在重新打开时回读）") },
+                    { id: "word.footer", label: t("word.footer", "页脚"), icon: "footer", size: "large", title: t("word.footerTip", "编辑页脚文本（每行一段，存进文件并在重新打开时回读）") },
+                ],
             },
         ],
     },
@@ -235,6 +296,80 @@ function normIndent(value) {
 }
 
 /**
+ * 行距：空值/非数字/<=0 -> null（单倍、不写 XML）；其它按最接近的 1 / 1.5 / 2 档（与编解码同口径）。
+ * @param {unknown} value 原始值
+ * @returns {number|null} 1 | 1.5 | 2 | null
+ */
+function normLineSpacing(value) {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "boolean") return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const options = [1, 1.5, 2];
+    return options.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), options[0]);
+}
+
+/**
+ * 段前/段后：pt，非数字或负数归 0，四舍五入并夹到 0..72。
+ * @param {unknown} value 原始值
+ * @returns {number} 0..72
+ */
+function normSpacePt(value) {
+    if (typeof value === "boolean") return 0;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.min(72, Math.round(n));
+}
+
+/**
+ * 列表类型：只认 bullet / number，其它归 "none"。
+ * @param {unknown} value 原始值
+ * @returns {"none"|"bullet"|"number"}
+ */
+function normList(value) {
+    if (typeof value !== "string") return "none";
+    const key = value.trim().toLowerCase();
+    return key === "bullet" || key === "number" ? key : "none";
+}
+
+/**
+ * 单边页边距：非数字/负数回落 72pt，超过 288 夹到 288（与编解码同口径）。
+ * @param {unknown} value 原始值（pt）
+ * @returns {number} 0..288
+ */
+function normMarginPt(value) {
+    if (typeof value === "boolean") return MARGIN_DEFAULT_PT;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < MARGIN_MIN_PT) return MARGIN_DEFAULT_PT;
+    return Math.min(MARGIN_MAX_PT, n);
+}
+
+/**
+ * 四边页边距规整：缺字段各自回落默认 72pt。
+ * @param {object|null} raw 原始 margins
+ * @returns {{top: number, right: number, bottom: number, left: number}}
+ */
+function normMargins(raw) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    return {
+        top: normMarginPt(src.top),
+        right: normMarginPt(src.right),
+        bottom: normMarginPt(src.bottom),
+        left: normMarginPt(src.left),
+    };
+}
+
+/**
+ * 页面设置深拷贝：margins 是嵌套对象，进出撤销栈/read() 时不能共享引用。
+ * @param {object} value 页面设置
+ * @returns {object} 副本
+ */
+function clonePage(value) {
+    const src = value && typeof value === "object" ? value : DEFAULT_PAGE;
+    return { ...src, margins: { ...(src.margins || DEFAULT_MARGINS) } };
+}
+
+/**
  * 字体名：非空字符串、去空白、不含控制字符（会让行内 style 失效），否则 null。
  * @param {unknown} value 原始值
  * @returns {string|null} 字体名或 null
@@ -258,6 +393,18 @@ function normSize(value) {
     const n = Number(value);
     if (!Number.isFinite(n) || n < SIZE_MIN_PT || n > SIZE_MAX_PT) return null;
     return Math.round(n * 2) / 2;
+}
+
+/**
+ * 图片像素尺寸：非数字/非正数用兜底值，其余四舍五入成整数 px。
+ * @param {unknown} value 原始值
+ * @param {number} fallback 兜底 px
+ * @returns {number} 像素值
+ */
+function normImgPx(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return fallback;
+    return Math.max(1, Math.round(n));
 }
 
 /**
@@ -309,28 +456,93 @@ export function createView(viewEl, opts = {}) {
     let zoom = 100;
     let widthPreset = "standard";
     let marksOn = false;
+    /** 页面设置：纸张尺寸、底色与四边页边距。属于文档内容（存进文件、重新打开还原），不走撤销栈 */
+    let page = clonePage(DEFAULT_PAGE);
 
     /* 历史：undoStack 存「改动前」的快照，redoStack 存「改动后」的快照 */
     let undoStack = [];
     let redoStack = [];
+    /** 与上面两栈一一对应的页面设置快照（页眉/页脚改动也走撤销） */
+    let undoPages = [];
+    let redoPages = [];
     /** 上一次同步出来的模型：输入类改动的「改动前」基准（DOM 在 input 到达时已经变了） */
     let lastModel = [];
     /** 当前可合并的输入帧标记（null 表示不合并） */
     let mergeKey = null;
     /** 400ms 空闲即结束合并窗口，dispose 必须清掉 */
     let mergeTimer = null;
+    /** 打字路径上的高度补偿节流：每帧最多一次，0 表示没有挂起的帧 */
+    let zoomRaf = 0;
 
     /* ── 骨架：stage > layer > paper（layer 专门承接缩放后的高度补偿） ── */
 
     const stage = el("div", "word-stage");
     const layer = el("div", "word-zoom-layer");
     const paper = el("div", "word-paper");
+    /* paper 内再分「页眉 / 正文 / 页脚」三段，正文段才是块的容器（块逻辑一律看 bodyBox） */
+    const pageHeader = el("div", "word-header");
+    const bodyBox = el("div", "word-body");
+    const pageFooter = el("div", "word-footer");
+    pageHeader.contentEditable = "false";
+    pageFooter.contentEditable = "false";
+    paper.append(pageHeader, bodyBox, pageFooter);
     layer.append(paper);
     stage.append(layer);
     viewEl.classList.add("word-view");
     viewEl.classList.add(WIDTH_CLASSES.standard);
     viewEl.textContent = "";
     viewEl.append(stage);
+
+    /* 轻量页眉/页脚对话框：常驻 DOM、默认隐藏，只用 is-open 切换，避免反复增删监听；
+       两个多行输入同时在窗，一次确定同时写回 header 与 footer */
+    const pageDialog = el("div", "word-page-dialog");
+    const pageDialogTitle = el("div", "word-page-dialog-title");
+    const pageDialogHeaderInput = el("textarea", "word-page-dialog-input");
+    const pageDialogFooterInput = el("textarea", "word-page-dialog-input");
+    const pageDialogActions = el("div", "word-page-dialog-actions");
+    const pageDialogCancel = el("button", "word-page-dialog-cancel");
+    const pageDialogOk = el("button", "word-page-dialog-ok");
+    pageDialogCancel.type = "button";
+    pageDialogOk.type = "button";
+    pageDialogActions.append(pageDialogCancel, pageDialogOk);
+    pageDialog.append(pageDialogTitle, pageDialogHeaderInput, pageDialogFooterInput, pageDialogActions);
+    viewEl.append(pageDialog);
+    /** 点击的是哪个按钮（只有聚焦用途；null = 未打开） */
+    let pageDialogField = null;
+
+    /* 页边距对话框：四个数字输入（pt），确定时整体写回 page.margins 并进撤销栈 */
+    const marginDialog = el("div", "word-page-dialog word-margin-dialog");
+    const marginDialogTitle = el("div", "word-page-dialog-title");
+    const marginDialogFields = el("div", "word-margin-dialog-fields");
+    const marginDialogActions = el("div", "word-page-dialog-actions");
+    const marginDialogCancel = el("button", "word-page-dialog-cancel word-margin-dialog-cancel");
+    const marginDialogOk = el("button", "word-page-dialog-ok word-margin-dialog-ok");
+    marginDialogCancel.type = "button";
+    marginDialogOk.type = "button";
+    const MARGIN_FIELDS = [
+        { key: "top", label: () => t("word.marginTop", "上") },
+        { key: "right", label: () => t("word.marginRight", "右") },
+        { key: "bottom", label: () => t("word.marginBottom", "下") },
+        { key: "left", label: () => t("word.marginLeft", "左") },
+    ];
+    const marginLabels = {};
+    const marginInputs = {};
+    MARGIN_FIELDS.forEach(({ key }) => {
+        const field = el("label", "word-margin-dialog-field");
+        const labelNode = el("span");
+        const input = el("input", "word-margin-dialog-input");
+        input.type = "number";
+        input.min = String(MARGIN_MIN_PT);
+        input.max = String(MARGIN_MAX_PT);
+        input.step = "1";
+        marginLabels[key] = labelNode;
+        marginInputs[key] = input;
+        field.append(labelNode, input);
+        marginDialogFields.append(field);
+    });
+    marginDialogActions.append(marginDialogCancel, marginDialogOk);
+    marginDialog.append(marginDialogTitle, marginDialogFields, marginDialogActions);
+    viewEl.append(marginDialog);
 
     /* ── 块的构造与读取 ── */
 
@@ -342,6 +554,31 @@ export function createView(viewEl, opts = {}) {
     function normalizeBlock(raw) {
         const src = raw || {};
         const level = src.kind === HEADING ? levelOf(src.level) : 0;
+        if (src.kind === "image") {
+            return {
+                kind: "image",
+                level: null,
+                text: "",
+                bold: false,
+                italic: false,
+                underline: false,
+                strike: false,
+                align: null,
+                indent: 0,
+                font: null,
+                size: null,
+                color: null,
+                highlight: null,
+                lineSpacing: null,
+                spaceBefore: 0,
+                spaceAfter: 0,
+                list: "none",
+                src: typeof src.src === "string" ? src.src : "",
+                width: normImgPx(src.width, IMAGE_FALLBACK_W),
+                height: normImgPx(src.height, IMAGE_FALLBACK_H),
+                alt: typeof src.alt === "string" ? src.alt : "",
+            };
+        }
         return {
             kind: level ? HEADING : PARAGRAPH,
             level: level || null,
@@ -356,6 +593,10 @@ export function createView(viewEl, opts = {}) {
             size: normSize(src.size),
             color: normHex(src.color),
             highlight: normHex(src.highlight),
+            lineSpacing: normLineSpacing(src.lineSpacing),
+            spaceBefore: normSpacePt(src.spaceBefore),
+            spaceAfter: normSpacePt(src.spaceAfter),
+            list: normList(src.list),
         };
     }
 
@@ -383,6 +624,10 @@ export function createView(viewEl, opts = {}) {
         node.dataset.size = b.size === null ? "" : String(b.size);
         node.dataset.color = b.color || "";
         node.dataset.highlight = b.highlight || "";
+        node.dataset.lineSpacing = b.lineSpacing === null ? "" : String(b.lineSpacing);
+        node.dataset.spaceBefore = String(b.spaceBefore);
+        node.dataset.spaceAfter = String(b.spaceAfter);
+        node.dataset.list = b.list;
         node.dataset.placeholder = isHeading ? t("word.placeholderHeading", "输入标题…") : t("word.placeholderBody", "输入正文…");
         if (isHeading) {
             node.setAttribute("role", "heading");
@@ -394,7 +639,7 @@ export function createView(viewEl, opts = {}) {
     }
 
     /**
-     * 把不能枚举的字段落成行内 style（字体名、磅值、色值、缩进级数）。
+     * 把不能枚举的字段落成行内 style（字体名、磅值、色值、缩进级数、行距、段前段后）。
      * @param {HTMLElement} node 块元素
      * @returns {void}
      */
@@ -406,6 +651,12 @@ export function createView(viewEl, opts = {}) {
         node.style.backgroundColor = d.highlight ? String(d.highlight) : "";
         const indent = normIndent(d.indent);
         node.style.paddingLeft = indent > 0 ? String(indent * INDENT_PX) + "px" : "";
+        const spacing = normLineSpacing(d.lineSpacing);
+        node.style.lineHeight = spacing === null ? "" : String(spacing);
+        const before = normSpacePt(d.spaceBefore);
+        const after = normSpacePt(d.spaceAfter);
+        node.style.marginTop = before > 0 ? `${Math.round(before * PT_TO_PX)}px` : "";
+        node.style.marginBottom = after > 0 ? `${Math.round(after * PT_TO_PX)}px` : "";
     }
 
     /**
@@ -426,11 +677,31 @@ export function createView(viewEl, opts = {}) {
      * @returns {HTMLElement} 块元素
      */
     function makeBlock(block, index) {
+        const b = normalizeBlock(block);
+        if (b.kind === "image") {
+            const node = el("p", "word-block word-image");
+            node.contentEditable = "false";
+            node.tabIndex = 0;
+            node.dataset.blockIndex = String(index);
+            node.dataset.kind = "image";
+            node.dataset.src = b.src;
+            node.dataset.width = String(b.width);
+            node.dataset.height = String(b.height);
+            node.dataset.alt = b.alt;
+            const img = el("img");
+            img.src = b.src;
+            img.alt = b.alt;
+            img.draggable = false;
+            // 存储尺寸为基准，纸宽由 CSS 的 max-width:100% 兜住
+            img.style.width = String(b.width) + "px";
+            img.style.height = "auto";
+            node.append(img);
+            return node;
+        }
         const node = el("p", "word-block");
         node.contentEditable = "true";
         node.spellcheck = false;
         node.dataset.blockIndex = String(index);
-        const b = normalizeBlock(block);
         writeBlockData(node, b);
         paintBlock(node);
         fillText(node, b.text);
@@ -448,6 +719,31 @@ export function createView(viewEl, opts = {}) {
         const isHeading = d.kind === HEADING && level > 0;
         const flags = {};
         FLAGS.forEach((flag) => { flags[flag] = d[flag] === "true"; });
+        if (d.kind === "image") {
+            return {
+                kind: "image",
+                level: null,
+                text: "",
+                bold: false,
+                italic: false,
+                underline: false,
+                strike: false,
+                align: null,
+                indent: 0,
+                font: null,
+                size: null,
+                color: null,
+                highlight: null,
+                lineSpacing: null,
+                spaceBefore: 0,
+                spaceAfter: 0,
+                list: "none",
+                src: d.src || "",
+                width: normImgPx(d.width, IMAGE_FALLBACK_W),
+                height: normImgPx(d.height, IMAGE_FALLBACK_H),
+                alt: d.alt || "",
+            };
+        }
         return {
             kind: isHeading ? HEADING : PARAGRAPH,
             level: isHeading ? level : null,
@@ -459,6 +755,10 @@ export function createView(viewEl, opts = {}) {
             size: normSize(d.size),
             color: normHex(d.color),
             highlight: normHex(d.highlight),
+            lineSpacing: normLineSpacing(d.lineSpacing),
+            spaceBefore: normSpacePt(d.spaceBefore),
+            spaceAfter: normSpacePt(d.spaceAfter),
+            list: normList(d.list),
         };
     }
 
@@ -545,12 +845,16 @@ export function createView(viewEl, opts = {}) {
      * @returns {void}
      */
     function markEmpty(node) {
+        if (node.dataset.kind === "image") {
+            node.dataset.empty = "false";
+            return;
+        }
         node.dataset.empty = node.textContent.replace(/[\n\r  ]+$/, "") === "" ? "true" : "false";
     }
 
     /** @returns {HTMLElement[]} 纸张里的块（DOM 顺序即文档顺序） */
     function blockNodes() {
-        return Array.from(paper.children);
+        return Array.from(bodyBox.children);
     }
 
     /**
@@ -569,8 +873,8 @@ export function createView(viewEl, opts = {}) {
 
     /** 纸被删空时补一个空段：模型永不为空 */
     function ensureBlocks() {
-        if (paper.children.length) return;
-        paper.append(makeBlock(blankBlock(), 0));
+        if (bodyBox.children.length) return;
+        bodyBox.append(makeBlock(blankBlock(), 0));
     }
 
     /**
@@ -689,12 +993,12 @@ export function createView(viewEl, opts = {}) {
     }
 
     /**
-     * 把光标放到块内指定偏移。
+     * 把「块内可见偏移」换算成 DOM 点（Range 用的容器与偏移）。
      * @param {HTMLElement} node 块元素
      * @param {number} want 目标偏移
-     * @returns {void}
+     * @returns {{target: Node, offset: number}} DOM 点
      */
-    function placeCaret(node, want) {
+    function resolvePoint(node, want) {
         let target = node;
         let offset = 0;
         let remain = Math.max(0, want);
@@ -731,8 +1035,19 @@ export function createView(viewEl, opts = {}) {
             target = node;
             offset = node.childNodes.length;
         }
+        return { target, offset };
+    }
+
+    /**
+     * 把光标放到块内指定偏移。
+     * @param {HTMLElement} node 块元素
+     * @param {number} want 目标偏移
+     * @returns {void}
+     */
+    function placeCaret(node, want) {
+        const point = resolvePoint(node, want);
         const range = document.createRange();
-        range.setStart(target, offset);
+        range.setStart(point.target, point.offset);
         range.collapse(true);
         const sel = window.getSelection();
         sel.removeAllRanges();
@@ -740,6 +1055,64 @@ export function createView(viewEl, opts = {}) {
         caretNode = node;
         // 目标偏移可能落在最后一个字符之后，按可见长度夹一下再存，免得失焦后插入点越界
         caretPos = Math.min(Math.max(0, want), leafLength(node));
+    }
+
+    /**
+     * 选中块内一段文本（查找命中的高亮用），并让该块滚进可视区。
+     * @param {HTMLElement} node 块元素
+     * @param {number} start 起始偏移
+     * @param {number} length 长度
+     * @returns {void}
+     */
+    function selectRange(node, start, length) {
+        const a = resolvePoint(node, start);
+        const b = resolvePoint(node, start + length);
+        const range = document.createRange();
+        range.setStart(a.target, a.offset);
+        range.setEnd(b.target, b.offset);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        node.focus();
+        activeNode = node;
+        caretNode = node;
+        caretPos = Math.min(start + length, leafLength(node));
+        if (typeof node.scrollIntoView === "function") node.scrollIntoView({ block: "nearest" });
+    }
+
+    /**
+     * 查找导航（外壳「上一个 / 下一个」）：从当前光标位置向前 / 向后循环找下一处命中，
+     * 找到就选中并返回 true，整篇没有命中返回 false。大小写敏感，与替换口径一致。
+     * @param {string} query 查找串
+     * @param {number} dir 1 向下，-1 向上
+     * @returns {boolean} 是否命中
+     */
+    function seek(query, dir) {
+        const q = String(query || "");
+        if (!q || disposed) return false;
+        syncFromDom();
+        const nodes = blockNodes();
+        if (!nodes.length) return false;
+        const forward = dir !== -1;
+        const cur = currentBlock();
+        const bi = Math.max(0, nodes.indexOf(cur));
+        const base = cur ? caretIn(cur) : 0;
+        for (let step = 0; step < nodes.length; step++) {
+            const idx = ((bi + (forward ? step : -step)) % nodes.length + nodes.length) % nodes.length;
+            const text = blocks[idx].text || "";
+            let hit = -1;
+            if (step === 0) {
+                // 当前块：向下从光标后开始，向上找光标前的最后一处
+                hit = forward ? text.indexOf(q, base) : (base > 0 ? text.lastIndexOf(q, base - 1) : -1);
+            } else {
+                hit = forward ? text.indexOf(q) : text.lastIndexOf(q);
+            }
+            if (hit < 0) continue;
+            selectRange(nodes[idx], hit, q.length);
+            onSelection();
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -754,6 +1127,64 @@ export function createView(viewEl, opts = {}) {
         if (typeof pos.offset === "number") placeCaret(node, pos.offset);
         else if (pos.atEnd) placeCaret(node, leafLength(node));
         else placeCaret(node, 0);
+    }
+
+    /**
+     * 聚焦图片块：只把焦点交给块本身（不可编辑，别往里塞 Range）。
+     * @param {HTMLElement} node 图片块
+     * @returns {void}
+     */
+    function focusImageBlock(node) {
+        node.focus();
+        activeNode = node;
+    }
+
+    /**
+     * 在选中块之后插入一个图片块（单独成帧，可撤销）。
+     * @param {{src: string, width: number, height: number}} image 图片
+     * @returns {boolean} 是否插入
+     */
+    function insertImageBlock(image) {
+        if (disposed || !image || !image.src) return false;
+        const node = currentBlock();
+        if (!node || !node.isConnected) return false;
+        beforeChange(null);
+        const next = insertAfter(node, {
+            kind: "image",
+            src: image.src,
+            width: image.width,
+            height: image.height,
+            alt: "",
+        });
+        syncFromDom();
+        applyZoom();
+        focusImageBlock(next);
+        onInput();
+        onSelection();
+        return true;
+    }
+
+    /**
+     * 整块删除图片（退格/删除与点击后按删除同一条路径），焦点落到相邻块。
+     * @param {HTMLElement} node 图片块
+     * @returns {void}
+     */
+    function removeImageBlock(node) {
+        if (disposed || !node || !node.isConnected) return;
+        beforeChange(null);
+        const prev = node.previousElementSibling;
+        const next = node.nextElementSibling;
+        node.remove();
+        ensureBlocks();
+        syncFromDom();
+        applyZoom();
+        const target = prev || next || bodyBox.firstElementChild;
+        if (target) {
+            if (target.dataset.kind === "image") focusImageBlock(target);
+            else focusBlock(target, prev ? { atEnd: true } : { offset: 0 });
+        }
+        onInput();
+        onSelection();
     }
 
     /* ── 撤销栈 ── */
@@ -776,18 +1207,25 @@ export function createView(viewEl, opts = {}) {
             clearTimeout(mergeTimer);
             mergeTimer = setTimeout(endMerge, MERGE_MS);
             redoStack.length = 0;
+            redoPages.length = 0;
             return;
         }
         if (mergeId === null) {
             // 命令 / 粘贴 / Enter 都在这一步之前不动 DOM，所以 DOM 读出来的就是「改动前」
             syncFromDom();
             undoStack.push(blocks.map((b) => ({ ...b })));
+            undoPages.push(clonePage(page));
         } else {
             // 打字：浏览器已经改过 DOM，只能用上次同步的模型当「改动前」
             undoStack.push(lastModel.map((b) => ({ ...b })));
+            undoPages.push(clonePage(page));
         }
-        if (undoStack.length > HISTORY_MAX) undoStack.shift();
+        if (undoStack.length > HISTORY_MAX) {
+            undoStack.shift();
+            undoPages.shift();
+        }
         redoStack.length = 0;
+        redoPages.length = 0;
         mergeKey = mergeId;
         clearTimeout(mergeTimer);
         mergeTimer = mergeId === null ? null : setTimeout(endMerge, MERGE_MS);
@@ -817,8 +1255,8 @@ export function createView(viewEl, opts = {}) {
      */
     function renderBlocks(list) {
         blocks = (list && list.length ? list : [blankBlock()]).map(normalizeBlock);
-        paper.textContent = "";
-        paper.append(...blocks.map((block, i) => makeBlock(block, i)));
+        bodyBox.textContent = "";
+        bodyBox.append(...blocks.map((block, i) => makeBlock(block, i)));
         if (activeNode && !activeNode.isConnected) activeNode = null;
         caretNode = null;
         // 以 DOM 为准回读一次：lastModel 与 read() 必须同源，否则撤销会退到「纸面上没有」的模型
@@ -830,6 +1268,12 @@ export function createView(viewEl, opts = {}) {
     function undo() {
         if (!canUndo()) return false;
         redoStack.push(snapshot());
+        redoPages.push(clonePage(page));
+        const prevPage = undoPages.pop();
+        if (prevPage) {
+            page = prevPage;
+            applyPage();
+        }
         renderBlocks(undoStack.pop());
         endMerge();
         onInput();
@@ -841,6 +1285,12 @@ export function createView(viewEl, opts = {}) {
     function redo() {
         if (!canRedo()) return false;
         undoStack.push(snapshot());
+        undoPages.push(clonePage(page));
+        const nextPage = redoPages.pop();
+        if (nextPage) {
+            page = nextPage;
+            applyPage();
+        }
         renderBlocks(redoStack.pop());
         endMerge();
         onInput();
@@ -863,6 +1313,7 @@ export function createView(viewEl, opts = {}) {
         } catch (err) {
             // 改坏了就把刚压的那帧退回去，别留一条「什么都没变」的历史
             while (undoStack.length > depth) undoStack.pop();
+            while (undoPages.length > depth) undoPages.pop();
             throw err;
         }
         renderBlocks(draft.blocks);
@@ -989,6 +1440,8 @@ export function createView(viewEl, opts = {}) {
     function editCurrentBlock(mutate) {
         const node = currentBlock();
         if (!node || !node.isConnected) return false;
+        // 图片块不承载文字格式：字符/段落命令一律不作用，避免 writeBlockData 把它改回普通段落
+        if (node.dataset.kind === "image") return false;
         beforeChange(null);
         mutate(node);
         paintBlock(node);
@@ -1019,6 +1472,17 @@ export function createView(viewEl, opts = {}) {
     function toggleFlag(flag) {
         return editCurrentBlock((node) => {
             patchBlock(node, { [flag]: node.dataset[flag] !== "true" });
+        });
+    }
+
+    /**
+     * 翻转当前块的项目符号/编号：已是目标类型就回到 none。
+     * @param {"bullet"|"number"} kind 列表类型
+     * @returns {boolean} 是否执行
+     */
+    function toggleList(kind) {
+        return editCurrentBlock((node) => {
+            patchBlock(node, { list: normList(node.dataset.list) === kind ? "none" : kind });
         });
     }
 
@@ -1084,18 +1548,11 @@ export function createView(viewEl, opts = {}) {
     }
 
     /**
-     * 视图缩放：CSS 变量驱动 `.word-paper` 的 `transform: scale()`，再用 JS 把滚动容器
-     * （`.word-zoom-layer`）的高度同步成缩放后的视觉高度。
-     *
-     * 为什么不用 CSS `zoom` 属性：
-     * 1. `zoom` 历史上是 IE/WebKit 私有属性，跨引擎语义不一致（Firefox 长期不支持），
-     *    而 `transform: scale()` 是标准化的、所有引擎同一套算法。
-     * 2. `zoom` 会改写「计算后的长度值」：1px 边框跟着变粗、行高与字号被重新取整，
-     *    纸张上的排版不再等于 docx 里的磅值；`scale()` 只改视觉，布局单位原样保留。
-     * 3. `zoom` 与 `getBoundingClientRect` / 滚动位置的组合在部分版本里会算错，缩放后
-     *    光标可能滚出可视区；`scale()` 的几何是可预测的，配合我们手动同步的容器高度即可。
-     * 4. `scale()` 走合成层，改缩放值不掉帧；`zoom` 要重排整篇文档。
-     * 5. 打印/PDF 导出时必须回到 1:1，`transform` 在打印样式里一句话就能归零。
+     * 视图缩放：CSS 变量驱动 `.word-paper` 的 `transform: scale()`，再手动同步滚动容器
+     * （`.word-zoom-layer`）高度成缩放后的视觉高度。
+     * 不用 CSS `zoom`：跨引擎语义不一致（Firefox 长期不支持）；会重取整布局值（边框、行高、
+     * 字号），纸张排版不再等于 docx 磅值；与 getBoundingClientRect / 滚动位置组合会算错。
+     * scale() 只改视觉、走合成层不掉帧，打印样式里一句即可归零回 1:1。
      * @param {number} level 百分比（75..150）
      * @returns {boolean} 是否执行
      */
@@ -1122,7 +1579,125 @@ export function createView(viewEl, opts = {}) {
     }
 
     /**
-     * 把缩放值落成 CSS 变量 + 容器高度。
+     * 纸张大小（A4 / Letter / A5）：写进文档模型，保存后随文件带回。
+     * @param {string} size 尺寸键
+     * @returns {boolean} 是否执行
+     */
+    function setPageSize(size) {
+        if (!PAGE_SIZE_ORDER.includes(size)) return false;
+        page.size = size;
+        applyPage();
+        applyZoom();
+        onInput();
+        return true;
+    }
+
+    /**
+     * 页面背景色：`""` 表示跟随主题；其余写 `#RRGGBB`。
+     * @param {string} value 颜色或空串
+     * @returns {boolean} 是否执行
+     */
+    function setPageBg(value) {
+        const color = String(value || "").trim() === "" ? null : normHex(value);
+        if (String(value || "").trim() !== "" && !color) return false;
+        page.background = color;
+        applyPage();
+        onInput();
+        return true;
+    }
+
+    /**
+     * 打开页眉/页脚对话框：两个输入都预填当前文本，点击哪个按钮就聚焦哪一栏。
+     * @param {"header"|"footer"} field 被点击的字段（只决定聚焦）
+     * @returns {boolean} 是否执行
+     */
+    function openPageDialog(field) {
+        if (field !== "header" && field !== "footer") return false;
+        pageDialogField = field;
+        pageDialogTitle.textContent = `${t("word.header", "页眉")} / ${t("word.footer", "页脚")}`;
+        pageDialogHeaderInput.placeholder = t("word.headerPlaceholder", "输入页眉文本，每行一段");
+        pageDialogFooterInput.placeholder = t("word.footerPlaceholder", "输入页脚文本，每行一段");
+        pageDialogHeaderInput.value = page.header;
+        pageDialogFooterInput.value = page.footer;
+        pageDialogCancel.textContent = t("cancel", "取消");
+        pageDialogOk.textContent = t("ok", "确定");
+        pageDialog.classList.add("is-open");
+        const target = field === "header" ? pageDialogHeaderInput : pageDialogFooterInput;
+        if (typeof target.focus === "function") target.focus();
+        return true;
+    }
+
+    /** 关闭对话框（不改模型）。@returns {void} */
+    function closePageDialog() {
+        pageDialogField = null;
+        pageDialog.classList.remove("is-open");
+    }
+
+    /**
+     * 确定：两栏换行统一成 \n，有变化才写回 page 并重绘/标脏（一次撤销帧）；没变就只关窗。
+     * @returns {boolean} 是否执行
+     */
+    function confirmPageDialog() {
+        if (!pageDialogField) return false;
+        const header = String(pageDialogHeaderInput.value ?? "").replace(/\r\n?/g, "\n");
+        const footer = String(pageDialogFooterInput.value ?? "").replace(/\r\n?/g, "\n");
+        if (header !== page.header || footer !== page.footer) {
+            beforeChange(null);
+            page.header = header;
+            page.footer = footer;
+            applyPage();
+            onInput();
+        }
+        closePageDialog();
+        return true;
+    }
+
+    /**
+     * 打开页边距对话框：四个输入预填当前四边（pt），确定时整页重绘并进撤销栈。
+     * @returns {boolean} 是否执行
+     */
+    function openMarginDialog() {
+        marginDialogTitle.textContent = t("word.margins", "页边距");
+        MARGIN_FIELDS.forEach(({ key, label }) => {
+            marginLabels[key].textContent = label();
+            marginInputs[key].value = String(page.margins[key]);
+            marginInputs[key].placeholder = String(MARGIN_DEFAULT_PT);
+        });
+        marginDialogCancel.textContent = t("cancel", "取消");
+        marginDialogOk.textContent = t("ok", "确定");
+        marginDialog.classList.add("is-open");
+        if (typeof marginInputs.top.focus === "function") marginInputs.top.focus();
+        return true;
+    }
+
+    /** 关闭页边距对话框（不改模型）。@returns {void} */
+    function closeMarginDialog() {
+        marginDialog.classList.remove("is-open");
+    }
+
+    /**
+     * 确定页边距：四边各自规整（非数字/负数 -> 72，>288 -> 288），有变化才写回并重绘/标脏。
+     * @returns {boolean} 是否执行
+     */
+    function confirmMarginDialog() {
+        const next = normMargins({
+            top: marginInputs.top.value,
+            right: marginInputs.right.value,
+            bottom: marginInputs.bottom.value,
+            left: marginInputs.left.value,
+        });
+        const changed = ["top", "right", "bottom", "left"].some((key) => next[key] !== page.margins[key]);
+        if (changed) {
+            beforeChange(null);
+            page = { ...page, margins: next };
+            applyPage();
+            onInput();
+        }
+        closeMarginDialog();
+        return true;
+    }
+
+    /** 把缩放值落成 CSS 变量 + 容器高度。
      * 读取 `offsetHeight`（未缩放的布局高度）会触发一次回流，但只在结构性改动后发生，
      * 打字路径上每帧一次，成本与 contenteditable 自身的重排相比可以忽略。
      * @returns {void}
@@ -1136,6 +1711,20 @@ export function createView(viewEl, opts = {}) {
         paper.style.transformOrigin = "top left";
         const natural = paper.offsetHeight || paper.getBoundingClientRect().height || 0;
         layer.style.height = Math.round(natural * ratio) + "px";
+    }
+
+    /**
+     * 打字路径专用：把 applyZoom 折到下一帧。offsetHeight 会强制回流，
+     * 逐键同步读等于每敲一字都重排整篇文档；同一帧内的多次调用只保留最后一次。
+     * 桩里没有 rAF 时退回同步调用（行为不变，只是不省那次回流）。
+     */
+    function scheduleZoom() {
+        if (disposed || zoomRaf) return;
+        if (typeof requestAnimationFrame !== "function") { applyZoom(); return; }
+        zoomRaf = requestAnimationFrame(() => {
+            zoomRaf = 0;
+            applyZoom();
+        });
     }
 
     /**
@@ -1156,6 +1745,22 @@ export function createView(viewEl, opts = {}) {
         // 输入法拼音未上屏时一律放行，否则 Enter / Backspace 会打断候选词
         if (e.isComposing || e.keyCode === 229) return;
         const mod = e.ctrlKey || e.metaKey;
+        if (node.dataset.kind === "image") {
+            // 图片块不可编辑：退格/删除整块移除；上下键按块移动焦点；其余按键不作用
+            if (e.key === "Backspace" || e.key === "Delete") {
+                e.preventDefault();
+                removeImageBlock(node);
+            } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                const target = e.key === "ArrowDown" ? node.nextElementSibling : node.previousElementSibling;
+                if (target) {
+                    e.preventDefault();
+                    if (target.dataset.kind === "image") focusImageBlock(target);
+                    else focusBlock(target, e.key === "ArrowDown" ? { offset: 0 } : { atEnd: true });
+                    onSelection();
+                }
+            }
+            return;
+        }
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             beforeChange(null);
@@ -1234,7 +1839,7 @@ export function createView(viewEl, opts = {}) {
         beforeChange("type");
         markEmpty(node);
         syncFromDom();
-        applyZoom();
+        scheduleZoom();
         onInput();
     }
 
@@ -1247,6 +1852,19 @@ export function createView(viewEl, opts = {}) {
         // 粘贴是一步结构性改动，必须单独成帧，否则撤销会把「粘贴前的旧文本」留在同一帧里
         beforeChange(null);
         pasteText(node, String(raw || ""));
+    }
+
+    /**
+     * 点图片块：把焦点交给它（后续 Backspace/Delete 才能整块删除），不往块内塞光标。
+     * @param {MouseEvent} e 点击事件
+     * @returns {void}
+     */
+    function onPaperClick(e) {
+        const node = closestBlock(e.target);
+        if (!node || node.dataset.kind !== "image") return;
+        e.preventDefault();
+        focusImageBlock(node);
+        onSelection();
     }
 
     function onFocusIn(e) {
@@ -1284,17 +1902,84 @@ export function createView(viewEl, opts = {}) {
     }
 
     paper.addEventListener("keydown", onKeydown);
+    paper.addEventListener("click", onPaperClick);
     paper.addEventListener("input", onInputEvent);
     paper.addEventListener("paste", onPaste);
     paper.addEventListener("focusin", onFocusIn);
     paper.addEventListener("focusout", onFocusOut);
     document.addEventListener("selectionchange", onDocumentSelectionChange);
+    pageDialogOk.addEventListener("click", confirmPageDialog);
+    pageDialogCancel.addEventListener("click", closePageDialog);
+    marginDialogOk.addEventListener("click", confirmMarginDialog);
+    marginDialogCancel.addEventListener("click", closeMarginDialog);
 
     /* ── 对外 API ── */
 
     /**
+     * 规整页面设置：未知尺寸回落 A4，非法底色回落 null，页眉页脚只认字符串，
+     * 页边距四边各自规整（默认 72pt，0..288）。
+     * @param {unknown} raw 原始页面设置
+     * @returns {{size: string, background: string|null, header: string, footer: string, margins: object}}
+     */
+    function normPage(raw) {
+        const src = raw && typeof raw === "object" ? raw : {};
+        const size = PAGE_SIZE_ORDER.includes(src.size) ? src.size : DEFAULT_PAGE.size;
+        return {
+            size,
+            background: normHex(src.background),
+            header: typeof src.header === "string" ? src.header : "",
+            footer: typeof src.footer === "string" ? src.footer : "",
+            margins: normMargins(src.margins),
+        };
+    }
+
+    /**
+     * 把页眉页脚落到纸张顶/底：空串隐藏（data-empty），非空按原文换行显示。
+     * @returns {void}
+     */
+    function applyPageChrome() {
+        pageHeader.textContent = page.header;
+        pageHeader.dataset.empty = page.header ? "false" : "true";
+        pageFooter.textContent = page.footer;
+        pageFooter.dataset.empty = page.footer ? "false" : "true";
+    }
+
+    /**
+     * 把页面设置落到 CSS 变量上：纸张宽高 + 四边页边距（pt -> px）+ 自定义底色（含配套的文字/分隔线对比色）。
+     * 不设底色时移除行内变量，交回主题（浅色白纸 / 深色灰纸）。
+     * @returns {void}
+     */
+    function applyPage() {
+        const size = PAGE_SIZES[page.size] || PAGE_SIZES.a4;
+        viewEl.style.setProperty("--word-page-width", `${size.w}px`);
+        viewEl.style.setProperty("--word-page-height", `${size.h}px`);
+        const m = page.margins;
+        viewEl.style.setProperty("--word-margin-top", `${Math.round(m.top * PT_TO_PX)}px`);
+        viewEl.style.setProperty("--word-margin-right", `${Math.round(m.right * PT_TO_PX)}px`);
+        viewEl.style.setProperty("--word-margin-bottom", `${Math.round(m.bottom * PT_TO_PX)}px`);
+        viewEl.style.setProperty("--word-margin-left", `${Math.round(m.left * PT_TO_PX)}px`);
+        applyPageChrome();
+        if (!page.background) {
+            ["--word-page", "--word-page-text", "--word-page-border", "--word-placeholder",
+                "--word-rule", "--word-soft", "--word-focus-ring", "--word-mark"].forEach((name) => {
+                viewEl.style.removeProperty(name);
+            });
+            return;
+        }
+        const dark = pickTextColor(page.background) === "#f2f2f5";
+        viewEl.style.setProperty("--word-page", page.background);
+        viewEl.style.setProperty("--word-page-text", pickTextColor(page.background));
+        viewEl.style.setProperty("--word-page-border", dark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.07)");
+        viewEl.style.setProperty("--word-placeholder", dark ? "rgba(255, 255, 255, 0.32)" : "rgba(0, 0, 0, 0.28)");
+        viewEl.style.setProperty("--word-rule", dark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)");
+        viewEl.style.setProperty("--word-soft", dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.05)");
+        viewEl.style.setProperty("--word-focus-ring", dark ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.035)");
+        viewEl.style.setProperty("--word-mark", dark ? "rgba(255, 255, 255, 0.4)" : "rgba(0, 0, 0, 0.34)");
+    }
+
+    /**
      * 渲染模型（整体替换纸张；换文档即换历史，栈清空）。
-     * @param {{blocks?: object[]}} model 文档模型
+     * @param {{blocks?: object[], page?: {size?: string, background?: string|null, header?: string, footer?: string, margins?: object}}} model 文档模型
      * @returns {void}
      */
     function load(model) {
@@ -1302,20 +1987,24 @@ export function createView(viewEl, opts = {}) {
         const src = model && Array.isArray(model.blocks) && model.blocks.length ? model.blocks : [blankBlock()];
         undoStack = [];
         redoStack = [];
+        undoPages = [];
+        redoPages = [];
         endMerge();
         activeNode = null;
         caretNode = null;
+        page = normPage(model && model.page);
+        applyPage();
         renderBlocks(src);
     }
 
     /**
      * 从 DOM 反推当前模型（字段齐全，可直接交给 docx 编码器）。
-     * @returns {{blocks: object[]}} 文档模型
+     * @returns {{blocks: object[], page: {size: string, background: string|null, header: string, footer: string, margins: object}}} 文档模型
      */
     function read() {
-        if (disposed) return { blocks: blocks.map((b) => ({ ...b })) };
+        if (disposed) return { blocks: blocks.map((b) => ({ ...b })), page: clonePage(page) };
         syncFromDom();
-        return { blocks: blocks.map((b) => ({ ...b })) };
+        return { blocks: blocks.map((b) => ({ ...b })), page: clonePage(page) };
     }
 
     /**
@@ -1331,7 +2020,7 @@ export function createView(viewEl, opts = {}) {
      * @returns {void}
      */
     function focus() {
-        const first = paper.firstElementChild;
+        const first = bodyBox.firstElementChild;
         if (!first) return;
         focusBlock(first, { offset: 0 });
     }
@@ -1375,9 +2064,18 @@ export function createView(viewEl, opts = {}) {
             "word.alignCenter": b.align === "center",
             "word.alignRight": b.align === "right",
             "word.alignJustify": b.align === "justify",
+            "word.lineSpacing": b.lineSpacing === null ? "1" : String(b.lineSpacing),
+            "word.spaceBefore": String(b.spaceBefore),
+            "word.spaceAfter": String(b.spaceAfter),
+            "word.list": b.list,
+            "word.listBullet": b.list === "bullet",
+            "word.listNumber": b.list === "number",
             "word.marks": marksOn,
             "word.zoom": String(zoom),
             "word.width": widthPreset,
+            "word.pageSize": page.size,
+            "word.pageBg": page.background || "",
+            "word.margins": false,
         };
     }
 
@@ -1415,6 +2113,16 @@ export function createView(viewEl, opts = {}) {
                 return setField("color", normHex(value));
             case "word.highlight":
                 return setField("highlight", normHex(value));
+            case "word.lineSpacing":
+                return setField("lineSpacing", normLineSpacing(value));
+            case "word.spaceBefore":
+                return setField("spaceBefore", normSpacePt(value));
+            case "word.spaceAfter":
+                return setField("spaceAfter", normSpacePt(value));
+            case "word.listBullet":
+                return toggleList("bullet");
+            case "word.listNumber":
+                return toggleList("number");
             case "word.clear":
                 return clearFormatting();
             case "word.indentInc":
@@ -1427,12 +2135,28 @@ export function createView(viewEl, opts = {}) {
                 return setZoom(value);
             case "word.width":
                 return setWidth(value);
+            case "word.pageSize":
+                return setPageSize(value);
+            case "word.pageBg":
+                return setPageBg(value);
+            case "word.margins":
+                return openMarginDialog();
+            case "word.header":
+                return openPageDialog("header");
+            case "word.footer":
+                return openPageDialog("footer");
             case "word.date":
                 return insertTextCommand(chineseDate());
             case "word.tab":
                 return insertTextCommand("\t");
             case "word.newline":
                 return insertTextCommand("\n");
+            case "word.insertImage":
+            case "insertImage":
+                void pickImage().then((image) => {
+                    if (image) insertImageBlock(image);
+                });
+                return true;
             case "word.blankBelow": {
                 const node = currentBlock();
                 if (!node || !node.isConnected) return false;
@@ -1456,29 +2180,43 @@ export function createView(viewEl, opts = {}) {
 
     /**
      * 解除本视图的一切监听并摘掉自己塞进容器的节点。
-     * 对账：paper 5 个（keydown/input/paste/focusin/focusout）+ document 1 个（selectionchange）
-     * + 1 个合并定时器，注册几个就摘几个。
+     * 对账：paper 6 个（keydown/click/input/paste/focusin/focusout）+ document 1 个（selectionchange）
+     * + 页眉页脚对话框 2 个（确定/取消）+ 页边距对话框 2 个（确定/取消）+ 1 个合并定时器，
+     * 注册几个就摘几个。
      * @returns {void}
      */
     function dispose() {
         if (disposed) return;
         paper.removeEventListener("keydown", onKeydown);
+        paper.removeEventListener("click", onPaperClick);
         paper.removeEventListener("input", onInputEvent);
         paper.removeEventListener("paste", onPaste);
         paper.removeEventListener("focusin", onFocusIn);
         paper.removeEventListener("focusout", onFocusOut);
         document.removeEventListener("selectionchange", onDocumentSelectionChange);
+        pageDialogOk.removeEventListener("click", confirmPageDialog);
+        pageDialogCancel.removeEventListener("click", closePageDialog);
+        pageDialog.remove();
+        marginDialogOk.removeEventListener("click", confirmMarginDialog);
+        marginDialogCancel.removeEventListener("click", closeMarginDialog);
+        marginDialog.remove();
         clearTimeout(mergeTimer);
         mergeTimer = null;
         mergeKey = null;
+        if (zoomRaf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(zoomRaf);
+        zoomRaf = 0;
         undoStack = [];
         redoStack = [];
+        undoPages = [];
+        redoPages = [];
         blocks = [];
         lastModel = [];
         viewEl.classList.remove("word-view");
         viewEl.classList.remove("show-marks");
         Object.keys(WIDTH_CLASSES).forEach((key) => viewEl.classList.remove(WIDTH_CLASSES[key]));
         viewEl.style.removeProperty("--word-zoom");
+        ["--word-page-width", "--word-page-height", "--word-margin-top", "--word-margin-right",
+            "--word-margin-bottom", "--word-margin-left"].forEach((name) => viewEl.style.removeProperty(name));
         viewEl.textContent = "";
         activeNode = null;
         caretNode = null;
@@ -1503,5 +2241,6 @@ export function createView(viewEl, opts = {}) {
         undo,
         redo,
         applyEdit,
+        seek,
     };
 }

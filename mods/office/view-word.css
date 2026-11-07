@@ -1,10 +1,7 @@
 /* view-word.css — 文稿视图（Office 2016 功能区形态）：A4 纸张 + 块级 contenteditable。
-   功能区自身的视觉在 ribbon.css（由外壳装载），本文件只管纸张与块。
-   本视图的类共 10 个，与 view-word.js 一一对应：
-   word-view / word-stage / word-zoom-layer / word-paper / word-block / word-tab /
-   word-width-narrow / word-width-standard / word-width-wide / show-marks。
-   块上的格式一律读 data-*（由 view-word.js 写入）：能枚举的（段式、四个字符开关、对齐）
-   走属性选择器；不能枚举的（字体名、磅值、色值、缩进级数）由 JS 写成行内 style。 */
+   功能区视觉在 ribbon.css（外壳装载），本文件只管纸张与块；所有类与 view-word.js 一一对应。
+   块上格式一律读 data-*（view-word.js 写入）：能枚举的（段式、字符开关、对齐、列表）走属性选择器，
+   不能枚举的（字体名、磅值、色值、缩进级数、行距、段前段后）由 JS 写行内 style。 */
 
 .word-view {
     --word-page: #fff;
@@ -15,13 +12,22 @@
     --word-soft: rgba(0, 0, 0, 0.05);
     --word-focus-ring: rgba(0, 0, 0, 0.035);
     --word-mark: rgba(0, 0, 0, 0.34);
-    /* 页宽由 ribbon「视图 → 页宽」改 --word-page-max，缩放由「视图 → 缩放」改 --word-zoom */
-    --word-page-max: 720px;
+    /* 纸张尺寸由 ribbon「视图 → 纸张大小」改 --word-page-width / -height；
+       缩放由「视图 → 缩放」改 --word-zoom；页宽档位只改 --word-width-scale */
+    --word-page-width: 794px;
+    --word-page-height: 1122px;
+    /* 四边页边距（pt -> px，72pt = 96px），由「视图 → 页边距」写进变量；打印时归零 */
+    --word-margin-top: 96px;
+    --word-margin-right: 96px;
+    --word-margin-bottom: 96px;
+    --word-margin-left: 96px;
+    --word-width-scale: 1;
     --word-zoom: 1;
 
     display: block;
     min-height: 100%;
     box-sizing: border-box;
+    position: relative;
     color: var(--word-page-text);
 }
 
@@ -36,21 +42,21 @@ html[data-theme="dark"] .word-view {
     --word-mark: rgba(255, 255, 255, 0.4);
 }
 
-/* 页宽三档（max-width 语义：纸张随窗口收缩，但不超过这一档） */
-.word-view.word-width-narrow { --word-page-max: 560px; }
-.word-view.word-width-standard { --word-page-max: 720px; }
-.word-view.word-width-wide { --word-page-max: 940px; }
+/* 页宽三档：在纸张原尺寸上叠一个显示比例，纸张仍随窗口收缩 */
+.word-view.word-width-narrow { --word-width-scale: 0.82; }
+.word-view.word-width-standard { --word-width-scale: 1; }
+.word-view.word-width-wide { --word-width-scale: 1.15; }
 
 /* ── 缩放三层结构 ──
-   stage 管外边距；layer 管「缩放后的视觉尺寸」（宽度用 calc 交给 CSS，高度由 JS 量过再写死）；
-   paper 保持未缩放的排版尺寸，只套一层 transform: scale()。
-   transform 不改布局盒，所以滚动容器必须由 JS 同步高度，否则 150% 时纸的下半截滚不到。 */
+   stage 管外边距；layer 管缩放后的视觉尺寸（宽度 calc 交给 CSS，高度 JS 量过写死）；
+   paper 保持未缩放排版尺寸，只套 transform: scale()。
+   transform 不改布局盒，滚动容器高度必须由 JS 同步，否则 150% 时纸下半截滚不到。 */
 .word-stage {
     padding: 18px 16px 48px;
 }
 
 .word-zoom-layer {
-    width: min(100%, calc(var(--word-page-max) * var(--word-zoom)));
+    width: min(100%, calc(var(--word-page-width) * var(--word-width-scale) * var(--word-zoom)));
     margin: 0 auto;
     /* JS 写的是内容高度，上下留白算在外面 */
     box-sizing: content-box;
@@ -58,13 +64,13 @@ html[data-theme="dark"] .word-view {
 
 .word-paper {
     /* 这里的 100% 是 layer 的宽度（已含缩放），除以缩放值才等于未缩放的排版宽度 */
-    width: min(100% / var(--word-zoom), var(--word-page-max));
-    min-height: 1016px;
-    padding: 64px 68px;
+    width: min(100% / var(--word-zoom), calc(var(--word-page-width) * var(--word-width-scale)));
+    min-height: var(--word-page-height);
+    padding: var(--word-margin-top) var(--word-margin-right) var(--word-margin-bottom) var(--word-margin-left);
     background: var(--word-page);
     color: var(--word-page-text);
     border: 1px solid var(--word-page-border);
-    border-radius: 10px;
+    border-radius: 0;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
     font-size: 15px;
     line-height: 1.75;
@@ -75,6 +81,129 @@ html[data-theme="dark"] .word-view {
 }
 
 html[data-theme="dark"] .word-paper { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); }
+
+/* 正文容器：页眉 / 页脚之外的可编辑区，块节点都挂在这里；counter 给编号列表续号 */
+.word-body {
+    min-height: 1.75em;
+    counter-reset: word-list;
+}
+/* 页眉 / 页脚：纸张顶底的非编辑文本，空串隐藏；换行按原文显示 */
+.word-header,
+.word-footer {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--word-page-text);
+    opacity: 0.58;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    user-select: none;
+}
+.word-header {
+    margin: 0 0 28px;
+    padding: 0 0 8px;
+    border-bottom: 1px dashed var(--word-rule, rgba(0, 0, 0, 0.12));
+}
+.word-footer {
+    margin: 28px 0 0;
+    padding: 8px 0 0;
+    border-top: 1px dashed var(--word-rule, rgba(0, 0, 0, 0.12));
+}
+.word-header[data-empty="true"],
+.word-footer[data-empty="true"] { display: none; }
+
+/* 页眉页脚编辑对话框：常驻 DOM，is-open 时显示；深色主题跟随主题变量 */
+.word-page-dialog {
+    display: none;
+    position: absolute;
+    z-index: 20;
+    top: 96px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(420px, calc(100% - 32px));
+    box-sizing: border-box;
+    padding: 16px;
+    border: 1px solid var(--office-border, rgba(0, 0, 0, 0.14));
+    border-radius: 10px;
+    background: var(--office-panel, #ffffff);
+    color: var(--office-text, #24252a);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+.word-page-dialog.is-open { display: block; }
+.word-page-dialog-title {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 650;
+}
+.word-page-dialog-input {
+    display: block;
+    width: 100%;
+    min-height: 96px;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--office-border, rgba(0, 0, 0, 0.14));
+    border-radius: 6px;
+    background: var(--office-input-bg, #ffffff);
+    color: inherit;
+    font: inherit;
+    resize: vertical;
+}
+.word-page-dialog-input + .word-page-dialog-input { margin-top: 8px; }
+.word-page-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+.word-page-dialog-actions button {
+    padding: 6px 14px;
+    border: 1px solid var(--office-border, rgba(0, 0, 0, 0.14));
+    border-radius: 6px;
+    background: var(--office-button-bg, #f5f5f7);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.word-page-dialog-ok {
+    background: var(--office-accent, #0a6cff);
+    border-color: var(--office-accent, #0a6cff);
+    color: #ffffff;
+}
+.word-margin-dialog-ok {
+    background: var(--office-accent, #0a6cff);
+    border-color: var(--office-accent, #0a6cff);
+    color: #ffffff;
+}
+.word-page-dialog-cancel {
+    color: var(--office-muted, #6b7280);
+}
+.word-margin-dialog-cancel {
+    color: var(--office-muted, #6b7280);
+}
+
+/* 页边距对话框：四个 pt 数字输入（0–288），复用 .word-page-dialog 的遮罩/按钮外壳 */
+.word-margin-dialog { width: min(360px, calc(100% - 32px)); }
+.word-margin-dialog-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+}
+.word-margin-dialog-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+.word-margin-dialog-field span { flex: 0 0 2em; }
+.word-margin-dialog-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid var(--office-border, rgba(0, 0, 0, 0.14));
+    border-radius: 6px;
+    background: var(--office-input-bg, #ffffff);
+    color: inherit;
+    font: inherit;
+}
 
 /* ── 块：一个 Block 一个 contenteditable ── */
 .word-block {
@@ -88,6 +217,17 @@ html[data-theme="dark"] .word-paper { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45
 }
 
 .word-block:focus { background: var(--word-focus-ring); }
+
+/* 图片块：不可编辑；按存储 px 宽显示，纸宽用 max-width 兜底 */
+.word-image {
+    padding: 2px 0;
+    text-align: center;
+}
+.word-image img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 3px;
+}
 
 /* 段式：标题不换标签，靠 data-kind / data-level（role=heading 由 JS 同步写，无障碍不缺） */
 .word-block[data-kind="heading"] {
@@ -126,6 +266,20 @@ html[data-theme="dark"] .word-paper { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45
 
 .word-block[data-empty="true"][data-kind="heading"]::before { font-weight: 650; }
 
+/* 项目符号 / 编号：只做显示前缀，不改文本内容（模型里的 text 仍是纯文字）。
+   编号用 CSS counter 在正文容器内连续，段落之间夹杂普通段落也不会断号。 */
+.word-block[data-list="number"] { counter-increment: word-list; }
+.word-block[data-list="bullet"]:not([data-empty="true"])::before {
+    content: "•";
+    margin-right: 0.4em;
+    color: var(--word-page-text);
+}
+.word-block[data-list="number"]:not([data-empty="true"])::before {
+    content: counter(word-list) ". ";
+    margin-right: 0.2em;
+    color: var(--word-page-text);
+}
+
 /* 制表符：DOM 里就是 `\t` 文本本身（pre-wrap 撑出位置），
    包一层 span 只为了让「段落标记可视化」有东西可以挂样式。 */
 .word-tab {
@@ -156,7 +310,6 @@ html[data-theme="dark"] .word-paper { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45
 
 @media (max-width: 560px) {
     .word-stage { padding: 12px 10px 32px; }
-    .word-paper { padding: 40px 30px; }
 }
 
 /* ── 打印 / 导出 PDF：外壳给 <html> 挂 .office-printing 并隐藏功能区与状态栏，

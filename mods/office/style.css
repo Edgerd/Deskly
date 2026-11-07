@@ -1,16 +1,13 @@
 /* 办公套件外壳样式：标题栏（含快速访问工具栏）/ 功能区挂载位 / 画布 / 状态栏。
-   功能区自身的视觉在 ribbon.css（由 script.js 经 view-style.js 装载），
-   三个视图的内容区样式在各自 view-*.css 里 —— 外壳不管纸张、网格还是幻灯片长什么样。 */
+   功能区视觉在 ribbon.css（script.js 经 view-style.js 装载），视图内容区在各自 view-*.css。 */
 
 .office {
     --office-accent: #4a5a72;
     --office-chrome: rgba(246, 246, 246, 0.82);
-    --office-canvas: #e9ebf0;
-    /* 文字色不接 --surface-text：外壳与功能区的底是 0.95 / 0.82 的近乎不透明表面
-       （rgba(255,255,255,.95) 与深色主题下的 rgba(30,30,32,.95)），系统令牌按墙纸/主题推导，
-       墙纸着色一开就可能推出白字压在近乎白的外壳上。这里的模糊只是 Ribbon 观感的一部分，
-       所以只改「模糊怎么写」（走系统令牌），配色仍按 Office 2016 那套成对的主题色。
-       真正接令牌需要 office/script.js 里 __surface.apply() 逐窗登记，不在本次范围。 */
+    --office-canvas: var(--surface-content, #ffffff);
+    /* 文字色不接 --surface-text：外壳底是近乎不透明表面，系统令牌按墙纸/主题推导，
+       墙纸着色一开可能推出白字压白壳。故只把模糊改走系统令牌，配色仍按 Office 2016 成对主题色；
+       真正接令牌需 script.js 里 __surface.apply() 逐窗登记，不在本次范围。 */
     --office-text: #1d1d1f;
     --office-muted: rgba(0, 0, 0, 0.48);
     --office-divider: rgba(0, 0, 0, 0.08);
@@ -22,8 +19,7 @@
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(var(--surface-blur-3));
     -webkit-backdrop-filter: blur(var(--surface-blur-3));
-    /* 亚克力稳定层：isolation 让 backdrop-filter 以自身为 backdrop-root，
-       与 notepad / photos 同一套约定，避免窗口互相盖花。 */
+    /* 亚克力稳定层：isolation 让 backdrop-filter 以自身为 backdrop-root，避免窗口互相盖花（与 notepad / photos 同约定）。 */
     isolation: isolate;
     color: var(--office-text);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", Arial, sans-serif;
@@ -32,7 +28,8 @@
 
 .office-word { --office-accent: #2b6fd4; }
 .office-excel { --office-accent: #1f9e5a; }
-.office-ppt { --office-accent: #e2762c; }
+/* 演示用 Keynote 红；表格用 Numbers 绿；文稿保留原蓝 */
+.office-ppt { --office-accent: #d7373f; }
 
 /* ── 标题栏：红绿灯在左内缩 20px，其后是文档标题、未保存标记、快速访问工具栏与文件名 ── */
 .office .office-titlebar {
@@ -64,7 +61,7 @@
     background: rgba(0, 0, 0, 0.05);
 }
 
-/* ── 工具栏已换成功能区（ribbon.css），这里只留文件名芯片 ── */
+/* ── 文件名芯片（工具栏已并入 ribbon.css 的功能区） ── */
 .office .office-filename {
     margin-left: auto;
     font-size: 11.5px;
@@ -107,7 +104,7 @@
 /* ── 深色主题 ── */
 html[data-theme="dark"] .office {
     --office-chrome: rgba(40, 40, 42, 0.86);
-    --office-canvas: #26272b;
+    --office-canvas: var(--surface-content, #1e1e1e);
     --office-text: #f2f2f5;
     --office-muted: rgba(255, 255, 255, 0.55);
     --office-divider: rgba(255, 255, 255, 0.12);

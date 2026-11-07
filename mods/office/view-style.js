@@ -1,12 +1,7 @@
 /**
- * view-style.js — 视图模块的私有样式装载件
- *
- * 插件只有一份 `manifest.style`（由宿主注入），而每个视图模块（文稿 / 表格 / 演示）
- * 各自带一个 CSS 文件。这里用 `new URL(..., import.meta.url)` 把 CSS 挂进文档：
- * 磁盘插件解析成 `./mods/office/view-x.css`，ZIP 安装插件同样由 SW 按该路径回源，
- * 两种分发形态都不需要宿主额外开注入口子。
- *
- * 幂等：同一 URL 只挂一次（多应用外壳的脚本常驻，重复挂载会叠加同名规则）。
+ * view-style.js — 视图模块的私有样式装载件：`manifest.style` 只有一份（宿主注入），每个视图各带一个 CSS，
+ * 用 `new URL(..., import.meta.url)` 挂进文档 —— 磁盘插件与 ZIP 安装（SW 按同路径回源）两种分发形态通用。
+ * 幂等：同一 URL 只挂一次（外壳脚本常驻，重复挂载会叠加同名规则）。
  */
 
 const mounted = new Set();

@@ -1,36 +1,42 @@
 {
   "id": "office",
-  "name": "办公",
-  "version": "0.2.0",
+  "name": "iWork",
+  "version": "0.2.1",
   "type": "app",
   "entry": "window",
-  "description": "文稿 / 表格 / 演示 办公套件（Office 2016 功能区）",
-  "permissions": ["files:read", "files:write", "apps:launch", "default-apps:read"],
+  "multiWindow": true,
+  "description": "Pages 文稿 / Numbers 表格 / Keynote 讲演 办公套件（Office 2016 功能区）",
+  "permissions": ["files:read", "files:write", "apps:launch", "default-apps:read", "quicklook:register"],
   "style": "style.css",
   "script": "script.js",
   "icon": "Office.png",
   "store": {
     "category": "办公",
-    "tagline": "文稿 / 表格 / 演示三件套，Office 2016 功能区界面",
-    "summary": "三个可以各自开窗口、互相独立使用的办公应用，共用一套功能区（Ribbon）界面：文稿处理 .docx，表格处理 .xlsx 与 .csv，演示处理 .pptx。\n读写都是本地完成的纯前端 OOXML 实现 —— 直接解析与生成压缩包内的 XML，不加载任何外部内核，也不联网。",
+    "tagline": "Pages 文稿 / Numbers 表格 / Keynote 讲演三件套，Office 2016 功能区界面",
+    "summary": "三个可以各自开窗口、互相独立使用的办公应用，共用一套功能区（Ribbon）界面：Pages 文稿处理 .docx，Numbers 表格处理 .xlsx 与 .csv，Keynote 讲演处理 .pptx。\n读写都是本地完成的纯前端 OOXML 实现 —— 直接解析与生成压缩包内的 XML，不加载任何外部内核，也不联网。",
     "features": [
       "功能区工具栏：选项卡 / 分组 / 大小控件 / 下拉菜单",
       "快速访问工具栏与 Backstage「文件」页",
       "新建、打开、保存、下载副本、打印或导出 PDF",
-      "撤销与重做、查找与替换",
-      "表格支持公式与区域求和",
-      "演示支持放映视图",
+      "新建自模板：会议纪要 / 待办清单 / 收支记录 / 项目汇报",
+      "撤销与重做、查找与替换（支持上一个 / 下一个定位）",
+      "表格支持公式与区域求和、区域选择与复制、筛选与列宽、冻结首行首列（随文件保存）",
+      "表格支持行高、字体与字号、合并单元格、插入图片（随文件保存）",
+      "演示支持放映视图与复制当前页，图片可拖动定位（随文件保存）",
+      "演示支持无 / 淡出 / 推进 / 擦除四种切页切换效果（随文件保存）",
+      "文稿支持页边距、行距与段前段后、项目符号与编号（随文件保存）",
+      "同一应用支持多窗口，每个窗口各自编辑一份文档",
       "双击 .docx / .xlsx / .csv / .pptx 直接接管打开"
     ],
-    "usage": "在启动台或程序坞点三件套中任一颗图标；也可以在访达里双击对应格式的文件。每个应用可以开多个窗口，关到最后一个窗口时才卸载共用外壳。",
-    "updated": "2026-10-06",
+    "usage": "在启动台或程序坞点三件套中任一颗图标；也可以在访达里双击对应格式的文件。每个应用默认只有一扇窗口：再次启动或双击新文件会复用该窗口，当前文档有未保存更改时会先询问保存 / 不保存 / 取消。需要同时编辑多份文档时，在应用内「文件 → 新建窗口」另开一扇（内核按 manifest.multiWindow 放行，每扇窗口各自一份文档、互不影响）。三个应用的窗口都关掉后才卸载共用外壳。",
+    "updated": "2026-11-07",
     "author": "Edgerd",
     "screenshots": []
   },
   "apps": [
     {
       "id": "word",
-      "name": "文稿",
+      "name": "Pages 文稿",
       "type": "app",
       "entry": "window",
       "main": "word.html",
@@ -38,7 +44,8 @@
       "formats": [".docx", ".txt"],
       "menus": {
         "文件": [
-          { "label": "新建文稿", "shortcut": "⌘N", "cmd": "officeNewDocument('office.word')" },
+          { "label": "新建窗口", "cmd": "officeNewWindow('office.word')" },
+          { "label": "新建 Pages 文稿", "shortcut": "⌘N", "cmd": "officeNewDocument('office.word')" },
           { "label": "打开…", "shortcut": "⇧⌘O", "cmd": "officeOpenDocument('office.word')" },
           { "label": "保存", "shortcut": "⌘S", "cmd": "officeSaveDocument('office.word')" },
           { "label": "下载副本", "shortcut": "⇧⌘S", "cmd": "officeSaveAsDocument('office.word')" },
@@ -56,7 +63,7 @@
     },
     {
       "id": "excel",
-      "name": "表格",
+      "name": "Numbers 表格",
       "type": "app",
       "entry": "window",
       "main": "excel.html",
@@ -64,7 +71,8 @@
       "formats": [".xlsx", ".csv"],
       "menus": {
         "文件": [
-          { "label": "新建表格", "shortcut": "⌘N", "cmd": "officeNewDocument('office.excel')" },
+          { "label": "新建窗口", "cmd": "officeNewWindow('office.excel')" },
+          { "label": "新建 Numbers 表格", "shortcut": "⌘N", "cmd": "officeNewDocument('office.excel')" },
           { "label": "打开…", "shortcut": "⇧⌘O", "cmd": "officeOpenDocument('office.excel')" },
           { "label": "保存", "shortcut": "⌘S", "cmd": "officeSaveDocument('office.excel')" },
           { "label": "下载副本", "shortcut": "⇧⌘S", "cmd": "officeSaveAsDocument('office.excel')" },
@@ -82,7 +90,7 @@
     },
     {
       "id": "ppt",
-      "name": "演示",
+      "name": "Keynote 讲演",
       "type": "app",
       "entry": "window",
       "main": "ppt.html",
@@ -90,7 +98,8 @@
       "formats": [".pptx"],
       "menus": {
         "文件": [
-          { "label": "新建演示", "shortcut": "⌘N", "cmd": "officeNewDocument('office.ppt')" },
+          { "label": "新建窗口", "cmd": "officeNewWindow('office.ppt')" },
+          { "label": "新建 Keynote 讲演", "shortcut": "⌘N", "cmd": "officeNewDocument('office.ppt')" },
           { "label": "打开…", "shortcut": "⇧⌘O", "cmd": "officeOpenDocument('office.ppt')" },
           { "label": "保存", "shortcut": "⌘S", "cmd": "officeSaveDocument('office.ppt')" },
           { "label": "下载副本", "shortcut": "⇧⌘S", "cmd": "officeSaveAsDocument('office.ppt')" },

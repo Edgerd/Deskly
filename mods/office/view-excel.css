@@ -1,27 +1,24 @@
 /* view-excel.css — 表格网格视图样式（与 view-excel.js 类名一一对应，探针做双向核对）。
-   作用域全部挂在 .excel-view 下，配色沿用外壳的 --office-* 变量；
-   深色主题走 html[data-theme="dark"] 前缀。
-   功能区按钮不在这里 —— 那是 ribbon.css 的活儿，本文件只管网格与地址栏。 */
+   作用域全挂 .excel-view，配色用外壳 --office-* 变量，深色走 html[data-theme="dark"] 前缀；
+   功能区样式在 ribbon.css，本文件只管网格与地址栏。 */
 
 .excel-view {
-    /* --excel-zoom 是缩放档位（JS 写 0.8 / 1 / 1.2 / 1.4）。
-       刻意不用 CSS `zoom`：
-       1. `zoom` 会改变 sticky 表头的包含块计算，行 / 列头滚到边界容易飘（Chrome 的老 bug 反复出）；
-       2. 编辑器 <input> 绝对定位在 .excel-table 里，用 offsetLeft / offsetWidth 定位，
-          zoom 之后「布局像素」与「绘制像素」分家，编辑器会盖不准格子；
-       3. zoom 是位图级缩放，小字号发虚；按档位重算行高 / 列宽 / 字号，文字始终清晰。
-       代价是所有尺寸都要写成 calc(... * var(--excel-zoom))，JS 里的列宽模板同样乘一遍。 */
+    /* --excel-zoom 是缩放档位（JS 写 0.8 / 1 / 1.2 / 1.4）。刻意不用 CSS `zoom`：
+       它改变 sticky 表头包含块计算（Chrome 老 bug）；编辑器 input 按 offsetLeft/offsetWidth 定位，
+       zoom 后布局/绘制像素分家会盖不准格子；位图级缩放小字号发虚，按档位重算行高/列宽/字号始终清晰。
+       代价是所有尺寸写成 calc(... * var(--excel-zoom))，JS 列宽模板同样乘一遍。 */
     --excel-zoom: 1;
 
     min-height: 100%;
     display: flex;
     flex-direction: column;
+    position: relative;
     color: var(--office-text);
     font-family: inherit;
     box-sizing: border-box;
 }
 
-/* ── 地址栏：A1 坐标 + 选中格原文 + 公式错误计数（替代原来的按钮条） ── */
+/* ── 地址栏：A1 坐标 + 选中格原文 + 公式错误计数 ── */
 .excel-view .excel-namebar {
     height: 26px;
     flex: none;
@@ -60,6 +57,134 @@
     color: #a4262c;
     background: rgba(164, 38, 44, 0.1);
     border-radius: 8px;
+}
+
+/* 已筛选提示：地址栏右侧的小徽章（清除筛选后隐藏） */
+.excel-view .excel-filter-badge {
+    flex: none;
+    padding: 1px 7px;
+    font-size: calc(10.5px * var(--excel-zoom));
+    color: var(--office-accent);
+    background: rgba(10, 108, 255, 0.1);
+    border-radius: 8px;
+}
+
+/* 筛选对话框：常驻 DOM，is-open 时浮在网格上方 */
+.excel-view .excel-filter-dialog {
+    display: none;
+    position: absolute;
+    z-index: 20;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(380px, calc(100% - 32px));
+    box-sizing: border-box;
+    padding: 16px;
+    border: 1px solid var(--office-divider);
+    border-radius: 10px;
+    background: var(--office-panel);
+    color: var(--office-text);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+.excel-view .excel-filter-dialog.is-open { display: block; }
+.excel-view .excel-filter-dialog-title {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 650;
+}
+.excel-view .excel-filter-dialog-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+}
+.excel-view .excel-filter-dialog-label {
+    flex: none;
+    width: 28px;
+    color: var(--office-muted);
+    font-size: 12px;
+}
+.excel-view .excel-filter-dialog-col,
+.excel-view .excel-filter-dialog-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--office-divider);
+    border-radius: 6px;
+    background: var(--office-input-bg, var(--office-panel));
+    color: inherit;
+    font: inherit;
+}
+.excel-view .excel-filter-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+}
+.excel-view .excel-filter-dialog-actions button {
+    padding: 6px 14px;
+    border: 1px solid var(--office-divider);
+    border-radius: 6px;
+    background: var(--office-chrome);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.excel-view .excel-filter-dialog-apply {
+    background: var(--office-accent);
+    border-color: var(--office-accent);
+    color: #ffffff;
+}
+.excel-view .excel-filter-dialog-clear { color: #a4262c; }
+.excel-view .excel-filter-dialog-cancel { color: var(--office-muted); }
+
+/* ── 图片条：网格上方的浮层，按模型存储 px 尺寸显示（不参与单元格布局） ── */
+.excel-view .excel-images {
+    flex: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    background: var(--office-canvas);
+    border-bottom: 1px solid var(--office-divider);
+    box-sizing: border-box;
+}
+
+.excel-view .excel-image {
+    position: relative;
+    flex: none;
+    padding: 4px;
+    border: 1px solid var(--office-divider);
+    border-radius: 6px;
+    background: var(--office-chrome);
+}
+
+.excel-view .excel-image img {
+    display: block;
+    height: auto;
+    border-radius: 3px;
+}
+
+.excel-view .excel-image-del {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 0 5px 0 5px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    line-height: 18px;
+    cursor: pointer;
+}
+
+.excel-view .excel-image-del:hover {
+    background: rgba(164, 38, 44, 0.85);
 }
 
 /* ── 网格滚动容器：键盘焦点载体（缩放作用在它内部的表格上，滚动条不受影响） ── */
@@ -166,6 +291,10 @@
     border-bottom-color: transparent;
 }
 
+.excel-view.no-gridlines .excel-merge {
+    border-color: transparent;
+}
+
 /* ── 单元格样式：字体 / 对齐 / 换行走类名（深色主题能覆盖），只有 color / fill 由 JS 写内联 ── */
 .excel-view .is-bold { font-weight: 600; }
 .excel-view .is-italic { font-style: italic; }
@@ -189,10 +318,54 @@
     text-overflow: clip;
 }
 
+/* ── 合并单元格：被覆盖的格子保留占位但不可见，左上格由一块绝对定位覆盖层占满整区 ── */
+.excel-view .is-merged-covered {
+    visibility: hidden;
+}
+
+.excel-view .excel-merge {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    padding: 0 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    /* 不透明背景盖住底下的左上格与网格线，整块看起来就是一格 */
+    background: #fff;
+    border-right: 1px solid var(--office-divider);
+    border-bottom: 1px solid var(--office-divider);
+    z-index: 2;
+}
+
 /* 选中格外框（inset 描边不挤占网格线） */
 .excel-view .is-sel {
     box-shadow: inset 0 0 0 2px var(--office-accent);
     background: color-mix(in srgb, var(--office-accent) 5%, #fff);
+}
+
+/* 区域选中的其余格：淡染色，焦点格仍是 is-sel 的描边 */
+.excel-view .is-range {
+    background: color-mix(in srgb, var(--office-accent) 10%, #fff);
+}
+
+/* 冻结首行 / 首列：sticky 钉在列头 / 行头之后（偏移 = 头部已缩放的尺寸）。
+   冻结格自带不透明背景（.excel-cell 的 #fff / 深色的 #1e1f22），滚过去的格子不会透上来。 */
+.excel-view.freeze-row .excel-cell[data-row="0"] {
+    position: sticky;
+    top: calc(26px * var(--excel-zoom));
+    z-index: 2;
+}
+
+.excel-view.freeze-col .excel-cell[data-cell="0"] {
+    position: sticky;
+    left: calc(46px * var(--excel-zoom));
+    z-index: 1;
+}
+
+/* 左上角那格同时钉两个方向，层级要高过单向冻结的格子 */
+.excel-view.freeze-row.freeze-col .excel-cell[data-row="0"][data-cell="0"] {
+    z-index: 3;
 }
 
 /* 编辑中：文本让位给覆盖其上的编辑器 input。
@@ -229,8 +402,18 @@ html[data-theme="dark"] .excel-view .excel-err {
 
 html[data-theme="dark"] .excel-view .excel-table { background: #1e1f22; }
 html[data-theme="dark"] .excel-view .excel-cell { background: #1e1f22; }
+html[data-theme="dark"] .excel-view .excel-merge {
+    background: #1e1f22;
+    border-color: #3a3b3f;
+}
+html[data-theme="dark"] .excel-view.no-gridlines .excel-merge {
+    border-color: transparent;
+}
 html[data-theme="dark"] .excel-view .is-sel {
     background: color-mix(in srgb, var(--office-accent) 14%, #1e1f22);
+}
+html[data-theme="dark"] .excel-view .is-range {
+    background: color-mix(in srgb, var(--office-accent) 20%, #1e1f22);
 }
 html[data-theme="dark"] .excel-view .is-head {
     background: color-mix(in srgb, var(--office-accent) 14%, rgba(40, 40, 42, 0.86));

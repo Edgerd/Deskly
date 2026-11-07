@@ -1,11 +1,17 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deskly</title>
-    <link rel="icon" type="image/png" href="./Logo.png" />
+    <!-- 品牌图标：SVG 优先，ICO 兜底含 16/32/48，PNG 供不支持 ICO 的宿主；尺寸条目与 assets/brand 实际像素一一对应 -->
+    <link rel="icon" type="image/svg+xml" href="./assets/brand/deskly-logo.svg" />
+    <link rel="icon" type="image/x-icon" href="./assets/brand/deskly-favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./assets/brand/deskly-favicon-16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/brand/deskly-favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="./assets/brand/deskly-favicon-48.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="./assets/brand/deskly-logo-192.png" />
 
     <!-- 首帧壁纸：必须是同步经典脚本，且排在所有样式表之前。
          模块脚本是 deferred，等它执行时默认壁纸已经画上屏；MV3 CSP 又禁止内联脚本。
@@ -24,21 +30,26 @@
     <link rel="preload" as="image" href="./mods/system-settings/Reglages systeme.png" fetchpriority="high" />
     <link rel="preload" as="image" href="./mods/app-store/App Store.png" fetchpriority="high" />
 
-    <link rel="stylesheet" href="./assets/stylesheets/main/main.css?v=0.3.6" />
-    <link rel="stylesheet" href="./assets/stylesheets/finderbar/finderbar.css?v=0.3.6" />
-    <link rel="stylesheet" href="./assets/stylesheets/dock/dock.css?v=0.3.6" />
-    <link rel="stylesheet" href="./assets/stylesheets/main/desktop.css?v=0.3.6" />
-    <link rel="stylesheet" href="./assets/stylesheets/cursor/cursor.css?v=0.3.6" />
-    <link rel="stylesheet" href="./assets/stylesheets/ui/ui.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/contextMenu.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/window.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/windowframe.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/trafficlights.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/windowtraffic.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/datetime-popover.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/controlcenter.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/alert.css?v=0.3.6">
-    <link rel="stylesheet" href="./assets/stylesheets/ui/popover.css?v=0.3.6">
+    <link rel="stylesheet" href="./assets/stylesheets/main/main.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/finderbar/finderbar.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/dock/dock.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/desktop.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/desktop-view.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/quicklook.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/getinfo.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/main/openwith.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/cursor/cursor.css?v=0.4.3" />
+    <link rel="stylesheet" href="./assets/stylesheets/ui/ui.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/contextMenu.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/window.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/windowframe.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/spaces.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/trafficlights.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/windowtraffic.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/datetime-popover.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/controlcenter.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/alert.css?v=0.4.3">
+    <link rel="stylesheet" href="./assets/stylesheets/ui/popover.css?v=0.4.3">
 </head>
 
 <body class="cursor-default">

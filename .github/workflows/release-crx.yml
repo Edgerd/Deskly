@@ -1,0 +1,114 @@
+name: Build CRX
+
+# 手动触发，或推送任意 tag 时自动打包。
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: crx-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Resolve and verify version
+        run: |
+          set -euo pipefail
+          VERSION=$(node --input-type=module -e "const { VERSION } = await import('./src/javascripts/version.js'); process.stdout.write(VERSION)")
+          MANIFEST_VERSION=$(node --input-type=module -e "import { readFileSync } from 'node:fs'; process.stdout.write(JSON.parse(readFileSync('manifest.json', 'utf8')).version)")
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::src/javascripts/version.js 的 $VERSION 与 manifest.json 的 $MANIFEST_VERSION 不一致"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [[ "$GITHUB_REF_NAME" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [ "$GITHUB_REF_NAME" != "$VERSION" ] && [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+              echo "::error::tag $GITHUB_REF_NAME 与版本号 $VERSION 不一致"
+              exit 1
+            fi
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "打包版本 $VERSION"
+
+      # 扩展根目录就是仓库根（manifest.json 在根上），按运行时实际读取的文件取证：
+      # index.html / sw.js / assets / mods / src，以及界面请求的 docs/changelog.json。
+      - name: Stage extension
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/deskly"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/docs"
+          cp manifest.json index.html sw.js LICENSE "$STAGE/"
+          cp -R assets mods src "$STAGE/"
+          cp docs/changelog.json "$STAGE/docs/"
+          test -f "$STAGE/manifest.json"
+
+      - name: Make ZIP
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/deskly"
+          ZIP="$RUNNER_TEMP/Deskly-$VERSION.zip"
+          zip -qr -X "$ZIP" manifest.json index.html sw.js LICENSE assets mods src docs
+          unzip -l "$ZIP" | grep -Eq '(^|/)manifest\.json$' || { echo "::error::ZIP 根目录缺少 manifest.json"; exit 1; }
+
+      - name: Resolve signing key
+        run: |
+          set -euo pipefail
+          KEY_FILE="$RUNNER_TEMP/crx-key.pem"
+          if [ -n "${CRX_PRIVATE_KEY:-}" ]; then
+            printf '%s' "$CRX_PRIVATE_KEY" > "$KEY_FILE"
+            echo "使用仓库 Secret CRX_PRIVATE_KEY 签名"
+          else
+            openssl genrsa -out "$KEY_FILE" 2048
+            echo "::warning title=未配置签名私钥::未配置 Secret CRX_PRIVATE_KEY，产物为临时密钥签名：扩展 ID 每次构建都会变化，仅供本地侧载验证，不要用于正式分发。"
+          fi
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+
+      - name: Pack CRX3
+        run: |
+          set -euo pipefail
+          node .github/scripts/pack-crx.mjs \
+            --zip "$RUNNER_TEMP/Deskly-$VERSION.zip" \
+            --key "$RUNNER_TEMP/crx-key.pem" \
+            --out "$RUNNER_TEMP/Deskly-$VERSION.crx"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Deskly-${{ env.VERSION }}
+          path: |
+            ${{ runner.temp }}/Deskly-${{ env.VERSION }}.crx
+            ${{ runner.temp }}/Deskly-${{ env.VERSION }}.zip
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          NOTES="reports/release/$VERSION.md"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            if [ -f "$NOTES" ]; then
+              gh release create "$TAG" --title "Deskly $VERSION" --notes-file "$NOTES"
+            else
+              gh release create "$TAG" --title "Deskly $VERSION" --generate-notes
+            fi
+          fi
+          gh release upload "$TAG" "$RUNNER_TEMP/Deskly-$VERSION.crx" "$RUNNER_TEMP/Deskly-$VERSION.zip" --clobber

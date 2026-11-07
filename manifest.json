@@ -1,15 +1,18 @@
-{
+﻿{
   "manifest_version": 3,
   "name": "Deskly",
   "short_name": "Deskly",
   "description": "基于 macOS Sequoia 风格的全功能浏览器主页插件，将新标签页变为 macOS 桌面体验。",
-  "version": "0.3.6",
-  "version_name": "0.3.6",
+  "version": "0.4.3",
+  "version_name": "0.4.3",
   "author": "Edgerd",
   "icons": {
-    "128": "Logo.png"
+    "16": "assets/brand/deskly-favicon-16.png",
+    "32": "assets/brand/deskly-favicon-32.png",
+    "48": "assets/brand/deskly-favicon-48.png",
+    "192": "assets/brand/deskly-logo-192.png"
   },
-  "permissions": ["bookmarks"],
+  "permissions": ["bookmarks", "activeTab"],
   "host_permissions": [
     "https://cn.bing.com/*",
     "https://www.bing.com/*",

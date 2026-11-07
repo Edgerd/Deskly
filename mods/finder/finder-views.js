@@ -1,23 +1,29 @@
 /**
- * finder-views.js — 访达视图渲染（macOS 15 还原）
- *
- * 职责：
- *  - 四种视图：图标 / 列表 / 分栏 / 画廊
- *  - 分组（种类 / 日期 / 大小 / 标签）：调用 finder-group.groupEntries 生成分组头部
- *  - 标签过滤（FinderState 每标签页的 tagFilter）与搜索过滤（FinderState.searchQuery）
- *  - 列表视图「种类」列、条目标签色点、图片真实缩略图（懒加载 + 缓存）
- *  - 监听 FinderState 事件实时重渲染
- *
- * 生命周期：本模块是常驻单例，init() 会先撤销上一次注册的订阅；
- * 图片缩略图 / 画廊预览的对象 URL 在 dispose()（重开窗口或 plugin-unload）时统一回收。
+ * finder-views.js — 四种视图（图标 / 列表 / 分栏 / 画廊）渲染：分组头部、标签 / 搜索过滤、图片缩略图（懒加载 + 缓存），监听 FinderState 事件重渲染。
+ * 常驻单例：init() 先撤销上次订阅；缩略图 / 画廊预览的对象 URL 在 dispose()（重开窗口或 plugin-unload）时统一回收。
  */
 
 import { i18n } from '../../src/javascripts/i18n.js';
 import { FinderState } from './finder-state.js';
 import { FinderTags } from './finder-tags.js';
 import { groupEntries, kindLabel } from './finder-group.js';
-import { VFS } from '../../src/javascripts/vfs.js';
 import { FOLDER_ICON, GENERIC_DOC_ICON, assetPath } from '../../src/javascripts/paths.js';
+
+/* Q6 收口：只走 Deskly 公开 API（vfs 门面读文件与格式化） */
+const Deskly = () => window.Deskly;
+const unwrap = (env) => {
+    if (!env || !env.ok) {
+        const err = new Error((env && env.reason) || 'Deskly 调用失败');
+        err.code = (env && env.code) || 'EIO';
+        throw err;
+    }
+    return env.value;
+};
+const VFS = {
+    readFile: async (p) => unwrap(await Deskly().vfs.readFile(p)),
+    formatSize: (bytes) => Deskly().vfs.formatSize(bytes),
+    formatDate: (ts) => Deskly().vfs.formatDate(ts),
+};
 
 // 图片名沿用原变量名，值统一由 paths.js 生成（运行时 URL 按站点根解析，见 paths.js 注释）
 const ICON_FOLDER = FOLDER_ICON;
@@ -98,7 +104,6 @@ const FinderViews = (() => {
         track(FinderState.on('locale-changed', renderEntries));
     }
 
-    /** 绑定事件。 */
     function bindEvents() {
         // 列表表头排序
         const onHeaderClick = (e) => {
@@ -135,10 +140,8 @@ const FinderViews = (() => {
         return idx > 0 ? name.slice(idx + 1).toLowerCase() : '';
     }
 
-    /** 是否为图片 */
     function isImage(name) { return IMG_EXTS.includes(getExt(name)); }
 
-    /** 根据条目返回图标路径 */
     function iconFor(entry) {
         if (entry.type === 'folder') {
             return entry.icon ? assetPath(`icons/${entry.icon}`) : ICON_FOLDER;
@@ -337,7 +340,6 @@ const FinderViews = (() => {
         });
     }
 
-    /** 分组头部 */
     function buildGroupHeader(label) {
         const h = document.createElement('div');
         h.className = 'group-header';
@@ -401,13 +403,11 @@ const FinderViews = (() => {
             markSelected(row, entry.path);
         });
 
-        // 双击打开
         row.addEventListener('dblclick', (e) => {
             e.stopPropagation();
             if (onEntryOpen) onEntryOpen(entry);
         });
 
-        // 右键菜单
         row.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -425,7 +425,6 @@ const FinderViews = (() => {
         FinderState.selectSingle(path);
     }
 
-    /** 标签色点渲染 */
     function appendTagDots(row, entry, grid) {
         const tags = FinderTags.getTags(entry.path);
         if (!tags.length) return;

@@ -1,7 +1,4 @@
-/* =============================
-   style.css — 访达（Finder）macOS 15 Sequoia 还原
-   合并单条标题栏 + 毛玻璃边栏 + 四视图 + 下拉弹层
-   ============================= */
+/* style.css — 访达（Finder）macOS 15 窗口样式：合并单条标题栏 + 毛玻璃边栏 + 四视图 + 下拉弹层 */
 
 /* ---------- CSS 变量 - 浅色主题 ---------- */
 :root {
@@ -17,10 +14,8 @@
   --finder-pop-bg: rgba(250, 250, 250, 0.92);
   --finder-seg-bg: rgba(0, 0, 0, 0.06);
 
-  /* 文字三档统一交给表面系统（src/javascripts/surface.js）：--surface-text 只有黑/白，
-     已按「壁纸主色 → 色调偏移 → 着色浓度 → 明暗主题 → 显示器亮度」推导，secondary /
-     tertiary 是同一支墨色的弱化层级。访达原本在浅色/深色两个块里各抄一份灰度
-     （#1d1d1f / #f5f5f7 …），现在只在这一处引用令牌，下面所有规则不动。 */
+  /* 文字三档统一引用表面系统令牌（--surface-text* 由 src/javascripts/surface.js 按主题推导，
+     secondary / tertiary 是同一支墨色的弱化层级），不再在浅色/深色两块各抄一份灰度。 */
   --finder-text: var(--surface-text);
   --finder-text-secondary: var(--surface-text-secondary);
   --finder-text-tertiary: var(--surface-text-tertiary);
@@ -33,9 +28,7 @@
   --finder-selected-text: #ffffff;
 
   --finder-shadow: 0 22px 70px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
-  /* --finder-blur（原本 30px）已删除：模糊半径改由系统按等级分配，
-     标题栏 / 侧栏 / 弹层这些原本引用它的地方现在直接写 var(--surface-blur-3)
-     （30px ≤ 34 → 第 3 档），Quick Look 与弹窗这类更实的层用第 4 档。 */
+  /* --finder-blur（原 30px）已删除：模糊半径由系统按等级分配 —— 30px → 第 3 档 var(--surface-blur-3)，更实的层用第 4 档。 */
 
   --finder-scrollbar: rgba(0, 0, 0, 0.2);
   --finder-scrollbar-hover: rgba(0, 0, 0, 0.35);
@@ -61,10 +54,8 @@ html[data-theme="dark"] {
   --finder-pop-bg: rgba(45, 45, 45, 0.94);
   --finder-seg-bg: rgba(255, 255, 255, 0.08);
 
-  /* 深色档不再各写一份 --finder-text*：令牌已在 :root 指向 --surface-text*，
-     而 --surface-text 本身就随 data-theme 推导（浅色主题给黑墨、深色给白墨），
-     在这里再覆盖一遍等于把系统算好的结果换成第二个写死的灰度。
-     与下面「深色主题补充」一节删掉死样式的理由相同。 */
+  /* 深色档不再覆盖 --finder-text*：令牌已在 :root 指向 --surface-text*（随 data-theme 推导），
+     再写一遍等于用死灰度覆盖系统结果（与「深色主题补充」删死样式同理）。 */
 
   --finder-accent: #0a84ff;
   --finder-selection: rgba(10, 132, 255, 0.2);
@@ -82,7 +73,7 @@ html[data-theme="dark"] {
 .finder.window {
   box-shadow: var(--finder-shadow);
   border-radius: 12px;
-  /* 尺寸改为下界：铺满可视区但不设死宽高，避免白边 */
+  /* 尺寸只设下界：铺满可视区但不设死宽高，避免白边 */
   width: 100%;
   height: 100%;
   min-width: 800px;
@@ -107,9 +98,8 @@ html[data-theme="dark"] {
 }
 
 /* ---------- 内部裁剪容器 ----------
- * 承载标题栏 / 标签栏 / 主体内容，负责把内容裁剪到窗口的圆角范围内；
- * 弹层（.tb-pop / .finder-quicklook / .finder-modal）作为 .finder.window 的直接子元素
- * 放在本容器之外，从而可以"超出窗口边界"显示而不被裁剪。 */
+ * 承载标题栏 / 标签栏 / 主体内容，把内容裁剪到窗口圆角内；弹层（.tb-pop / .finder-quicklook /
+ * .finder-modal）作为 .finder.window 的直接子元素放在本容器之外，才不被这层裁剪。 */
 .finder-clip {
   display: flex;
   flex-direction: column;
@@ -117,9 +107,8 @@ html[data-theme="dark"] {
   min-height: 0;
   overflow: hidden;
   border-radius: 12px;
-  /* 背景透明：让桌面壁纸透出，侧边栏/标题栏的 backdrop-filter 才能模糊到壁纸形成真实毛玻璃；
-     主内容区 .finder-main 自有实底，保证文件列表可读。移除 isolation 以免其成为 backdrop-root
-     截断了侧边栏对壁纸的采样。 */
+  /* 背景透明：让桌面壁纸透出供侧边栏/标题栏毛玻璃采样；主内容区 .finder-main 自有实底。
+     不设 isolation，避免成为 backdrop-root 截断侧边栏对壁纸的采样。 */
   background: transparent;
   position: relative;
 }
@@ -259,12 +248,9 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
 .tb-search input::placeholder { color: var(--finder-text-tertiary); }
 
 /* 下拉弹层
- * 打开时由 src/javascripts/ui/popover.js 搬进 body 上的浮出层，position/top/left
- * 会被改写成内联样式（按视口定位、放不下就朝上翻），下面这条 position:absolute 与
- * z-index 只是浮出层没加载成功时的退路。
- * 旧注释说「放在 .finder-clip 之外就能超出窗口边界」—— 并不成立：样式表里
- * `.window{overflow:hidden}`（assets/stylesheets/ui/window.css）照样把弹层裁在窗口内，
- * 本窗口根没重复声明 overflow 也压不掉那条规则。真正伸出窗口靠的是浮出层。 */
+ * 打开时由 src/javascripts/ui/popover.js 搬进 body 浮出层，position/top/left 被改写为内联
+ * （按视口定位，放不下朝上翻）；这里的 position:absolute 与 z-index 只是浮出层未加载时的退路。
+ * `.window{overflow:hidden}`（0,1,0 声明压不掉）照样把弹层裁在窗口内，真正伸出窗口靠浮出层。 */
 .tb-pop {
   position: absolute;
   min-width: 180px;
@@ -369,10 +355,8 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   position: relative;
 }
 
-/* ---------- 侧边栏 ---------- */
-/* 毛玻璃：半透明背景 + 系统分配的模糊半径（半径原本是私有 30px，现取 --surface-blur-3），
-   让主内容区的色彩淡淡透出，符合 macOS 原版；saturate 也换成 --surface-saturate
-   （原 180% 正落在 1.4–2.0 的接管区间内）。 */
+/* ---------- 侧边栏 ----------
+   毛玻璃：半透明背景 + 系统分配的模糊半径（--surface-blur-3）与 saturate（--surface-saturate），让主内容区色彩淡淡透出。 */
 .finder-sidebar {
   width: 208px;
   min-width: 168px;
@@ -380,10 +364,9 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   background: var(--finder-sidebar-bg);
   backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
   -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
-  /* 亚克力稳定层（0.2.74 固化）：截图里最常见 white-block 来源。
-     .finder.window 是插件根（contain 等复杂属性可能造成 Chrome 的 stacking context 误判），
-     isolation 强制侧栏自己作为 backdrop-root；
-     overflow:hidden 让滚动 + 模糊边界同时稳定，不出现边缘白色矩形 */
+  /* 亚克力稳定层（0.2.74 固化）：截图最常见 white-block 来源 —— .finder.window 的 contain 等属性
+     可能造成 Chrome stacking context 误判，isolation 强制侧栏自身成 backdrop-root；
+     overflow:hidden 让滚动 + 模糊边界稳定，避免边缘白色矩形。 */
   isolation: isolate;
   overflow-y: auto;
   overflow-x: hidden;
@@ -400,7 +383,7 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
 .sidebar-section { padding: 5px 0; }
 .sidebar-section + .sidebar-section { border-top: 1px solid var(--finder-separator); margin-top: 4px; }
 
-/* 分区小标题（如 ICLOUD / LOCATIONS / TAGS）：灰色全大写小字，字距略宽 */
+/* 分区小标题（对应 macOS ICLOUD / LOCATIONS / TAGS） */
 .section-header { display: flex; align-items: center; padding: 4px 16px 2px; }
 .section-title {
   font-size: 11px;
@@ -584,10 +567,9 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   z-index: 1;
 }
 
-/* 空状态
-   pointer-events:none 是有意保留的：浮层盖在 .list-body 上，若吃事件就挡住了
-   空白处点击取消选中 / 右键空白菜单。因此 finder-views.js 判定空白时按
-   「不在 .entry 内」来判断，而不是把浮层自身当事件目标。 */
+/* 空状态浮层
+   pointer-events:none 是有意的：浮层盖在 .list-body 上，吃事件会挡住空白点击取消选中 / 右键空白菜单，
+   故 finder-views.js 按「不在 .entry 内」判定空白。 */
 .finder-empty {
   position: absolute;
   inset: 0;
@@ -600,46 +582,14 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   font-size: 13px;
   pointer-events: none;
 }
+/* [hidden] 只是 UA 级的 display:none，优先级低于上面的 display:flex，
+   不补这条浮层会常驻并压在已渲染的条目上（与 .finder-quicklook 同款）。 */
+.finder-empty[hidden] { display: none; }
 .finder-empty svg { width: 48px; height: 48px; color: var(--finder-text-tertiary); opacity: 0.3; }
 
-/* ---------- Quick Look ---------- */
-.finder-quicklook { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
-.finder-quicklook[hidden] { display: none; }
-/* Quick Look 的压暗层：模糊原本只有 8px（≤8 → 系统第 1 档，最轻的一档），
-   它是遮罩而不是卡片，所以取最低档而不是随卡片走第 4 档。 */
-.ql-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(var(--surface-blur-1)); -webkit-backdrop-filter: blur(var(--surface-blur-1)); }
-.ql-card {
-  position: relative; width: 80%; max-width: 700px; max-height: 85%;
-  background: var(--finder-pop-bg); backdrop-filter: blur(var(--surface-blur-4)); -webkit-backdrop-filter: blur(var(--surface-blur-4));
-  /* 亚克力稳定层（0.2.74 固化）：强制自身成 backdrop-root */
-  isolation: isolate;
-  overflow: hidden;
-  border-radius: 12px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
-  display: flex; flex-direction: column;
-  /* 亚克力禁忌（0.2.50 固化）：原版 keyframes 含 transform: scale(0.92→1)，
-     会让 backdrop-filter 元素自身进入 3D 合成层，破坏毛玻璃（出现白色光斑）。
-     改为纯 opacity 淡入，功能不变；放弃 scale 缩放感以保稳定。 */
-  animation: ql-enter 0.18s ease-out;
-}
-@keyframes ql-enter { from { opacity: 0; } to { opacity: 1; } }
-.ql-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--finder-separator); flex-shrink: 0; }
-.ql-name { font-size: 14px; font-weight: 600; color: var(--finder-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ql-close {
-  width: 28px; height: 28px; border: none; background: transparent; border-radius: 6px;
-  display: flex; align-items: center; justify-content: center; cursor: var(--deskly-cursor, default);
-  color: var(--finder-text-secondary); transition: background 0.1s ease, color 0.1s ease;
-}
-.ql-close:hover { background: var(--finder-hover); color: var(--finder-text); }
-.ql-body { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; min-height: 200px; padding: 16px; }
-.ql-content { max-width: 100%; max-height: 100%; display: flex; align-items: center; justify-content: center; }
-.ql-content img { max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 6px; }
-.ql-content pre { width: 100%; margin: 0; white-space: pre-wrap; word-break: break-all; font-size: 12px; color: var(--finder-text); font-family: "SF Mono", "Menlo", monospace; text-align: left; }
-.ql-content .ql-unsupported { color: var(--finder-text-tertiary); font-size: 13px; text-align: center; }
-.ql-footer { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px 16px; border-top: 1px solid var(--finder-separator); flex-shrink: 0; }
-.ql-nav { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: var(--deskly-cursor, default); color: var(--finder-text-secondary); transition: background 0.1s ease, color 0.1s ease; }
-.ql-nav:hover { background: var(--finder-hover); color: var(--finder-text); }
-.ql-nav.disabled { opacity: 0.3; pointer-events: none; }
-.ql-counter { font-size: 12px; color: var(--finder-text-secondary); min-width: 40px; text-align: center; }
+/* ---------- Quick Look ----------
+   宿主已上移为内核单例（core/quicklook.js + assets/stylesheets/main/quicklook.css），
+   访达内的 .finder-quicklook 样式与 DOM 一并移除。 */
 
 /* ---------- 弹窗 ---------- */
 .finder-modal { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; }
@@ -654,9 +604,7 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   overflow: hidden;
   border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   padding: 24px; text-align: center;
-  /* 亚克力禁忌（0.2.50 固化）：原 keyframes 含 transform:scale(0.92→1)，
-     会让 backdrop-filter 元素自身进入 3D 合成层，破坏毛玻璃。
-     改为纯 opacity 淡入；放弃 scale 缩放感以保稳定。 */
+  /* 亚克力禁忌（0.2.50 固化）：同 .ql-card —— 弃用 transform: scale 动画（破坏毛玻璃），纯 opacity 淡入。 */
   animation: modal-enter 0.18s ease-out;
 }
 @keyframes modal-enter { from { opacity: 0; } to { opacity: 1; } }
@@ -678,8 +626,7 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
 
 /* ---------- 图标视图 ----------
    视图 class（grid-view / column-view / gallery-view）由 finder-views.js 挂在 #finder-content 上，
-   而 .list-header 就位于 #finder-content 内部（见 index.html），所以下面这些
-   .finder-content.<视图> .list-header 规则可以命中；勿再把表头移出内容容器。 */
+   .list-header 位于其内（见 index.html），故 .finder-content.<视图> .list-header 可命中；勿把表头移出内容容器。 */
 .finder-content.grid-view .list-header { display: none; }
 .finder-content.grid-view .list-body {
   display: flex; flex-wrap: wrap; align-content: flex-start;
@@ -701,10 +648,11 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   white-space: normal; word-break: break-all;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-/* 图标视图选中：名称胶囊白字 */
+/* 图标视图选中：名称胶囊白字。胶囊用 box-shadow 外扩而不是 padding，
+   行盒尺寸不变，选中不会把整行图标顶得上下跳（与桌面同一套选中绘制规则）。 */
 .finder-content.grid-view .entry.selected .entry-name {
   background: var(--finder-selected); color: var(--finder-selected-text);
-  border-radius: 5px; padding: 1px 6px; -webkit-line-clamp: 1;
+  border-radius: 5px; box-shadow: 0 0 0 3px var(--finder-selected);
 }
 .finder-content.grid-view .entry .entry-tag-dot { position: absolute; margin: 0; }
 .finder-content.grid-view .entry { position: relative; }
@@ -756,9 +704,8 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
 .finder-content.gallery-view .filmstrip-thumb video { width: 100%; height: 100%; object-fit: cover; }
 
 /* ---------- 深色主题补充 ----------
-   注：.tb-btn 的 color 与 .list-header 的 background 原本还有 data-theme="dark" 覆盖，
-   但两处覆盖写的是与基础规则完全相同的 var() token（token 自身随主题切换），
-   计算值一模一样、永不产生差异，已作为死样式删除。 */
+   原 .tb-btn color 与 .list-header background 的 dark 覆盖与基础规则同为 var() token（token 自身随主题切换），
+   计算值无差异，已作死样式删除。 */
 html[data-theme="dark"] .sidebar-item.active { color: var(--finder-accent); }
 html[data-theme="dark"] .modal-btn { background: rgba(0, 0, 0, 0.3); border-color: rgba(255, 255, 255, 0.15); color: var(--finder-text); }
 html[data-theme="dark"] .modal-btn:hover { background: rgba(255, 255, 255, 0.12); }

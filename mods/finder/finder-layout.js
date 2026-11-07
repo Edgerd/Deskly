@@ -1,9 +1,6 @@
 /**
- * finder-layout.js — 访达布局管理
- *
- * 管理侧边栏宽度拖拽、标签栏显隐、布局尺寸记忆。
- * 资源释放：本模块为常驻单例，init() 先撤销上一次注册的监听，
- * 窗口关闭时由入口脚本（script.js）的 plugin-unload 回调调用 dispose()。
+ * finder-layout.js — 侧边栏宽度拖拽、标签栏显隐、布局尺寸记忆。
+ * 常驻单例：init() 先撤销上次注册的监听，窗口关闭时由入口脚本（script.js）的 plugin-unload 回调调 dispose()。
  */
 
 import { FinderState } from './finder-state.js';
@@ -50,9 +47,6 @@ const FinderLayout = (() => {
         bindSplitter();
     }
 
-    /**
-     * 从 localStorage 加载配置。
-     */
     function loadConfig() {
         try {
             const saved = localStorage.getItem(STORAGE_KEY);
@@ -65,9 +59,6 @@ const FinderLayout = (() => {
         } catch (e) { /* 忽略损坏数据 */ }
     }
 
-    /**
-     * 保存配置到 localStorage。
-     */
     function saveConfig() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -79,9 +70,6 @@ const FinderLayout = (() => {
         }
     }
 
-    /**
-     * 应用配置到 DOM。
-     */
     function applyConfig() {
         if (sidebar) sidebar.style.width = config.sidebarWidth + 'px';
         applyTabBar();
@@ -97,9 +85,6 @@ const FinderLayout = (() => {
         tabsBar.classList.toggle('visible', !!(config.tabBarVisible || (tabs && tabs.length > 1)));
     }
 
-    /**
-     * 绑定分割线拖拽事件。
-     */
     function bindSplitter() {
         if (!splitter || !sidebar) return;
 

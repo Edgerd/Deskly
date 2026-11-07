@@ -1,15 +1,12 @@
 /**
- * finder-search.js — 访达搜索（macOS 15 展开式搜索框）
- *
- * 点击放大镜展开输入框并聚焦；输入防抖后写入 FinderState.searchQuery，
- * 由 finder-views 按当前目录条目实时过滤。Esc 或再次点击收起并清空。
+ * finder-search.js — 展开式搜索框：输入防抖写入 FinderState.searchQuery 供 finder-views 实时过滤；Esc / 再次点击收起并清空。
  */
 
 import { FinderState } from './finder-state.js';
 
 const FinderSearch = (() => {
     let searchWrap = null, searchInput = null, toggleBtn = null;
-    let debounce = null; // 防抖计时器
+    let debounce = null;
 
     /** @type {Function[]} 资源释放回调（重开窗口 / plugin-unload 时执行） */
     let disposers = [];
@@ -26,9 +23,6 @@ const FinderSearch = (() => {
         list.forEach(fn => fn());
     }
 
-    /**
-     * 初始化搜索。
-     */
     function init() {
         dispose();
 
@@ -63,7 +57,6 @@ const FinderSearch = (() => {
         }
     }
 
-    /** 展开搜索框 */
     function expand() {
         if (!searchWrap) return;
         searchWrap.classList.add('expanded');
@@ -74,7 +67,6 @@ const FinderSearch = (() => {
         }
     }
 
-    /** 收起并清空搜索 */
     function collapse() {
         searchWrap?.classList.remove('expanded');
         if (searchInput) {

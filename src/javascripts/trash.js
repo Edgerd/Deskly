@@ -149,15 +149,17 @@ export async function emptyTrash() {
     let removed = 0;
     for (const e of entries) {
         if (e.name.endsWith(TRASH_ORIGIN_SUFFIX)) {
-            await OSFS.remove(e.path).catch(() => { });
-            removed++;
+            // 失败不能计入 removed：事件与返回值都不能谎报「已清空」（BUG-07）
+            const ok = await OSFS.remove(e.path).then(() => true).catch(() => false);
+            if (ok) removed++;
             continue;
         }
-        await OSFS.remove(e.path, { recursive: true }).catch(() => { });
+        const okMain = await OSFS.remove(e.path, { recursive: true }).then(() => true).catch(() => false);
         await OSFS.remove(e.path + TRASH_ORIGIN_SUFFIX).catch(() => { });
-        removed++;
+        if (okMain) removed++;
     }
-    dispatchChanged(false);
+    // detail.empty 必须反映真实剩余：恒 false 会让 trash-changed 的消费方误判非空（BUG-07）
+    dispatchChanged(await isTrashNotEmpty());
     return { ok: true, removed };
 }
 

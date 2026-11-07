@@ -1,25 +1,41 @@
-/**
- * finder-contextmenu.js — 访达右键菜单（macOS 15 还原）
- *
- * 提供条目右键菜单与空白区域右键菜单。新建文件夹与刷新走入口注入的回调（与工具栏
- * 菜单同一实现），删除直接作用在真实目录上——插件私有的伪目录层已随存储重构移除。
- * 依赖外部注入的 createContextMenu(x, y, items) 函数。
+﻿/**
+ * finder-contextmenu.js — 访达条目与空白区域右键菜单。新建文件夹 / 刷新走入口注入的回调（与工具栏菜单同一实现）；
+ * 删除直接作用在真实目录上（插件私有的伪目录层已随存储重构移除）。依赖注入的 createContextMenu(x, y, items)。
  */
 
 import { i18n } from '../../src/javascripts/i18n.js';
-import { OSFS } from '../../src/javascripts/osfs.js';
-import { moveToTrash, putBack, emptyTrash, TRASH_ORIGIN_SUFFIX } from '../../src/javascripts/trash.js';
 import { FinderState } from './finder-state.js';
 import { FinderTags } from './finder-tags.js';
 
-const TRASH_ROOT = OSFS.TOP.trash.path; // /废纸篓
+/* Q6 收口：只走 Deskly 公开 API（废纸篓/路径工具/存在性判定） */
+const Deskly = () => window.Deskly;
+const unwrap = (env) => {
+    if (!env || !env.ok) {
+        const err = new Error((env && env.reason) || 'Deskly 调用失败');
+        err.code = (env && env.code) || 'EIO';
+        if (err.code === 'EREAUTH' || err.code === 'REAUTH') err.name = 'NeedsReauthError';
+        throw err;
+    }
+    return env.value;
+};
+const normalizePath = (p) => Deskly().fs.paths.normalize(p);
+const moveToTrash = async (p) => unwrap(await Deskly().fs.trash.moveToTrash(p));
+const putBack = async (p) => unwrap(await Deskly().fs.trash.putBack(p));
+const emptyTrash = async () => unwrap(await Deskly().fs.trash.empty());
+const TRASH_ORIGIN_SUFFIX = Deskly().fs.trash.originSuffix;
+const existsAt = async (p) => unwrap(await Deskly().fs.existsAt(p));
+
+const TRASH_ROOT = Deskly().fs.paths.trash; // /废纸篓
 
 /**
  * 内置顶层夹的路径集合（/文档、/下载、/图片、/桌面、/AppData、/废纸篓）。
  * 这些是内核现算、背后没有可删实体的节点；用户建在根上的普通文件夹不在此列，可以删。
  */
-const BUILTIN_TOP_PATHS = new Set(Object.values(OSFS.TOP).map((t) => t.path));
-const isBuiltInTopPath = (path) => BUILTIN_TOP_PATHS.has(OSFS.normalizePath(path));
+const BUILTIN_TOP_PATHS = new Set([
+    Deskly().fs.paths.documents, Deskly().fs.paths.downloads, Deskly().fs.paths.pictures,
+    Deskly().fs.paths.desktop, Deskly().fs.paths.appdata, Deskly().fs.paths.trash,
+]);
+const isBuiltInTopPath = (path) => BUILTIN_TOP_PATHS.has(normalizePath(path));
 
 const FinderContextMenu = (() => {
     let _createContextMenu = null, onOpenEntry = null, onRefresh = null, onCreateFolder = null;
@@ -65,7 +81,7 @@ const FinderContextMenu = (() => {
     /** 当前目录是不是 /废纸篓。 @returns {boolean} */
     function inTrash() {
         const cur = FinderState.getState().currentPath;
-        return OSFS.normalizePath(cur || '/') === TRASH_ROOT;
+        return normalizePath(cur || '/') === TRASH_ROOT;
     }
 
     /** 清倒确认：__dialog.confirm 未就绪（裸页单测）时直接执行，不把用户卡在没反应。 */
@@ -73,8 +89,9 @@ const FinderContextMenu = (() => {
         const dialog = window.__dialog;
         if (dialog && typeof dialog.confirm === 'function') {
             const ok = await dialog.confirm(
-                i18n.t('finder.emptyTrash', '清倒废纸篓...'),
-                i18n.t('finder.emptyTrashConfirm', '要永久删除废纸篓里的所有项目吗？此操作无法撤销。'));
+                i18n.t('finder.emptyTrash', '清倒废纸篓…'),
+                i18n.t('finder.emptyTrashConfirm', '废纸篓里的项目将被永久删除，无法撤销。'),
+                { danger: true });
             if (!ok) return;
         }
         try {
@@ -101,13 +118,13 @@ const FinderContextMenu = (() => {
         const items = [
             { label: i18n.t('common.open', '打开'), action: () => onOpenEntry?.(entry) },
             { type: 'separator' },
-            { label: i18n.t('finder.showInfo', '显示简介'), disabled: true },
+            { label: i18n.t('finder.showInfo', '显示简介'), action: () => Deskly().ui.showGetInfo([entry]) },
         ];
         if (isInTrash(entry)) {
             // P0-4：废纸篓里的条目给「放回原处」（有溯源伴生才可用，拖入的原生文件没有）；
             // 不提供「删除」——在废纸篓里只能清倒，与 macOS 一致。
             let hasOrigin = false;
-            try { hasOrigin = await OSFS.exists(entry.path + TRASH_ORIGIN_SUFFIX); } catch { hasOrigin = false; }
+            try { hasOrigin = await existsAt(entry.path + TRASH_ORIGIN_SUFFIX); } catch { hasOrigin = false; }
             items.push({ type: 'separator' });
             items.push({
                 label: i18n.t('finder.putBack', '放回原处'),
@@ -127,7 +144,7 @@ const FinderContextMenu = (() => {
 
     /** 条目是否位于 /废纸篓 内（含直接子项）。 @param {object} entry @returns {boolean} */
     function isInTrash(entry) {
-        const p = OSFS.normalizePath(entry.path || '');
+        const p = normalizePath(entry.path || '');
         return p === TRASH_ROOT || p.startsWith(TRASH_ROOT + '/');
     }
 

@@ -41,10 +41,6 @@ function scheduleIdle(fn, timeout = 800) {
     }
 }
 
-// 顶栏应用名标签的 i18n 键映射。
-// 应用菜单标题的本地化：改由 app-registry.displayNameFor 承担，只对内核 `apps.*`
-// 里登记过的内置应用生效，第三方插件名没有词条就原样输出（见 buildAppMenu 处）。
-
 // 顶层菜单文本键映射（用于应用菜单国际化）
 const MENU_KEYS = {
     "应用": "finderbar.app",
@@ -93,7 +89,7 @@ const SUB_MENUS = {
             { label: "粘贴", shortcut: "⌘V", disabled: true },
             { label: "全选", shortcut: "⌘A", disabled: true },
             { separator: true },
-            { label: "显示简介", shortcut: "⌘I", disabled: true },
+            { label: "显示简介", shortcut: "⌘I", cmd: "finderShowInfo" },
         ],
         "显示": [
             { label: "以图标方式", shortcut: "⌘1", cmd: "finderViewMode('icon')" },
@@ -189,9 +185,8 @@ const SUB_MENUS = {
             { label: "粘贴", shortcut: "⌘V", disabled: true },
             { label: "全选", shortcut: "⌘A", disabled: true },
         ],
-        // 「显示」不再写死在这里：商店的分类与安装动作由 mods/app-store/manifest.json 的
-        // menus 声明并交给插件自己实现。旧那三行占位（仅已安装 / 仅可更新 / 显示全部）
-        // 全是 disabled:true 的装饰，其中「仅可更新」对应的「待更新」分类本身就没有实现。
+        // 「显示」不再写死：商店分类与安装动作由 mods/app-store/manifest.json 的 menus 声明并实现；
+        // 旧三行占位全是 disabled 装饰（「仅可更新」对应的分类本身未实现）。
         "窗口": [
             { label: "最小化", shortcut: "⌘M", cmd: "minimizeActiveWindow()" },
             { label: "缩放", cmd: "toggleActiveWindowStretch()" },
@@ -269,9 +264,7 @@ const SUB_MENUS = {
     },
 };
 
-/**
- * 应用顶层菜单列表（保持顺序，用于渲染顶栏左侧菜单）。
- */
+/** 应用顶层菜单列表（保持顺序，用于渲染顶栏左侧菜单）。 */
 export let appMenu = {
     "访达": ["文件", "编辑", "显示", "前往", "窗口", "帮助"],
     "系统设置": ["编辑", "显示", "窗口", "帮助"],
@@ -457,12 +450,32 @@ export function getShortcutMap() {
  * 「调试」不进任何一张菜单表，由 applyDeveloperMenu 按设置注入或摘除。
  * @returns {{order: string[], defs: Object}} 顶层菜单标题顺序与各项定义
  */
+/**
+ * FS-03 补充：把当前全屏空间里的窗口追加到「窗口」菜单末尾（macOS 在「窗口」
+ * 菜单里列出各全屏空间，点一项即切过去）。没有全屏窗口时菜单保持一字不动。
+ * @param {{order: string[], defs: Object}} menus applyDeveloperMenu 的结果
+ * @returns {{order: string[], defs: Object}}
+ */
+function withSpacesMenu(menus) {
+    const api = globalThis.__wmApi;
+    if (!api || typeof api.spacesList !== "function" || !menus.defs["窗口"]) return menus;
+    let list = [];
+    try { list = api.spacesList(); } catch { return menus; }
+    if (!list.length) return menus;
+    const items = menus.defs["窗口"].slice();
+    if (items.length && !items[items.length - 1].separator) items.push({ separator: true });
+    list.forEach((space) => {
+        items.push({ label: space.name, cmd: () => api.focusWindowById(space.id) });
+    });
+    return { order: menus.order, defs: { ...menus.defs, "窗口": items } };
+}
+
 function getMenusForApp(app) {
     const base = appMenu[app]
         ? { order: appMenu[app], defs: SUB_MENUS[app] || {} }
         : { order: DEFAULT_APP_MENU, defs: DEFAULT_SUB_MENU };
     const fromManifest = getManifestMenus(app);
-    if (!fromManifest) return applyDeveloperMenu(base.order, base.defs);
+    if (!fromManifest) return withSpacesMenu(applyDeveloperMenu(base.order, base.defs));
     const order = base.order.slice();
     const defs = { ...base.defs };
     fromManifest.order.forEach((title) => {
@@ -470,7 +483,7 @@ function getMenusForApp(app) {
         // 新标题插在末项（「帮助」）之前，保持 macOS 的菜单收尾习惯
         if (!order.includes(title)) order.splice(Math.max(order.length - 1, 0), 0, title);
     });
-    return applyDeveloperMenu(order, defs);
+    return withSpacesMenu(applyDeveloperMenu(order, defs));
 }
 
 // P0-5：wifi 装饰图已移除（无监听的死图），真实 Wi-Fi 状态在控制中心面板
@@ -535,7 +548,7 @@ function initFinderbar() {
 
 /**
  * Siri 顶栏图标：冷加载约定（dev/devdoc/cold-load.md「启动时只注册清单」）——
- * finderbar 此前在页面加载即 import 其脚本（450+ 行 + vendored three.js），
+ * finderbar 此前在页面加载即 import 其脚本（渲染层 + 设置联动数百行），
  * 每个新标签页都在为此付费。siri 已入 plugin-manager BUILTIN_IDS，
  * 首次点击图标时才 import 脚本；图标显示不等待任何脚本加载。
  *
@@ -602,20 +615,6 @@ function shortcutHintsEnabled() {
 }
 
 /**
- * 生成一条菜单项：文本 + 右对齐的快捷键提示。
- *
- * shortcut 过去只被读取、从不渲染，是个纯粹的占位字段。这里把它显示出来，
- * 但要注意：**显示不等于已绑定**。全站真正接了按键的只有 ⌃⌘F（window.js 里
- * 显式监听）与红绿灯/弹层自己的几个键；⌘W、⌘M 一类是浏览器保留快捷键，
- * 新标签页收不到。因此这些提示的作用与 macOS 上一样是「照着按」的视觉约定，
- * 用 keyboard.menuShortcuts 可以整组关掉，不想要假提示的用户能关掉它。
- *
- * 布局用行内样式而不是新建样式表：`.menu p` 的字号/配色来自 ui.css 的既有规则，
- * 这里只加一条横向 flex 与右推，不新增任何选择器，也就不与别的层的规则打架。
- * @param {object} item 菜单项定义
- * @returns {HTMLElement} 菜单项段落
- */
-/**
  * 置灰菜单项的归类说明（F-05）。
  *
  * 为什么按文案归类而不是逐项写 reason：同一条文案在多个应用菜单里语义完全一致
@@ -634,7 +633,6 @@ const DISABLED_REASONS = {
     "拷贝": { type: "planned", noteKey: "menu.note.editOps" },
     "粘贴": { type: "planned", noteKey: "menu.note.editOps" },
     "全选": { type: "planned", noteKey: "menu.note.editOps" },
-    "显示简介": { type: "planned", noteKey: "menu.note.getInfo" },
     "隐藏工具栏": { type: "planned", noteKey: "menu.note.toolbar" },
     "工具栏": { type: "planned", noteKey: "menu.note.toolbar" },
     "自定义工具栏...": { type: "planned", noteKey: "menu.note.toolbar" },
@@ -701,12 +699,48 @@ document.addEventListener("keydown", (event) => {
 }, true);
 window.addEventListener("blur", hideReasonHint);
 
+/**
+ * 生成一条菜单项：文本 + 右对齐的快捷键提示。
+ *
+ * shortcut 过去只被读取、从不渲染，是个纯粹的占位字段。这里把它显示出来，
+ * 但要注意：**显示不等于已绑定**。全站真正接了按键的只有 ⌃⌘F（window.js 里
+ * 显式监听）与红绿灯/弹层自己的几个键；⌘W、⌘M 一类是浏览器保留快捷键，
+ * 新标签页收不到。因此这些提示的作用与 macOS 上一样是「照着按」的视觉约定，
+ * 用 keyboard.menuShortcuts 可以整组关掉，不想要假提示的用户能关掉它。
+ *
+ * 布局用行内样式而不是新建样式表：`.menu p` 的字号/配色来自 ui.css 的既有规则，
+ * 这里只加一条横向 flex 与右推，不新增任何选择器，也就不与别的层的规则打架。
+ * @param {object} item 菜单项定义
+ * @returns {HTMLElement} 菜单项段落
+ */
+/**
+ * 当前顶层窗口的状态快照（FS-12/13 的菜单文案与禁用态判据）。
+ * window-manager 未求值时按无窗口处理。
+ */
+function topWindowState() {
+    const wm = window.__wmApi;
+    if (!wm || typeof wm.getTopWindow !== "function" || typeof wm.stateOf !== "function") return null;
+    const top = wm.getTopWindow();
+    return top ? wm.stateOf(top) : null;
+}
+
 function buildMenuItem(item) {
     const p = document.createElement("p");
     p.style.cssText = "display:flex;align-items:center;";
     const label = document.createElement("span");
     label.className = "label";
-    label.textContent = item.i18nKey ? i18n.t(item.i18nKey, item.label) : item.label;
+    // FS-12：菜单文案随窗口状态切换（进入/退出全屏幕）
+    let text = item.i18nKey ? i18n.t(item.i18nKey, item.label) : item.label;
+    if (item.cmd === "toggleActiveWindowFullscreen()") {
+        const top = topWindowState();
+        if (top && top.fullscreen) text = i18n.t("window.exitFullscreen", "退出全屏");
+    }
+    // FS-13：全屏空间内没有平铺/缩放概念，相应项置灰（保留「退出全屏」可用）
+    if (/^tileActiveWindow\(|^toggleActiveWindowStretch\(\)/.test(item.cmd || "")) {
+        const top = topWindowState();
+        if (top && top.fullscreen) item = { ...item, disabled: true };
+    }
+    label.textContent = text;
     p.appendChild(label);
     if (item.shortcut && shortcutHintsEnabled()) {
         const hint = document.createElement("span");
@@ -732,10 +766,12 @@ function buildMenuItem(item) {
         p.addEventListener("focus", () => showReasonHint(p, reason));
         p.addEventListener("blur", hideReasonHint);
     }
-    // 绑定点击：字符串命令通过全局 window 执行，函数直接调用
     if (!item.disabled && item.cmd) {
         p.addEventListener("click", (e) => {
             e.stopPropagation();
+            // 与静态菜单项（ui/menu.js clickMenuItem）同一条路径：先关菜单再执行，
+            // 不触发菜单重建的命令（前往文件夹等）执行完菜单不能悬留（BUG-03）。
+            closeAllMenus();
             dispatchMenuCommand(item.cmd);
         });
     }
@@ -894,6 +930,14 @@ window.addEventListener("languagechange", () => {
     updateTime();
 });
 
+// FS-12/13：全屏进出后重建当前应用菜单（「进入/退出全屏」文案与平铺项禁用态随状态切换）。
+document.addEventListener("window:fullscreen", () => {
+    const activeApp = document.querySelector("#finderbar p.appname");
+    if (activeApp) {
+        updateMenu(activeApp.dataset ? (activeApp.dataset.appKey || activeApp.textContent) : activeApp.textContent);
+    }
+});
+
 function updateControl() {
     appControl.forEach((control) => {
         let nowControl = document.createElement("img");
@@ -902,9 +946,7 @@ function updateControl() {
     });
 }
 
-/* -------------------------------------------------------------------------- *
- * 插件顶栏图标注册接口：允许插件动态注册/注销右侧自定义图标。
- * -------------------------------------------------------------------------- */
+// ---- 插件顶栏图标注册接口：允许插件动态注册/注销右侧自定义图标 ----
 
 /**
  * 插件图标注册表：id → { icon, onClick, order, element }
@@ -1016,14 +1058,6 @@ export function unregisterFinderbarIcon(id) {
     return true;
 }
 
-/**
- * 获取当前已注册的插件图标 ID 列表（调试用）。
- * @returns {string[]}
- */
-export function getRegisteredFinderbarIcons() {
-    return Array.from(pluginIcons.keys());
-}
-
 export let parentMenuStates = {};
 
 /**
@@ -1048,7 +1082,11 @@ function resetMenuHandle() {
 
     subMenus.forEach(subMenu => {
         const subApp = subMenu.getAttribute("app");
-        const curApp = (document.querySelectorAll(".finderbar .left p")[1] || {}).innerHTML;
+        // 身份比对必须用 dataset.appKey（中文身份键），不能拿译后显示名当键（BUG-01）：
+        // innerHTML 是 displayNameFor 的译文，英文界面下与 app 属性永不相等，
+        // 整个下拉菜单绑定被 return 跳过。
+        const appEl = document.querySelector("#finderbar p.appname");
+        const curApp = appEl && appEl.dataset ? (appEl.dataset.appKey || "") : "";
         const nomatch = subMenu.getAttribute("nomatchapp");
         if (curApp && curApp !== subApp) {
             if (!nomatch) return;
@@ -1219,9 +1257,7 @@ document.addEventListener("visibilitychange", () => {
 initDebug();
 initFinderbar();
 
-/* -------------------------------------------------------------------------- *
- * 菜单命令实现：挂在 window.__menuActions 上，供 dispatchMenuCommand 分发。
- * -------------------------------------------------------------------------- */
+// ---- 菜单命令实现：挂在 window.__menuActions 上，供 dispatchMenuCommand 分发 ----
 
 /**
  * 使用手册的目标位置：帮助菜单只写一个键，章节号与小节标题集中在这里。
@@ -1254,11 +1290,7 @@ function openManual(target = "home") {
     tick();
 }
 
-/**
- * 开关启动台。模块未加载时先按应用打开（首次按键也能用），
- * 已加载时直接驱动插件暴露的开关状态机。
- * @returns {void}
- */
+/** 开关启动台：插件已加载则驱动其暴露的状态机，未加载则按应用名打开（首次按键也能用）。 */
 function toggleLaunchpad() {
     const lp = window.__launchpad;
     if (lp && typeof lp.isOpen === "function") {
@@ -1270,9 +1302,7 @@ function toggleLaunchpad() {
     openAppByName("启动台");
 }
 
-/**
- * 根据应用显示名启动该应用（用于「文件 → 新建访达窗口」等）。
- */
+/** 根据应用显示名启动该应用（用于「文件 → 新建访达窗口」等）。 */
 function openAppByName(name) {
     // 全部应用现均经插件注册表解析（Safari 已迁为插件，assets/apps/ 目录已清空）；
     // 旧的 `moduleItems.create('./assets/apps/<name>.html')` 回退分支会去 fetch
@@ -1280,11 +1310,24 @@ function openAppByName(name) {
     if (window.__getPluginByName) {
         const plugin = window.__getPluginByName(name);
         if (plugin) {
-            // 用 openApp 而非 load：按名称解析 appId，
-            // 多应用插件的子应用（如「文稿」）才不会永远落到套件的首个应用。
-            import("./plugin-manager.js").then(({ openApp }) => {
-                openApp(name, { centered: true });
-            }).catch((err) => writeLog("error", `按名称启动应用失败：${name}`, err));
+            Promise.all([import("./plugin-manager.js"), import("./app-registry.js")])
+                .then(async ([pm, registry]) => {
+                    // 系统设置 / App Store 被禁用后从程序坞与启动台消失，但苹果菜单是
+                    // 常驻入口：在这里提供「重新启用并打开」，避免两个都禁用后无路可走。
+                    if (!registry.isPluginEnabled(plugin.id)) {
+                        const dialog = window.__dialog;
+                        if (!dialog || typeof dialog.confirm !== "function") return;
+                        const ok = await dialog.confirm("应用已禁用", `「${name}」已禁用。要重新启用并打开吗？`);
+                        if (!ok) return;
+                        const { setEnabled } = await import("./store-api.js");
+                        const res = setEnabled(plugin.id, true);
+                        if (!res.ok) { dialog.alert("无法启用", res.reason || ""); return; }
+                    }
+                    // 用 openApp 而非 load：按名称解析 appId，
+                    // 多应用插件的子应用（如「文稿」）才不会永远落到套件的首个应用。
+                    pm.openApp(name, { centered: true });
+                })
+                .catch((err) => writeLog("error", `按名称启动应用失败：${name}`, err));
         }
     }
 }
@@ -1316,36 +1359,30 @@ function minimizeActiveWindow() { runOnTopWindow((wm, top) => wm.toggleMinimize(
 /** 将当前活动窗口平铺到指定区域。 */
 function tileActiveWindow(region) { runOnTopWindow((wm, top) => wm.tile(top, region)); }
 
-/** 查找指定 id 的窗口元素。 */
 function findWindowById(id) {
     return document.getElementById(id);
 }
 
-/** Safari：新建标签页。 */
 function safariNewTab() {
     const win = findWindowById('Safari浏览器');
     if (win && win._safariNewTab) win._safariNewTab();
 }
 
-/** Safari：关闭当前标签页。 */
 function safariCloseTab() {
     const win = findWindowById('Safari浏览器');
     if (win && win._safariCloseTab) win._safariCloseTab();
 }
 
-/** Safari：显示历史记录面板。 */
 function safariShowHistory() {
     const win = findWindowById('Safari浏览器');
     if (win && win._safariShowHistory) win._safariShowHistory();
 }
 
-/** Safari：切换当前页书签。 */
 function safariToggleBookmark() {
     const win = findWindowById('Safari浏览器');
     if (win && win._safariToggleBookmark) win._safariToggleBookmark();
 }
 
-/** Safari：清除历史记录。 */
 function safariClearHistory() {
     const win = findWindowById('Safari浏览器');
     if (win && win._safariClearHistory) win._safariClearHistory();
@@ -1357,37 +1394,21 @@ function safariCall(method) {
     if (win && typeof win[method] === 'function') win[method]();
 }
 
-/** Safari：显示书签侧栏。 */
 function safariShowBookmarks() { safariCall('_safariShowBookmarks'); }
-/** Safari：显示阅读列表侧栏。 */
 function safariShowReadingList() { safariCall('_safariShowReading'); }
-/** Safari：显示/隐藏侧栏。 */
 function safariToggleSidebar() { safariCall('_safariToggleSidebar'); }
-/** Safari：回到起始页。 */
 function safariShowStartPage() { safariCall('_safariShowStartPage'); }
-/** Safari：重新载入。 */
 function safariReload() { safariCall('_safariReload'); }
-/** Safari：后退。 */
 function safariGoBack() { safariCall('_safariGoBack'); }
-/** Safari：前进。 */
 function safariGoForward() { safariCall('_safariGoForward'); }
-/** Safari：页面放大。 */
 function safariZoomIn() { safariCall('_safariZoomIn'); }
-/** Safari：页面缩小。 */
 function safariZoomOut() { safariCall('_safariZoomOut'); }
-/** Safari：实际大小。 */
 function safariZoomReset() { safariCall('_safariZoomReset'); }
-/** Safari：标签页概览。 */
 function safariTabOverview() { safariCall('_safariToggleTabOverview'); }
-/** Safari：共享当前网页。 */
 function safariShare() { safariCall('_safariShare'); }
-/** Safari：在默认浏览器中打开。 */
 function safariOpenExternal() { safariCall('_safariOpenExternal'); }
-/** Safari：把当前网页加入阅读列表。 */
 function safariAddReading() { safariCall('_safariAddReading'); }
-/** Safari：恢复刚关闭的标签页。 */
 function safariReopenClosedTab() { safariCall('_safariReopenClosedTab'); }
-/** Safari：聚焦地址栏。 */
 function safariFocusAddress() { safariCall('_safariFocusAddress'); }
 
 /**
@@ -1405,8 +1426,9 @@ async function emptyTrash() {
     const dialog = window.__dialog;
     if (dialog && typeof dialog.confirm === "function") {
         const ok = await dialog.confirm(
-            i18n.t("finder.emptyTrash", "清倒废纸篓..."),
-            i18n.t("finder.emptyTrashConfirm", "要永久删除废纸篓里的所有项目吗？此操作无法撤销。"));
+            i18n.t("finder.emptyTrash", "清倒废纸篓…"),
+            i18n.t("finder.emptyTrashConfirm", "废纸篓里的项目将被永久删除，无法撤销。"),
+            { danger: true });
         if (!ok) return;
     }
     const { emptyTrash: emptyAll } = await import("./trash.js");
@@ -1480,6 +1502,13 @@ function finderNewFolder() {
     dispatchFinderCommand('new-folder');
 }
 
+/**
+ * 显示简介（访达内，⌘I）：交给访达窗口按当前选中项打开内核的单例简介面板。
+ */
+function finderShowInfo() {
+    dispatchFinderCommand('get-info');
+}
+
 // 导出到全局，供 ui/menuCommands.js 按命令名分发（不做代码求值，命令即注册表键名）。
 // 用合并而不是整体赋值：debug.js 在更早的时机往同一张表里并进了「调试」菜单的命令，
 // 覆盖式赋值会把它们抹掉（菜单还在、点击报「命令未注册」）。
@@ -1501,6 +1530,7 @@ window.__menuActions = {
     finderToggleTabBar,
     finderGoToFolder,
     finderNewFolder,
+    finderShowInfo,
     safariNewTab,
     safariCloseTab,
     safariShowHistory,

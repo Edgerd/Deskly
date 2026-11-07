@@ -1,8 +1,5 @@
 /**
- * finder-group.js — 访达分组逻辑
- *
- * 按「种类 / 日期 / 大小 / 标签」将当前目录条目分组，供四种视图渲染分组头部。
- * 分组为 macOS 15「排列」功能的等价呈现。
+ * finder-group.js — 按「种类 / 日期 / 大小 / 标签」分组当前目录条目，供四种视图渲染分组头部（macOS 15「排列」）。
  */
 
 import { i18n } from '../../src/javascripts/i18n.js';
@@ -91,7 +88,14 @@ function bucketLabel(by, key) {
     }
     if (by === 'tag') {
         if (key === '__none__') return i18n.t('finder.tags.none', '未标记');
-        return i18n.t('finder.tags.' + colorKey(key), key);
+        // 标签色只有七种，键表必须静态可枚举：动态拼键（'finder.tags.' + x）会被
+        // static-check 的动态键规则标记（漏键高发形态），也逃过四语键集比对。
+        const color = colorKey(key);
+        const tagKeys = {
+            red: 'finder.tags.red', orange: 'finder.tags.orange', yellow: 'finder.tags.yellow',
+            green: 'finder.tags.green', blue: 'finder.tags.blue', purple: 'finder.tags.purple', gray: 'finder.tags.gray',
+        };
+        return tagKeys[color] ? i18n.t(tagKeys[color], key) : key;
     }
     return key;
 }

@@ -1,16 +1,20 @@
 /**
- * finder-actions.js — 访达工具栏弹层与操作
- *
- * 负责「分组 / 共享 / 标记 / 更多」四个按钮的下拉弹层，以及更多菜单中的
- * 新建文件夹、排序、显示标签栏、刷新、重新授权等操作。全部为 macOS 15 真实功能。
+ * finder-actions.js — 访达工具栏「分组 / 共享 / 标记 / 更多」弹层与更多菜单操作（新建文件夹 / 排序 / 标签栏 / 刷新 / 重新授权）。
  */
 
 import { i18n } from '../../src/javascripts/i18n.js';
-import { VFS } from '../../src/javascripts/vfs.js';
-import { openPopover, closeAllPopovers } from '../../src/javascripts/ui/popover.js';
 import { FinderState } from './finder-state.js';
 import { FinderLayout } from './finder-layout.js';
 import { FinderTags } from './finder-tags.js';
+
+/* Q6 收口：只走 Deskly 公开 API（vfs 门面 + UI 原语） */
+const Deskly = () => window.Deskly;
+const VFS = {
+    getAuthStatus: () => Deskly().vfs.authStatus(),
+    whereStored: () => Deskly().vfs.whereStored(),
+};
+const openPopover = (...args) => Deskly().ui.openPopover(...args);
+const closeAllPopovers = () => Deskly().ui.closeAllPopovers();
 
 const FinderActions = (() => {
     let cb = {}; // 外部回调
@@ -53,16 +57,13 @@ const FinderActions = (() => {
         bindMorePop();
         // 弹层的「点外部 / Esc 关闭」不再自己挂 document 监听：见 ui/popover.js
 
-        // 标记弹层由 FinderTags 渲染
         const tagPop = document.getElementById('pop-tag');
         if (tagPop) FinderTags.renderTagPop(tagPop);
 
-        // 分组高亮随状态同步
         track(FinderState.on('group-changed', syncGroupActive));
         // 选中项变化后标记弹层的勾选态失效，重开时会重建，无需常驻监听
     }
 
-    /** 绑定三个触发按钮 */
     function bindTriggers() {
         const group = document.getElementById('action-group');
         const share = document.getElementById('action-share');
@@ -107,7 +108,6 @@ const FinderActions = (() => {
         item.textContent = `${action} · ${whereText}`;
     }
 
-    /** 绑定分组弹层项 */
     function bindGroupPop() {
         const pop = document.getElementById('pop-group');
         if (!pop) return;
@@ -146,7 +146,6 @@ const FinderActions = (() => {
         }
     }
 
-    /** 绑定更多弹层项 */
     function bindMorePop() {
         const pop = document.getElementById('pop-more');
         if (!pop) return;
@@ -162,7 +161,6 @@ const FinderActions = (() => {
         track(() => pop.removeEventListener('click', onClick));
     }
 
-    /** 处理更多菜单动作 */
     async function handleMoreAction(action, item) {
         switch (action) {
             case 'new-folder':
@@ -207,11 +205,8 @@ const FinderActions = (() => {
     }
 
     /** 切换弹层（同一时间仅一个）。
-     * 弹层经 src/javascripts/ui/popover.js 搬进 body 上的浮出层显示：`.window` 样式表里
-     * 有 overflow:hidden，本窗口根虽然刻意不再声明它，但那条 0,1,0 的声明没人压得住，
-     * 弹层照样被裁 —— 旧版把它挪到 .finder-clip 之外只是躲过了内层裁剪容器。
-     * 浮层载体自动带上窗口根的 finder 类（--finder-* 令牌定义在 :root，本来就继承得到），
-     * 所以 .tb-pop / .pop-item 这些选择器照旧命中。 */
+     * 弹层由 ui/popover.js 搬进 body 浮出层：`.window{overflow:hidden}` 是 0,1,0 声明，本窗口根压不掉，
+     * 弹层留在窗口内照样被裁；浮层载体带上窗口根的 finder 类，.tb-pop / .pop-item 等选择器照旧命中。 */
     function togglePop(id, trigger) {
         const pop = document.getElementById(id);
         if (!pop) return;
@@ -232,7 +227,6 @@ const FinderActions = (() => {
         openPop = null;
     }
 
-    /** 简易 toast 提示 */
     function toast(msg) {
         let el = document.getElementById('finder-toast');
         if (!el) {

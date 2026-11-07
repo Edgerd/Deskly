@@ -12,6 +12,7 @@
  */
 
 import { OSFS } from "./osfs.js";
+import { FS } from "./fs/index.js";
 
 /** 旧版「桌面」虚拟文件的行（`{path, name, content}`）由 osfs 的 rowContent 双读兼容，
  *  路径也仍在同一棵树上（/桌面 至今是根目录下的顶层夹），所以这里不需要迁移步骤。 */
@@ -205,7 +206,9 @@ async function list(path) {
     if (norm === "/") return listRoot();
     if (norm === RECENT_PATH) return getRecentFiles(50);
     if (norm === BOOKMARKS_PATH || norm.startsWith(`${BOOKMARKS_PATH}/`)) return getBookmarkChildren(norm);
-    return OSFS.list(norm);
+    // 隐藏名统一在门面过滤：.DS_Store（桌面坐标 sidecar）与原子写暂存件
+    // 对访达/桌面/搜索永远不可见（Q1 决策），判定口径唯一来自 FS.isHiddenName。
+    return (await OSFS.list(norm)).filter((e) => !FS.isHiddenName(e.name));
 }
 
 async function readFile(path) {

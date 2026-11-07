@@ -1,12 +1,6 @@
 /**
- * finder-tags.js — 访达标签管理（macOS 15 七色标签）
- *
- * - 侧边栏「标签」分区：七色圆点，点击按颜色过滤当前目录。
- * - 标记弹层：对选中条目切换七色标签，localStorage 持久化。
- *
- * 标签以路径为键存放在插件私有 localStorage（VFS 无标注能力，见改造需求说明）。
- * 读取走内存缓存：一次渲染会逐条目取标签，若每次都 getItem + JSON.parse，
- * 500 个文件的目录里按一次键就要解析上千次。写操作后立即失效缓存。
+ * finder-tags.js — 七色标签：侧边栏分区按色过滤、标记弹层对选中条目切换标签，按路径存 localStorage（VFS 无标注能力）。
+ * 读取走内存缓存：渲染逐条目取标签，若每次 getItem + JSON.parse，500 个文件的目录一次按键要解析上千次；写后立即失效缓存。
  */
 
 import { i18n } from '../../src/javascripts/i18n.js';
@@ -177,9 +171,6 @@ const FinderTags = (() => {
         return COLOR_KEY_MAP[name] || name;
     }
 
-    /**
-     * 初始化。
-     */
     function init() {
         dispose();
         // 常驻单例：重开窗口时丢弃上一次缓存，读取磁盘上的最新映射

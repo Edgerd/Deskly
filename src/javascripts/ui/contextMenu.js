@@ -7,9 +7,8 @@ import { appendDesktopItem, makeDraggable } from "./desktopItems.js";
 
 /**
  * 摘掉菜单挂载的 document 级关闭监听。
- * 旧实现只在「点击菜单外部」时注销；若菜单是被下一次 createContextMenu 顶替掉
- * 的、或被菜单项自身 action 关掉的，监听器会永久留在 document 上，
- * 并通过闭包持有已经脱离文档的菜单 DOM。
+ * 菜单被下一次 createContextMenu 顶替、或被菜单项 action 关掉时也必须注销，
+ * 否则监听器永久挂在 document 上，闭包钉住已脱离文档的菜单 DOM。
  * @param {HTMLElement} menu 菜单元素
  */
 function detachMenu(menu) {
@@ -38,10 +37,7 @@ function removeMenu(menu) {
 
 /**
  * 清理分隔符：去掉开头、结尾以及连续出现的分隔符。
- *
- * 调用方按「打开 / 退出 → 保留 → 选项」分组拼菜单，不同状态下中间组可能整个为空，
- * 手写分隔符很容易留下首尾悬空或两条连在一起。渲染前统一收敛一次，
- * 所有右键菜单（不只程序坞）都得到同一套干净的分隔线。
+ * 调用方按组拼菜单时中间组可能整个为空，容易留下悬空或相连的分隔符，渲染前统一收敛。
  * @param {Array<object>} items 原始菜单项
  * @returns {Array<object>} 清理后的菜单项
  */
@@ -89,11 +85,23 @@ export function createContextMenu(x, y, items) {
             header.textContent = item.label;
             header.classList.add("menu-header");
             header.setAttribute("disabled", "");
+            if (item.altOnly) header.classList.add("menu-alt-only");
             menu.appendChild(header);
         } else {
             const menuItem = document.createElement("p");
-            menuItem.textContent = item.label;
+            // 平铺示意图标列（TL-04）：图标一律是调用方内置的受控 SVG 常量，
+            // 不接收外部输入；有图标项统一留 16px 图标列对齐。
+            if (item.icon) {
+                const icon = document.createElement("span");
+                icon.classList.add("menu-icon");
+                icon.innerHTML = item.icon;
+                icon.setAttribute("aria-hidden", "true");
+                menuItem.appendChild(icon);
+            }
+            menuItem.appendChild(document.createTextNode(item.label));
             if (item.disabled) menuItem.setAttribute("disabled", "");
+            // ⌥ 动态项（TL-09）：菜单打开期间按住 Option 才显示
+            if (item.altOnly) menuItem.classList.add("menu-alt-only");
             // 勾选项：左侧统一预留 ✓ 列，未选中时隐藏勾，避免行文本左右跳。
             if (item.checked !== undefined) {
                 menuItem.classList.add("menu-check");

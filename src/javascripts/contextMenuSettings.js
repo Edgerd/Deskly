@@ -36,7 +36,8 @@ function safeSetItem(key, value) {
  * @returns {boolean} 是否启用
  */
 export function isNativeContextMenuEnabled() {
-    return localStorage.getItem(KEY) === "on";
+    // 存储访问本身抛 SecurityError 的环境（禁用 Cookie/存储的嵌入上下文）里按默认关闭处理（BUG-42）
+    try { return localStorage.getItem(KEY) === "on"; } catch { return false; }
 }
 
 /**

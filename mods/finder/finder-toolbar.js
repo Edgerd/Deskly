@@ -1,8 +1,5 @@
 /**
- * finder-toolbar.js — 访达合并标题栏管理
- *
- * 绑定前进/后退、四个视图按钮；同步导航禁用态与视图高亮；
- * 根据当前路径更新居中的窗口标题。
+ * finder-toolbar.js — 合并标题栏：绑定前进/后退与四个视图按钮，同步导航禁用态、视图高亮与居中标题。
  */
 
 import { FinderState } from './finder-state.js';
@@ -51,7 +48,6 @@ const FinderToolbar = (() => {
         track(FinderState.on('locale-changed', () => updateTitle(FinderState.getState().currentPath)));
     }
 
-    /** 绑定事件 */
     function bindEvents() {
         const onBack = () => onGoBack?.();
         const onForward = () => onGoForward?.();

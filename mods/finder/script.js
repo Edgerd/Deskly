@@ -1,18 +1,9 @@
 /**
- * script.js — 访达（Finder）插件入口（macOS 15 还原）
- *
- * 编排各子模块初始化、VFS 渲染调度、打开/预览、授权弹窗与菜单命令。
- * 作为冷加载入口（type="module"），由 plugin-manager 注入并在每次开窗重新执行；
- * 子模块是常驻单例，因此本入口负责：init 起始调用 FinderState.reset()，
- * 窗口关闭（plugin-unload）时逐个调用子模块的 dispose()。
+ * script.js — 访达（Finder）插件入口：编排子模块初始化、VFS 渲染调度、打开/预览、授权弹窗与菜单命令。
+ * 冷加载入口（type="module"），每次开窗重新执行；子模块为常驻单例，故 init 起始调 FinderState.reset()，窗口关闭（plugin-unload）时逐个 dispose()。
  */
 
-import { VFS } from '../../src/javascripts/vfs.js';
-import { OSFS } from '../../src/javascripts/osfs.js';
-import { TRASH_ORIGIN_SUFFIX } from '../../src/javascripts/trash.js';
-import { getAppByExtension, openApp } from '../../src/javascripts/plugin-manager.js';
 import { i18n } from '../../src/javascripts/i18n.js';
-import { createContextMenu } from '../../src/javascripts/ui/contextMenu.js';
 import { FinderState } from './finder-state.js';
 import { FinderLayout } from './finder-layout.js';
 import { FinderSidebar } from './finder-sidebar.js';
@@ -20,10 +11,48 @@ import { FinderToolbar } from './finder-toolbar.js';
 import { FinderTabs } from './finder-tabs.js';
 import { FinderViews } from './finder-views.js';
 import { FinderSearch } from './finder-search.js';
-import { FinderQuickLook } from './finder-quicklook.js';
 import { FinderTags } from './finder-tags.js';
 import { FinderActions } from './finder-actions.js';
 import { FinderContextMenu } from './finder-contextmenu.js';
+
+// ---------- Deskly 门面（Q6 收口：不直接 import 内核模块） ----------
+const Deskly = () => window.Deskly;
+/** 信封 → 值/异常：EREAUTH 还原成 NeedsReauthError 形态，沿用既有按 name 判别的分支。 */
+const unwrap = (env) => {
+    if (!env || !env.ok) {
+        const err = new Error((env && env.reason) || 'Deskly 调用失败');
+        err.code = (env && env.code) || 'EIO';
+        if (err.code === 'EREAUTH' || err.code === 'REAUTH') err.name = 'NeedsReauthError';
+        throw err;
+    }
+    return env.value;
+};
+/** 与旧直连同名的本地门面，调用点零改动 */
+const VFS = {
+    list: async (p) => unwrap(await Deskly().vfs.list(p)),
+    readFile: async (p) => unwrap(await Deskly().vfs.readFile(p)),
+    init: async () => unwrap(await Deskly().vfs.init()),
+    authorize: async () => unwrap(await Deskly().vfs.authorize()),
+    reauthorize: async () => unwrap(await Deskly().vfs.reauthorize()),
+    decline: async () => unwrap(await Deskly().vfs.decline()),
+    getAuthStatus: () => Deskly().vfs.authStatus(),
+    whereStored: () => Deskly().vfs.whereStored(),
+    normalizePath: (p) => Deskly().fs.paths.normalize(p),
+    TOP_FOLDERS: Deskly().vfs.topFolders(),
+    BOOKMARKS_PATH: Deskly().vfs.bookmarksPath(),
+    RECENT_PATH: Deskly().vfs.recentPath(),
+};
+const OSFS = {
+    normalizePath: (p) => Deskly().fs.paths.normalize(p),
+    sanitizeName: (n, fb) => Deskly().fs.paths.sanitizeName(n, fb),
+    joinPath: (a, b) => Deskly().fs.paths.join(a, b),
+    exists: async (p) => unwrap(await Deskly().fs.existsAt(p)),
+    mkdir: async (p) => unwrap(await Deskly().fs.mkdirAt(p)),
+    TOP: { trash: { path: Deskly().fs.paths.trash } },
+};
+const TRASH_ORIGIN_SUFFIX = Deskly().fs.trash.originSuffix;
+const QuickLook = { open: (items, idx) => Deskly().quicklook.open(items, idx), isOpen: () => Deskly().quicklook.isOpen() };
+const createContextMenu = (x, y, items) => Deskly().ui.contextMenu(x, y, items);
 
 // ---------- DOM 引用 ----------
 const finder = document.querySelector('.finder.window');
@@ -33,16 +62,10 @@ const authAllow = document.getElementById('auth-allow');
 const authDeny = document.getElementById('auth-deny');
 
 // 需要常驻释放的子模块（dispose 由各模块自身实现，入口只做统一编排）
-const SUBMODULES = [FinderLayout, FinderSidebar, FinderToolbar, FinderTabs, FinderViews, FinderSearch, FinderQuickLook, FinderTags, FinderActions];
-
-// 图片 / 文本扩展名
-const IMG_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'heic'];
-const TEXT_EXTS = ['txt', 'md', 'json', 'js', 'css', 'html', 'htm', 'xml', 'log', 'ini', 'yaml', 'yml', 'csv', 'py', 'ts'];
+const SUBMODULES = [FinderLayout, FinderSidebar, FinderToolbar, FinderTabs, FinderViews, FinderSearch, FinderTags, FinderActions];
 
 /** 渲染请求序号：只允许最后一次请求落地，慢目录不得覆盖新目录 */
 let renderSeq = 0;
-/** Quick Look 请求序号：晚到的预览结果直接丢弃并回收其对象 URL */
-let qlSeq = 0;
 
 /** @type {Function[]} 本脚本注册的全局监听的释放回调 */
 let disposers = [];
@@ -59,7 +82,6 @@ function dispose() {
     // 不会重来 —— 若这里不推进，上一窗口那条还在 await 的目录请求返回时
     // 「seq === renderSeq」仍然成立，就会把旧目录写进刚 reset() 过的常驻状态里。
     renderSeq++;
-    qlSeq++;
     SUBMODULES.forEach((m) => {
         try { m.dispose(); } catch (err) { console.warn('[finder] 子模块释放失败：', err); }
     });
@@ -169,90 +191,49 @@ async function openEntry(entry, index) {
         return;
     }
     // 按扩展名问路：清单里声明了能打开该格式的应用就交给它，并把 VFS 路径带过去。
-    // 只认应用级 formats（不是插件级那个纯文档字段），且插件必须实现 plugin-app-open；
-    // 没装对应插件时 getAppByExtension 返回 undefined，行为完全退回原来的 Quick Look。
-    const rec = getAppByExtension(getExt(entry.name));
-    if (rec) {
-        openApp(rec.appId, { file: entry.path }).catch((err) => {
+    // 只认应用级 formats（不是插件级那个纯文档字段）；没有候选应用时行为退回 Quick Look。
+    const candidates = await Deskly().openWith.appsFor(getExt(entry.name)).then((env) => (env && env.ok ? env.value : []));
+    if (candidates.length) {
+        try {
+            unwrap(await Deskly().openWith.open(entry.path, candidates[0].appId));
+        } catch (err) {
             console.warn('[finder] 交给应用打开失败，回退预览：', entry.path, err);
-            return openQuickLook(entry, index);
-        });
+            await openQuickLook(entry, index);
+        }
         return;
     }
     await openQuickLook(entry, index);
 }
 
 /**
- * Quick Look 打开条目（图片 / 文本 / 不支持类型）。
+ * Quick Look 打开条目：预览宿主已上移为内核单例（core/quicklook.js），
+ * 访达只负责把「渲染后列表」交过去 —— 顺序与过滤和列表一致，「1 / N」与 ←/→ 才对得上。
  * @param {object} entry
- * @param {number} [index] 条目在「渲染后列表」中的序号（决定计数与上下翻页）
+ * @param {number} [index] 条目在渲染序列中的序号
  */
 async function openQuickLook(entry, index) {
-    const seq = ++qlSeq;
-    const ext = getExt(entry.name);
-    // 用渲染后的列表（已过滤 + 已排序）而不是原始 entries，否则「1 / N」与 ←/→ 都对不上
     const rendered = FinderViews.getRenderedEntries();
     const allItems = rendered.length ? rendered : FinderState.getState().entries;
-    const found = FinderViews.indexOfPath(entry.path);
-    const idx = Number.isInteger(index) && index >= 0 ? index : (found >= 0 ? found : 0);
+    // 书签没有文件实体（core 按路径取 stat），其余类型都交给 provider 体系
+    const items = allItems.filter((en) => en.type !== 'bookmark');
+    const found = items.findIndex((en) => en.path === entry.path);
+    const idx = found >= 0 ? found : 0;
+    await QuickLook.open(items.map((en) => en.path), idx);
+}
 
-    let content = '';
-    let objectUrl = null;
-
-    if (IMG_EXTS.includes(ext)) {
-        const file = await readFileSafe(entry.path);
-        if (file) {
-            objectUrl = URL.createObjectURL(file);
-            content = `<img src="${escapeHtml(objectUrl)}" alt="${escapeHtml(entry.name)}" />`;
-        }
-    } else if (TEXT_EXTS.includes(ext)) {
-        const file = await readFileSafe(entry.path);
-        if (file) content = `<pre>${escapeHtml(await readTextSafe(file))}</pre>`;
-    }
-
-    // 预览期间又发起了新的请求：本次结果作废，且不能让刚创建的对象 URL 没人回收
-    if (seq !== qlSeq) {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        return;
-    }
-
-    FinderQuickLook.show({
-        name: entry.name,
-        content,
-        objectUrl,
-        allItems,
-        index: idx,
+/**
+ * 「显示简介」（⌘I）：把当前多选交给内核单例面板（core/getInfo.js）。
+ * 面板与桌面共用同一实现，访达这里只做「选中项 → {path,name,type}」的搬运。
+ */
+function showInfo() {
+    const paths = [...FinderState.getState().selectedPaths];
+    if (!paths.length) return;
+    const rendered = FinderViews.getRenderedEntries();
+    const items = paths.map((path) => {
+        const hit = rendered.find((en) => en.path === path);
+        return { path, name: hit ? hit.name : Deskly().fs.paths.baseName(path), type: (hit && hit.type) || 'file' };
     });
-}
-
-/** 读取文件，失败（无权限 / 已删除）时返回 null 而不是抛出。 */
-async function readFileSafe(path) {
-    try {
-        return await VFS.readFile(path);
-    } catch (err) {
-        console.warn('[finder] 文件读取失败：', path, err);
-        return null;
-    }
-}
-
-/** 读取文本内容（截断 50000 字符），失败时返回空串。 */
-async function readTextSafe(file) {
-    try {
-        return (await file.text()).slice(0, 50000);
-    } catch (err) {
-        console.warn('[finder] 文本解码失败：', err);
-        return '';
-    }
-}
-
-/** 转义 HTML 特殊字符（含引号，值会被拼进属性）。 */
-function escapeHtml(text) {
-    return String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    Deskly().ui.showGetInfo(items);
 }
 
 /** 提取扩展名（idx > 0：'.gitignore' 这类隐藏文件没有扩展名）。 */
@@ -337,7 +318,6 @@ async function init() {
         emptyContextMenu: (x, y) => FinderContextMenu.showEmpty(x, y),
     });
     FinderSearch.init();
-    FinderQuickLook.init();
     FinderTags.init();
     FinderActions.init({ navigate, refresh, reauth, createFolder });
     FinderContextMenu.init({
@@ -347,15 +327,7 @@ async function init() {
         createFolder,
     });
 
-    // 3. Quick Look 导航事件（上/下一项）
-    const onQuicklookNavigate = (e) => {
-        const { item, index } = e.detail;
-        openQuickLook(item, index).catch((err) => console.error('[finder] Quick Look 预览失败：', err));
-    };
-    document.addEventListener('quicklook-navigate', onQuicklookNavigate);
-    track(() => document.removeEventListener('quicklook-navigate', onQuicklookNavigate));
-
-    // 4. 授权弹窗按钮
+    // 3. 授权弹窗按钮
     const onAllow = () => reauth().catch((err) => console.error('[finder] 重新授权失败：', err));
     // 次按钮 = 放弃挂载回到应用内根目录；unmount 只忘掉句柄，磁盘上的东西一个不动
     const onDeny = () => { VFS.decline(); hideAuthModal(); refresh().catch((err) => console.error('[finder] 刷新失败：', err)); };
@@ -391,6 +363,9 @@ async function init() {
                 case 'new-folder':
                     await createFolder();
                     break;
+                case 'get-info':
+                    showInfo();
+                    break;
             }
         };
         run().catch((err) => console.error('[finder] 菜单命令执行失败：', command, err));
@@ -423,13 +398,18 @@ async function init() {
         if (e.metaKey && e.key === '[') goBack().catch((err) => console.error('[finder] 后退失败：', err));
         // ⌘] 前进
         if (e.metaKey && e.key === ']') goForward().catch((err) => console.error('[finder] 前进失败：', err));
+        // ⌘I 显示简介（与桌面共用内核单例面板）
+        if (e.metaKey && (e.key === 'I' || e.key === 'i')) {
+            e.preventDefault();
+            showInfo();
+        }
         // ⌘⇧N 新建文件夹
         if (e.metaKey && e.shiftKey && (e.key === 'N' || e.key === 'n')) {
             e.preventDefault();
             createFolder().catch((err) => console.error('[finder] 新建文件夹失败：', err));
         }
-        // 空格 预览当前选中项（已打开时不重复打开）
-        if (e.key === ' ' && !FinderQuickLook.isOpen()) {
+        // 空格 预览当前选中项（Quick Look 开着时由内核单例接管空格关闭）
+        if (e.key === ' ' && !QuickLook.isOpen()) {
             const sel = [...FinderState.getState().selectedPaths];
             if (sel.length) {
                 const entry = FinderViews.getRenderedEntries().find(en => en.path === sel[0]);
@@ -533,5 +513,4 @@ function showFatalError(err) {
     if (window.__dialog) window.__dialog.error(i18n.t('finder.title', '访达'), msg);
 }
 
-// 启动
 init().catch(showFatalError);

@@ -16,9 +16,8 @@ export const assetPath = (rel) => `./assets/${rel}`;
 export const assetIcon = (name) => assetPath(`icons/${name}.png`);
 
 /**
- * `assets/images/<name>.svg` —— 界面字形（SF Symbols 风格的单色图），
- * 与「应用图标」区分：应用图标只用 PNG（见 plugin-format.md 图标规则），
- * 这里给侧栏、按钮等界面元素取用已有字形，避免各处再拼字符串。
+ * `assets/images/<name>.svg` —— 界面字形（SF Symbols 风格单色图），给侧栏/按钮取用；
+ * 与「应用图标」区分：应用图标只用 PNG（见 plugin-format.md 图标规则）。
  */
 export const glyph = (name) => assetPath(`images/${name}.svg`);
 
@@ -40,13 +39,10 @@ export const modDateUrl = (id, file, seq) =>
   `${modFile(id, file)}?v=${Date.now()}${seq ? `-${seq}` : ""}`;
 
 /**
- * 运行时资源 URL 一律用**站点根相对**写法（`./assets/…`、`./mods/<id>/…`），
- * 插件模块里也用这一套：`<img src>`、`fetch()`、`Notification.icon` 的解析基准是
- * 文档（index.html 所在目录），不是脚本自身所在目录。
- * 历史写法 `../../assets/…` 之所以能用，只是因为越过根目录后被浏览器截断回了同一处。
- *
- * 真正需要 `../../` 的只有两类：ES module 的 `import` 说明符，和 CSS 里的 `url()`
- * —— 两者都相对**文件自身**解析，不属于本模块的范畴（本模块只管可执行代码里的路径）。
+ * 运行时资源 URL 一律用**站点根相对**写法：`<img src>`、`fetch()`、`Notification.icon`
+ * 的解析基准是文档（index.html 所在目录），不是脚本自身；历史写法 `../../assets/…`
+ * 能用只是因为越过根目录后被浏览器截断回了同一处。真正需要 `../../` 的只有
+ * ES module 的 `import` 说明符和 CSS 里的 `url()`（相对文件自身解析），不归本模块管。
  */
 
 /* ── 被多处复用的具体资源 ── */

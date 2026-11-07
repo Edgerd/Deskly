@@ -2,12 +2,9 @@
      窗口管理器直接读计算样式，两处不会各算一套边界。 -->
 <div class="finder window" id="访达" data-window="size:800x500 centered">
     <!--
-      DOM 重构说明：
-      - .finder-clip 是内部裁剪容器，承载标题栏 / 标签栏 / 主体内容，承担 border-radius + overflow:hidden 的视觉裁剪；
-      - .tb-pop / .finder-quicklook / .finder-modal 作为 .finder.window 的直接子元素放在 .finder-clip 之外，
-        从而不被内层裁剪容器裁掉；但 `.window{overflow:hidden}` 仍然管着它们，
-        所以下拉弹层真正伸出窗口是靠 src/javascripts/ui/popover.js 把它临时搬进 body 上的浮出层
-        （.finder-quicklook / .finder-modal 本来就按窗口尺寸铺满，不需要）。
+      .finder-clip 是内部裁剪容器：承载标题栏 / 标签栏 / 主体内容，承担 border-radius + overflow:hidden 的裁剪；
+      .tb-pop / .finder-quicklook / .finder-modal 放在 .finder-clip 之外，但 `.window{overflow:hidden}` 仍管着它们 ——
+      下拉弹层真正伸出窗口靠 src/javascripts/ui/popover.js 把它临时搬进 body 浮出层（quicklook / modal 本就铺满窗口，不需要）。
     -->
     <div class="finder-clip">
 
@@ -65,11 +62,6 @@
             </button>
             <input type="text" id="finder-search" data-i18n-placeholder="finder.searchPlaceholder" placeholder="搜索" />
         </div>
-
-        <!--
-          工具栏下拉弹层已移至 .finder-clip 之外（紧跟其后），
-          以便可以"超出窗口边界"显示而不被 overflow:hidden 裁剪。
-        -->
     </div>
 
     <!-- 标签栏：默认隐藏，标签页 > 1 时显示 -->
@@ -107,11 +99,8 @@
             </div>
 
             <!-- 位置 -->
-            <!--
-              侧边栏只保留内核能解析的目标：顶层夹取自 OSFS.TOP（src/javascripts/osfs.js），
-              收藏夹与最近使用由 vfs.js 现算。隔空投送 / 应用程序 / iCloud 系列在 VFS 里没有实现，
-              list() 对未知顶层一律返回 []，点进去只会看到一个"空文件夹"，故不再呈现。
-            -->
+            <!-- 只列内核能解析的目标（顶层夹取自 OSFS.TOP，收藏夹 / 最近使用由 vfs.js 现算）；
+                 隔空投送 / 应用程序 / iCloud 在 VFS 未实现，点进去只会是空文件夹，故不呈现。 -->
             <div class="sidebar-section" data-section="locations">
                 <div class="section-header">
                     <span class="section-title" data-i18n="finder.sidebar.locations">位置</span>
@@ -205,30 +194,8 @@
         <div class="pop-item" data-action="reauth" data-i18n="finder.reauth">重新授权访问文件夹</div>
     </div>
 
-    <!-- Quick Look 预览 -->
-    <div class="finder-quicklook finder-no-drag" id="finder-quicklook" hidden>
-        <div class="ql-backdrop"></div>
-        <div class="ql-card">
-            <div class="ql-header">
-                <span class="ql-name" id="ql-name"></span>
-                <button class="ql-close" id="ql-close" aria-label="关闭">
-                    <svg width="16" height="16" viewBox="0 0 20 20"><path d="M5 5L15 15M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                </button>
-            </div>
-            <div class="ql-body" id="ql-body">
-                <div class="ql-content" id="ql-content"></div>
-            </div>
-            <div class="ql-footer">
-                <span class="ql-nav" id="ql-nav-prev" aria-label="上一个">
-                    <svg width="12" height="12" viewBox="0 0 20 20"><path d="M12 4L6 10L12 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </span>
-                <span class="ql-counter" id="ql-counter">1 / 1</span>
-                <span class="ql-nav" id="ql-nav-next" aria-label="下一个">
-                    <svg width="12" height="12" viewBox="0 0 20 20"><path d="M8 4L14 10L8 16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </span>
-            </div>
-        </div>
-    </div>
+    <!-- Quick Look 预览：宿主已上移为内核单例（src/javascripts/core/quicklook.js），
+         访达内不再持有自己的预览层。 -->
 
     <!-- 授权弹窗 -->
     <div class="finder-modal finder-no-drag" id="auth-modal" hidden>

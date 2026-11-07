@@ -21,6 +21,7 @@ import { create, bringToFront, closeWindow, isMinimized, isWindowElement } from 
 import { getTrashKey, getTrashIconForFullness } from "./trashIcon.js";
 import { createContextMenu } from "./ui/contextMenu.js";
 import { isNativeContextMenuEnabled } from "./contextMenuSettings.js";
+import { reorderKeepingHidden } from "./core/visibleOrder.js";
 import {
     appToPlugin,
     iconMap,
@@ -186,11 +187,8 @@ let dockSize = readNumber(localStorage.getItem("dock-size"), SIZE_MIN, SIZE_MAX,
 let dockPosition = readEnum(localStorage.getItem("dock-position"), POSITIONS, POSITION_DEFAULT);
 // 最小化样式：genie = 神奇效果；scale = 纯淡出（不碰真实窗口 transform）
 let minimizeEffect = readEnum(localStorage.getItem("dock-minimize-effect"), MINIMIZE_EFFECTS, MINIMIZE_EFFECT_DEFAULT);
-// 放大程度（最大缩放倍数）
 let dockZoomAmount = readNumber(localStorage.getItem("dock-zoom-amount"), ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT);
-// 是否显示运行指示灯
 let showIndicators = localStorage.getItem("dock-show-indicators") !== "off";
-// 是否在程序坞中显示「最近使用的 App」
 let showRecentApps = localStorage.getItem("dock-show-recent") !== "off";
 
 let hideTimer = null;
@@ -264,9 +262,7 @@ function scheduleIdle(fn, timeout = 800) {
 // 图标校准合帧定时器：单个 ZIP 插件安装 / 卸载会连续广播事件，合并成一次。
 let iconRefreshTimer = 0;
 
-// 重新校准所有程序坞图标的 src：在 plugin-manager 完成注册后调用。
-// 静态表已经给出内置应用的真实路径，这里只对「真实路径与当前不同」的图标重设；
-// ZIP 插件则从占位骨架切换到清单里的图标。
+// 注册表就绪后校准所有图标 src：只重设真实路径有变化的图标，ZIP 插件从骨架切到清单图标。
 function refreshIconsFromRegistry() {
     // 直接校准优先于排队中的批量校准：清掉定时器，避免同一次注册跑两遍。
     if (iconRefreshTimer) {
@@ -294,7 +290,6 @@ function refreshIconsFromRegistry() {
     scheduleRender();
 }
 
-// 单个 ZIP 插件安装 / 卸载会连续广播事件；合并成一次校准，避免每个事件都全量刷图标。
 function scheduleIconRefresh() {
     if (iconRefreshTimer) return;
     iconRefreshTimer = setTimeout(() => {
@@ -303,11 +298,7 @@ function scheduleIconRefresh() {
     }, 80);
 }
 
-// 注册表就绪后调用：剔除「最近使用」里已无法解析到任何已知应用的条目
-// （典型来源：卸载了 ZIP 插件、或改名后旧显示名残留）。这类条目会以
-// ./assets/icons/<名称>.png 兜底拼路径 → 每次渲染 404。已知应用 = 已注册插件
-// 或其中的子应用（getIconForName 覆盖多应用套件名，如 文稿/表格/演示）、
-// appToPlugin / iconMap / 收藏项 / 下载 / 废纸篓。据此过滤，误删风险为零。
+// ===== 剪枝：剔除「最近使用」/ 收藏里已无法解析的条目（卸载 / 改名残留，旧逻辑按拼路径必 404） =====
 /**
  * 名称能否解析到任何已知应用。刻意**不含**「它自己在收藏列表里」这条自证 ——
  * 拿带自证的版本去过滤收藏列表，每个收藏项都会因为「它就在那份列表里」而通过，
@@ -332,10 +323,8 @@ function pruneStaleRecents() {
         scheduleRender();
     }
 }
-// 收藏项剪枝：与 pruneStaleRecents 同一必要。卸载 / 改名一个 ZIP 插件后，它的旧显示名
-// 会永久留在 webstartos_dock_order 里，点它就走进 window.js 的旧式装载分支 ——
-// assets/apps/ 已清空（paths.js 自己注明「走到那里必然 404 并弹提示」），
-// 于是每次点击都弹一个「未找到该应用的界面模板」错误框。
+// 收藏项剪枝：卸载 / 改名 ZIP 插件后旧显示名会永久留在 webstartos_dock_order 里，
+// 点它走 window.js 旧式装载必 404 弹错误框（assets/apps/ 已清空）。
 // **只能在注册表就绪后跑**：boot 瞬间插件还没注册，此刻剪枝会把全部插件收藏项一次清光。
 function pruneStaleFavorites() {
     const kept = favorites.filter(isResolvableApp);
@@ -404,11 +393,11 @@ function openApp(img, light, app) {
         openStack(app, img);
         return;
     }
-    // 禁用拦截：程序坞条目是持久化的，在商店里禁用插件并不会把图标摘下来。
+    // 禁用拦截：历史上收藏是持久化的，禁用后图标可能还在缓存里。
     // 放行会让 launchApp 先点亮指示灯、再发现窗口没注入，把应用钉成「有小圆点没界面」。
     if (isDisabledApp(img.alt || app)) {
         const dialog = window.__dialog;
-        if (dialog) dialog.alert("应用已禁用", `「${img.alt || app}」已在 App Store 中禁用，请先在商店里重新启用。`);
+        if (dialog) dialog.alert("应用已禁用", `「${img.alt || app}」已从程序坞与启动台移除，请在系统设置的「App」或 App Store 中重新启用。`);
         return;
     }
     // 启动台使用独立的开关状态机（window.__launchpad），彻底解耦，
@@ -466,12 +455,8 @@ function openApp(img, light, app) {
         if (!noAnimation.includes(img.alt)) {
             if (img.classList.contains("opening")) return; // 弹跳进行中：忽略重复点击，避免 N 次点击排入 N 个 launchApp
             img.classList.add("opening");
-            // 先启动，再让图标自己弹完这一轮。旧写法是等 2980ms 才 launchApp：
-            // 用户看到图标连弹三下、三秒后应用才开始加载（parabola 是 1s infinite，
-            // 2980 也不是它的整数倍），而且上面那道守卫会把这三秒里的重复点击全部吞掉，
-            // 看起来就是「点了没反应」。macOS 的语义是立刻启动 + 同时弹跳作反馈。
-            // 动画本身已改为单次；animationend 与超时双兜底摘类，主线程再忙也不会
-            // 留下无限弹跳的图标（syncRunningApps 在窗口出现时还会提前摘一次）。
+            // macOS 语义：立刻启动 + 同时弹跳作反馈（旧写法等 2980ms 才启动，像「点了没反应」）。
+            // 动画单次播放；animationend 与超时双兜底摘类，syncRunningApps 在窗口出现时还会提前摘一次。
             let openingTimer = 0;
             const stopOpening = () => {
                 img.classList.remove("opening");
@@ -797,10 +782,8 @@ function makeContainer(app) {
         }
         img.classList.remove("is-loading");
     });
-    // 首轮图标：getIcon 先问注册表（已就绪时直接拿到清单里的真实路径，内置应用还能
-    // 命中静态表），再退上次缓存；两者都没有才由 isIconPending 停在无 src 的骨架上。
-    // 因此注册表就绪时首帧就是真图标，未就绪时也只会出现骨架而不会先请求占位图，
-    // 后续 plugins-ready 的校准再按 src 是否变化决定要不要重设。
+    // 首轮图标：注册表就绪 → 清单真实路径（内置应用命中静态表），否则退上次缓存，
+    // 都没有则由 isIconPending 停在无 src 骨架（不先请求占位图）；plugins-ready 再校准。
     updateIconSrc(app, img);
     // 名称已经由容器的 aria-label 读出，图片本身对读屏不再是独立信息；
     // 但 alt 仍是本模块的**主键**（对账 / 菜单 / getIcon 全靠 img.alt 反查应用名）。
@@ -943,8 +926,7 @@ function bindDropOpen(container, app) {
                 .replace("{app}", app).replace("{name}", label);
             tip.style.display = "block";
             tip.style.opacity = "1";
-            // 定时后统一走 hideTip：停止位置跟随循环并清理透明度，
-            // 避免残留 opacity 与后续悬浮提示互相干扰
+            // 定时后统一走 hideTip：停止跟随循环并清理透明度残留
             setTimeout(hideTip, 1400);
         }
     });
@@ -1000,15 +982,9 @@ function hideTip() {
     }
 }
 
-// 跟随当前图标实时位置：放大动画期间图标矩形不断变化，每帧重算保证提示始终贴住图标。
-// 每次调用先取消旧帧再排新帧，无论触发多少次都只存在一条循环，杜绝 rAF 堆积。
-//
-// 成本要点：tip.offsetWidth / offsetHeight 是布局读取，写在它们之前会强制同步布局。
-// 旧写法「读 offsetWidth → 写 left → 读 offsetHeight → 写 top」把读写交织了四轮，
-// 等于每帧两次强制布局；而指针静止、图标也早已停住放大时，这个循环仍在逐帧跑。
-// 现在：① 提示条尺寸只在文本变化时重新量一次（缓存）；② 全部几何读完才写样式；
-// ③ 位置没变就不写；④ 标签页不可见时不排帧（同 surface.js scheduleRefresh 的处理，
-// 隐藏页里 rAF 会被暂停，续帧等于空转）。
+// 跟随当前图标实时位置（放大动画期间矩形不断变化），全局只存在一条 rAF 循环，杜绝堆积。
+// 成本要点（防强制同步布局）：① 提示条尺寸仅在文本变化时重测；② 几何全部读完才写样式；
+// ③ 位置没变就不写；④ 标签页不可见时不排帧（隐藏页 rAF 会被暂停，续帧等于空转）。
 let tipMeasuredW = -1, tipMeasuredH = -1, tipMeasuredFor = null;
 let tipLastX = null, tipLastY = null;
 function updateTipPosition() {
@@ -1091,12 +1067,9 @@ function checkTipHit() {
     }
 }
 
-// 程序坞范围内**唯一**的 document 级 mousemove 监听。
-// 在 document 上统一驱动：窗口（z-index 高于程序坞）覆盖程序坞区域时会截走
-// dock 内 img 的 mouseover/mouseout，导致提示失效；document 级监听不受遮挡影响。
-// 自动隐藏判定、悬浮提示、放大动画三者都挂在这一个监听上，各自只「记坐标 + 唤醒一帧」，
-// 计算全部留在 rAF 里 —— 曾经放大动画自己另加了一个 document mousemove，
-// 与这里的注释「合并到同一 mousemove，减少一个高频全局监听」自相矛盾，现已真合并。
+// 程序坞范围内**唯一**的 document 级 mousemove 监听：窗口（z-index 更高）覆盖程序坞时
+// 会截走 dock 内 img 的 mouseover/mouseout，document 级不受遮挡影响。
+// 自动隐藏、悬浮提示、放大动画共用此监听，各自只「记坐标 + 唤醒一帧」，计算留在 rAF 里。
 const pointerMoveHooks = [];
 function bindGlobalTip() {
     if (tipListenerBound) return;
@@ -1141,9 +1114,8 @@ function loadFavorites() {
     ensureProtectedFavorites();
 }
 
-// 确保受保护应用（访达 / 启动台）始终驻留收藏区：
-// 若用户曾在旧版本将其移除（已持久化进 localStorage 的收藏顺序），加载时自动补回默认相对位置，
-// 并重新 saveFavorites() 持久化，避免每次加载都重复发现缺失。
+// 确保受保护应用（访达 / 启动台）始终驻留收藏区：曾被旧版本移除的，
+// 加载时按默认相对位置补回并持久化，避免每次加载重复发现缺失。
 function ensureProtectedFavorites() {
     let changed = false;
     DOCK_PROTECTED.forEach((app) => {
@@ -1234,18 +1206,19 @@ function renderAll() {
     renderPendingWhileDragging = false;
 
     const running = runningOrder.filter((name) =>
-        name !== TRASH && !favorites.includes(name) && isAppRunning(name)
+        name !== TRASH && !favorites.includes(name) && isAppRunning(name) && !isDisabledApp(name)
     );
     runningOrder = running;
 
-    syncSection(favoritesEl, favorites.map(ensureIcon));
+    // 被禁用的应用不出现在程序坞：收藏仍保留在原顺序里（不删数据），重新启用后回到原位。
+    syncSection(favoritesEl, favorites.filter((name) => !isDisabledApp(name)).map(ensureIcon));
 
     const runningSet = new Set(running);
     syncSection(runningEl, running.map(ensureIcon));
 
     const recents = showRecentApps
         ? recentApps
-            .filter((name) => name !== TRASH && !favorites.includes(name) && !runningSet.has(name))
+            .filter((name) => name !== TRASH && !favorites.includes(name) && !runningSet.has(name) && !isDisabledApp(name))
             .slice(0, 3)
         : [];
     syncSection(recentEl, recents.map(ensureIcon));
@@ -1292,21 +1265,23 @@ function addToRunning(altName) {
 // 任何打开 / 关闭窗口的路径（程序坞收藏、启动台、应用商店卡片、菜单 openAppByName 等）
 // 最终都落到这里，确保「程序坞检测当前运行的程序并显示」这一行为始终一致。
 export function syncRunningApps() {
-    // 仅统计真实存在且非关闭动画中的窗口（避免动画结束前的误判）。
-    // 判据必须与窗口层同一份：isWindowElement 明确排除 .finderbar / .menu /
-    // .dockcontainer / .desktop / .launchpad 里的伪 .window（window-manager.js 的注释
-    // 记录过顶栏菜单里出现过 <p class="window">）。按类名全量遍历会把伪窗口
-    // 认成运行中的应用：凭空点亮一个小圆点、写进 appStatus，点它又毫无反应。
+    // 仅统计真实存在且非关闭动画中的窗口。判据与窗口层同一份：isWindowElement 排除
+    // .finderbar / .menu / .dockcontainer 等处的伪 .window（顶栏菜单里出现过 <p class="window">），
+    // 否则伪窗口会被凭空点亮小圆点、写进 appStatus，点它又毫无反应。
     const openWins = Array.from(document.querySelectorAll("body > .window"))
-        .filter(w => w.id && isWindowElement(w) && !w.classList.contains("closing"));
-    const openIds = new Set(openWins.map(w => w.id));
+        .filter(w => w.id && isWindowElement(w) && !w.classList.contains("closing"))
+        // NW-1：子窗 / sheet / 模态窗不进 Dock 运行区（role 标记由 wm/relations.js 落地）
+        .filter(w => (w.dataset.wmRole || "normal") === "normal");
+    // NW-7：一应用多窗时窗口 id 带 #N 实例后缀，运行区按键聚合成应用基名（一应用一颗灯）
+    const baseId = (w) => w.id.replace(/#\d+$/, "");
+    const openIds = new Set(openWins.map(baseId));
 
     // 窗口真正显示（摘掉 wm-preparing）后才停止加载弹跳：窗口还在隐藏着量尺寸时
     // 继续跳是用户能看到的唯一「正在打开」反馈。显示时 window-manager 会再调一次
     // syncRunningApps，因此这里不会漏掉；动画本身的单次上限仍是失败兜底。
     const shownIds = new Set(openWins
         .filter(w => !w.classList.contains("wm-preparing"))
-        .map(w => w.id));
+        .map(baseId));
     dock.querySelectorAll(".container img.opening").forEach(img => {
         if (shownIds.has(img.alt)) img.classList.remove("opening");
     });
@@ -1545,9 +1520,7 @@ function init() {
     });
     // 首帧先按内容刷一次（图标创建后 trashImg 才有值，放渲染回调之后）
     refreshTrashFullness();
-    // 不再在这里额外 setTimeout 写一次 transition：init 末尾的
-    // emitDock("dock-autohide-change") 会走 updateDockVisibility()，那里已经同步写上了，
-    // 这里再排一个 1 秒的定时器只是重复同一件事。
+    // 不再额外 setTimeout 写 transition：init 末尾 emitDock("dock-autohide-change") 已让 updateDockVisibility() 同步写上。
 
     // 指针拖拽：收藏区重排 + 拖出隐藏（仅未运行且非受保护应用）。
     // 不再依赖 HTML5 Drag & Drop —— 原生拖拽无法稳定显示普通箭头光标。
@@ -1559,7 +1532,9 @@ function init() {
         canDrag: (app) => app !== TRASH,
         canHide: (app) => app !== TRASH && !DOCK_PROTECTED.includes(app) && !isAppRunning(app),
         onReorder: (keys) => {
-            const next = keys.filter((key) => key && key !== TRASH);
+            // DOM 里只有可见图标；被禁用应用的收藏位必须保留，
+            // 否则一次拖拽就会把隐藏项挤出收藏顺序，重新启用后无法回到原位。
+            const next = reorderKeepingHidden(favorites, keys, isDisabledApp);
             if (next.length === favorites.length && next.every((key, i) => key === favorites[i])) return;
             favorites = next;
             saveFavorites();
@@ -1669,15 +1644,10 @@ function init() {
         });
     });
 
-    // 观察 body 顶层子节点的增删（窗口的注入 / 移除均发生在 body 顶层），
-    // 让程序坞实时「检测正在运行的程序」并刷新运行区与指示灯。
-    //
-    // 必须按 record 过滤，不能一有增删就全量对账：body 上增删的东西远不止窗口 ——
-    // 拖动预览框 #deskly-tile-preview 与交互遮罩 #deskly-interaction-shield 都是在拖动
-    // 过程中反复挂 / 摘到 body 上的（window-manager.js 的 showPreview / installShield），
-    // 右键菜单、弹层 portal、文件夹栈同理。不过滤的话，拖一扇窗口划过几个吸附区就会
-    // 触发同等次数的全量对账（若干次 querySelectorAll + 每个收藏项一次 querySelector +
-    // 重建最近区），跟放大动画抢同一批帧。
+    // 观察 body 顶层子节点增删（窗口注入 / 移除都在 body 顶层），驱动运行区与指示灯对账。
+    // 必须按 record 过滤：拖动预览框 #deskly-tile-preview、交互遮罩 #deskly-interaction-shield、
+    // 右键菜单 / 弹层 portal / 文件夹栈都会反复挂摘 body；不过滤的话，拖窗口划过几个吸附区
+    // 就触发同等次数的全量对账，跟放大动画抢帧。
     let dockSyncScheduled = false;
     const touchesWindow = (node) => node.nodeType === 1
         && (node.classList.contains("window") || !!node.querySelector(".window"));
@@ -1711,6 +1681,8 @@ function init() {
     // ZIP 插件在运行期安装 / 卸载同样要校准图标（合并成一次，避免连续广播重复刷）。
     document.addEventListener("plugin-registered", scheduleIconRefresh);
     document.addEventListener("plugin-unregistered", scheduleIconRefresh);
+    // 应用被禁用 / 重新启用：收藏与运行区要立刻重排，不能等下次开关窗口才消失。
+    document.addEventListener("plugin-enabled-change", syncRunningApps);
     // 办公套件切换品牌包（iWork/Office）时重取图标
     window.addEventListener("deskly-brand-pack-changed", refreshIconsFromRegistry);
     document.addEventListener("languagechange", refreshDockLabels);
@@ -1907,11 +1879,20 @@ function openStack(app, img) {
     const left = Math.max(10, Math.min(rect.left + rect.width / 2 - stackW / 2, window.innerWidth - stackW - 10));
     stack.style.left = (dockPosition === "left" ? rect.right + 12
         : dockPosition === "right" ? rect.left - stackW - 12 : left) + "px";
-    stack.style.bottom = (window.innerHeight - rect.top + 12) + "px";
+    // 侧边 Dock 时堆栈向上生长会顶出视口（BUG-05）：改用 top 定位并夹进视口；
+    // 底部 Dock 维持「图标上方 12px」的 bottom 定位。
+    if (dockPosition === "bottom") {
+        stack.style.bottom = (window.innerHeight - rect.top + 12) + "px";
+    } else {
+        const stackH = Math.min(stack.offsetHeight || 320, window.innerHeight - 20);
+        const top = Math.max(10, Math.min(rect.top, window.innerHeight - stackH - 10));
+        stack.style.top = top + "px";
+        stack.style.maxHeight = (window.innerHeight - 20) + "px";
+        stack.style.overflowY = "auto";
+    }
     activeStack = stack;
     activeStackApp = app;
 
-    // 点击空白处关闭
     setTimeout(() => {
         document.addEventListener("click", closeStackOnOutside, true);
     }, 0);
@@ -2175,18 +2156,13 @@ function restoreFromDock(winEl, appName) {
 }
 
 // 兜底隐藏调度：只负责在淡出结束后补 display:none，不再自己写 transition。
-// 淡出本身属于 .window.minimized（window.css）：那条规则里带 `visibility 0s linear 0.24s`，
-// 而内联 transition 优先级更高，一写下去就把 visibility 延迟整段抹掉 ——
-// 第一帧就不可见，本函数原本承诺的「绝不瞬间消失」反而从未成立。
-// 同时早还原也不再泄漏：既然不覆盖，就没有被覆盖下去的东西需要还原
-// （旧写法把还原只放在 _hideTimer 回调里，淡出期间还原会永久带着这条内联值，
-// 从此 .wm-animating 的 left/top/width/height 过渡被整个盖掉）。
+// 淡出属于 .window.minimized（window.css，带 `visibility 0s linear 0.24s` 延迟）：
+// 内联 transition 优先级更高，会抹掉这段延迟导致第一帧就不可见；
+// 不写内联也就没有残留要还原（旧写法在淡出期间还原会永久盖掉 .wm-animating 的尺寸过渡）。
 function fallBackFadeOut(winEl) {
     winEl.classList.add("minimized");
-    // display:none 等淡出结束再设，避免动画被截断。必须可取消并复核状态：
-    // 用户在淡出期间还原窗口时，这个迟到的定时器
-    // 会把刚恢复的窗口重新藏成 display:none，而 _minimized 已是 false，
-    // 于是得到一个「指示灯亮着却永远点不出来」的隐形窗口。
+    // display:none 等淡出结束再设，避免动画被截断；必须可取消并复核状态：
+    // 淡出期间用户还原窗口时，迟到的定时器会把刚恢复的窗口重新藏成 display:none。
     clearTimeout(winEl._hideTimer);
     winEl._hideTimer = setTimeout(() => {
         winEl._hideTimer = null;

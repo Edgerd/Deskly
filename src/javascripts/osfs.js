@@ -200,6 +200,37 @@ function inside(path, scope) {
     return p === s || p.startsWith(`${s}/`);
 }
 
+/**
+ * 边界比较用的完全归一：反斜杠先折成斜杠，normalizePath 收敛 `.`/`..`/重复斜杠/尾随斜杠，
+ * 再逐段做 Unicode NFC + 去尾点尾空格 + 小写 —— 与 topKey 同一套理由：
+ * 磁盘后端（Windows/APFS）下 `/appdata`、`/AppData.`、`/AppData /` 指向同一个真实目录，
+ * 按原样比较会被拼写变体绕过（BUG-20）。归一只用于比较，真实路径仍按原样读写。
+ */
+function boundaryKey(path) {
+    return normalizePath(String(path ?? "").replace(/\\/g, "/"))
+        .split("/")
+        .map((seg) => seg.normalize("NFC").replace(/[. ]+$/, "").toLowerCase())
+        .join("/");
+}
+
+/**
+ * 越界判定：`path` 是否指向他人 AppData（或 AppData 根本身）。
+ * 根也判越界：列出 `/AppData` 等于拿到全部插件的 scope 名清单。
+ * @param {string} path 绝对路径（是否预先 normalize 都可，这里会再归一）
+ * @param {string} selfId 调用方插件 id（scope 名按 scopePath 同款规则取得）
+ * @returns {boolean} true = 越界，必须拒绝
+ */
+function isOtherAppData(path, selfId) {
+    const root = boundaryKey(TOP.appdata.path);
+    const key = boundaryKey(path);
+    if (!key.startsWith(root)) return false;
+    if (key === root) return true;
+    if (!key.startsWith(`${root}/`)) return false;   // 形如 /AppData2，与 AppData 无关
+    const hit = key.slice(root.length + 1).split("/")[0];
+    const own = boundaryKey(scopePath(String(selfId || "kernel"))).split("/").pop();
+    return hit !== own;
+}
+
 /* ── 插件作用域 ── */
 
 const scopePath = (id) => `${TOP.appdata.path}/${sanitizeName(id, "plugin")}`;
@@ -212,6 +243,20 @@ const dataPath = (id, ...rest) => [scopePath(id), SUB.data, ...rest].filter(Bool
 /** 历史行只有 `{name, content}`，正文统一从 data|content 取，双读不迁移。 */
 function rowContent(row) {
     return row && row.data !== undefined ? row.data : row ? row.content : undefined;
+}
+
+/**
+ * 原子写的暂存名判定（`.desklytmp-` / `.desklybak-` 后缀）。这些行是写入提交/回滚的
+ * 中间态：对用户与列表永远不可见，init 时兜底清扫。按名字判而不是按内容判，
+ * 磁盘后端的同名文件也走同一个谓词，两处口径一致。
+ */
+function isTempName(name) {
+    return /\.deskly(tmp|bak)-/.test(String(name || ""));
+}
+
+/** 生成单次写入的暂存名：同目录、同前缀，崩溃残留一眼可辨。 */
+function tempNameFor(path, kind = "tmp") {
+    return `${normalizePath(path)}.deskly${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /* ── 元数据索引 ──
@@ -253,7 +298,10 @@ async function metaIndex() {
     if (index && Date.now() - indexAt < INDEX_TTL) return index;
     const rows = (await treeAll()) || [];
     index = new Map();
-    for (const row of rows) index.set(normalizePath(row.path), toMeta(row));
+    for (const row of rows) {
+        if (isTempName(row.path)) continue;    // 暂存行不进索引：列表/搜索/stat 都看不见它
+        index.set(normalizePath(row.path), toMeta(row));
+    }
     indexAt = Date.now();
     return index;
 }
@@ -298,8 +346,24 @@ async function virtualWrite(path, data) {
     // 顶成文件行，子孙全部变成进不去的孤儿。rowIsFile 才是全文件对"是不是文件"的唯一定义。
     if (existing && !rowIsFile(existing)) throw new Error(`目标是目录，不能当文件写：${norm}`);
     await ensureVirtualDirs(parentOf(norm));
+    // 原子写：正文先进暂存键，提交时一个事务里「删旧 + 落新 + 清暂存」。
+    // 中途崩溃只留下一个隐藏的暂存行（init 清扫），目标位置要么是旧文件、要么是新文件，
+    // 永远不会是写了一半的正文。
+    const tmp = tempNameFor(norm);
     const row = { path: norm, name: baseName(norm), kind: "file", data, modified: Date.now(), size: measureSize(data) };
-    await treePut(row);
+    try {
+        await treePut({ ...row, path: tmp, name: baseName(tmp) });
+        await tx(STORE_TREE, "readwrite", (os) => {
+            os.delete(norm);
+            os.put(row);
+            os.delete(tmp);
+            return undefined;
+        });
+    } catch (err) {
+        // 回滚：暂存键清掉，目标位置保持原样（提交事务整体 abort 时旧行还在）
+        await treeDelete(tmp).catch(() => {});
+        throw err;
+    }
     indexPatch(row);
 }
 
@@ -420,6 +484,7 @@ async function diskList(dir) {
     try { handle = await resolveDir(segs, false); } catch (err) { return []; }
     const entries = [];
     for await (const [name, child] of handle.entries()) {
+        if (isTempName(name)) continue;    // 原子写/替换的中间态文件永不上列表
         const isDir = child.kind === "directory";
         const path = joinPath(dir, name);
         let size = null;
@@ -442,13 +507,61 @@ async function diskRead(path) {
     return fileHandle.getFile();
 }
 
+/**
+ * 目录内改名/换名：优先用句柄原生 move（Chrome 122+），不支持的浏览器退化为
+ * 「复制正文 + 删源」。退化路径只用于同一目录内的改名，失败时源与目标都在，
+ * 不会出现「新的没写成、旧的被删了」。
+ */
+async function diskRename(dirHandle, fromName, toName) {
+    const srcHandle = await dirHandle.getFileHandle(fromName);
+    if (typeof srcHandle.move === "function") {
+        await srcHandle.move(toName);
+        return;
+    }
+    const file = await srcHandle.getFile();
+    const dstHandle = await dirHandle.getFileHandle(toName, { create: true });
+    const writable = await dstHandle.createWritable();
+    await writable.write(file);
+    await writable.close();
+    await dirHandle.removeEntry(fromName);
+}
+
+/**
+ * 原子写：正文先完整写进同目录的暂存文件，再「泊车 → 换名 → 清场」三步提交：
+ * 目标已存在时先把旧文件改名成备份名，暂存文件换到正式名，最后删备份。
+ * 任一步失败都把备份换回去——目标位置要么是旧文件、要么是新文件，永远不是半截正文。
+ */
 async function diskWrite(path, data) {
     const dir = await resolveDir(segments(parentOf(path)), true);
-    const fileHandle = await dir.getFileHandle(baseName(path), { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(data instanceof Blob || data instanceof ArrayBuffer || ArrayBuffer.isView(data) || typeof data === "string"
-        ? data : String(data));
-    await writable.close();
+    const name = baseName(path);
+    const tmpName = baseName(tempNameFor(path));
+    try {
+        const tmpHandle = await dir.getFileHandle(tmpName, { create: true });
+        const tmpWritable = await tmpHandle.createWritable();
+        await tmpWritable.write(data instanceof Blob || data instanceof ArrayBuffer || ArrayBuffer.isView(data) || typeof data === "string"
+            ? data : String(data));
+        await tmpWritable.close();
+    } catch (err) {
+        // 暂存件自己就没写成：清掉它，目标位置根本没被碰过
+        await dir.removeEntry(tmpName).catch(() => {});
+        throw err;
+    }
+    const existing = await diskKind(dir, name);
+    if (existing === "directory") {
+        await dir.removeEntry(tmpName).catch(() => {});
+        throw new Error(`目标是目录，不能当文件写：${normalizePath(path)}`);
+    }
+    const bakName = existing === "file" ? baseName(tempNameFor(path, "bak")) : null;
+    try {
+        if (bakName) await diskRename(dir, name, bakName);
+        await diskRename(dir, tmpName, name);
+    } catch (err) {
+        // 回滚：备份还在就换回去，暂存件清掉，目标位置恢复原状
+        if (bakName) await diskRename(dir, bakName, name).catch(() => {});
+        await dir.removeEntry(tmpName).catch(() => {});
+        throw err;
+    }
+    if (bakName) await dir.removeEntry(bakName).catch(() => {});
 }
 
 async function diskMkdir(path) {
@@ -659,8 +772,9 @@ async function diskCopyTree(from, to) {
 }
 
 /**
- * 磁盘后端没有 move API，只能复制再删源。
- * 复制全部成功才删源：中途失败就两处都留着，宁可重复也不能丢用户文件。
+ * 磁盘后端的移动：优先用句柄原生 move（一句调用，文件/目录都一样，没有中间态）。
+ * 不支持的浏览器退化到「复制再删源」：复制**全部成功**才删源；复制中途失败时把
+ * 目标位置的半成品整棵清掉再抛错——目标开工前确认过不存在，清掉它等于回到开工前。
  */
 async function diskMove(from, to) {
     const srcParent = await resolveDir(segments(parentOf(from)), false);
@@ -668,13 +782,27 @@ async function diskMove(from, to) {
     const kind = await diskKind(srcParent, srcName);
     if (!kind) return false;
     const dstParent = await resolveDir(segments(parentOf(to)), true);
-    if (await diskKind(dstParent, baseName(to))) throw new ConflictError(to);
-    if (kind === "file") {
-        const file = await (await srcParent.getFileHandle(srcName)).getFile();
-        await diskWrite(to, file);
-    } else {
-        await diskMkdir(to);
-        await diskCopyTree(from, to);
+    const dstName = baseName(to);
+    if (await diskKind(dstParent, dstName)) throw new ConflictError(to);
+    const srcHandle = kind === "file"
+        ? await srcParent.getFileHandle(srcName)
+        : await srcParent.getDirectoryHandle(srcName);
+    if (typeof srcHandle.move === "function") {
+        await srcHandle.move(dstParent, dstName);
+        return true;
+    }
+    try {
+        if (kind === "file") {
+            const file = await srcHandle.getFile();
+            await diskWrite(to, file);
+        } else {
+            await diskMkdir(to);
+            await diskCopyTree(from, to);
+        }
+    } catch (err) {
+        // 回滚：半成品目标整棵清掉，源留在原地不动
+        await dstParent.removeEntry(dstName, { recursive: true }).catch(() => {});
+        throw err;
     }
     await srcParent.removeEntry(srcName, kind === "directory" ? { recursive: true } : undefined);
     return true;
@@ -715,6 +843,8 @@ async function materialize() {
     for (const row of rows) {
         const norm = normalizePath(row.path);
         if (norm === "/") continue;
+        // 暂存行是原子写的中间态，不是用户内容：铺到磁盘上就成了真实垃圾文件
+        if (isTempName(norm)) continue;
         try {
             // 取消挂载后又在应用内建了同名文件，再重新挂载时会撞上磁盘上那一份：
             // 磁盘优先，绝不用旧的虚拟副本盖掉用户后来写的那份。副本留着，删除只删铺成功的那些。
@@ -951,6 +1081,7 @@ function init() {
             needsReauth = !ok;
             if (ok) await pruneLegacyMounts();
         }
+        await sweepTempRows();
         await ensureSkeleton();
         return status();
     })().catch((err) => {
@@ -959,6 +1090,17 @@ function init() {
         return status();
     });
     return ready;
+}
+
+/** 清扫上次崩溃留下的原子写暂存行：它们对列表不可见，但不能永远占着空间。 */
+async function sweepTempRows() {
+    const rows = (await treeAll().catch(() => [])) || [];
+    const strays = rows.filter((r) => isTempName(r.path));
+    if (!strays.length) return;
+    await tx(STORE_TREE, "readwrite", (os) => {
+        strays.forEach((r) => os.delete(r.path));
+        return undefined;
+    }).catch((err) => console.warn("[osfs] 暂存行清扫失败（不影响使用）：", err));
 }
 
 /**
@@ -1038,6 +1180,9 @@ const OSFS = {
     normalizePath,
     sanitizeName,
     inside,
+    boundaryKey,
+    isOtherAppData,
+    isTempName,
     joinPath,
     baseName,
     parentOf,

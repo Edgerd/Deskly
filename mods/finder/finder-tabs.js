@@ -1,8 +1,6 @@
 /**
- * finder-tabs.js — 访达标签页 UI（macOS 15）
- *
- * 标签数据（含每页独立的历史与视图选项）由 FinderState 持有，本模块只做渲染与交互。
- * 标签栏仅在「标签页 > 1」或用户经「显示」菜单显式开启时浮现。
+ * finder-tabs.js — 标签页 UI 渲染与交互；数据（含每页独立历史与视图选项）由 FinderState 持有。
+ * 标签栏仅在「标签页 > 1」或经「显示」菜单显式开启时浮现。
  */
 
 import { i18n } from '../../src/javascripts/i18n.js';
@@ -46,7 +44,6 @@ const FinderTabs = (() => {
         track(FinderState.on('locale-changed', renderTabs));
     }
 
-    /** 绑定事件 */
     function bindEvents() {
         const onClick = (e) => {
             const closeBtn = e.target.closest('.tab-close');
@@ -92,7 +89,6 @@ const FinderTabs = (() => {
         if (next) onTabSwitch?.(next.path);
     }
 
-    /** 渲染标签栏 DOM */
     function renderTabs() {
         if (!tabsBar) return;
         const activeId = FinderState.getState().activeTabId;

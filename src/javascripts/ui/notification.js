@@ -31,6 +31,7 @@
 import { Z } from "../zindex.js";
 import { settings } from "../settings.js";
 import { sound } from "../sound.js";
+import { GENERIC_APP_ICON } from "../paths.js";
 
 const DEFAULT_DURATION = 5500;   // 设置缺失时的兜底自动收起时长
 const CLOSE_ANIMATION = 400;     // 与下方 transition 时长保持一致
@@ -154,6 +155,14 @@ export function showNotification(opts = {}) {
         img.src = icon;
         img.alt = "";
         img.style.cssText = "width:40px;height:40px;flex:0 0 40px;object-fit:contain;";
+        // 图标路径失效（插件被卸载 / manifest 写错）时不把裂图摆在通知里：
+        // 第一次 error 就换成通用应用占位，之后不再重试。
+        let iconFailed = false;
+        img.addEventListener("error", () => {
+            if (iconFailed) return;
+            iconFailed = true;
+            img.src = GENERIC_APP_ICON;
+        });
         el.appendChild(img);
     }
 
@@ -185,6 +194,10 @@ export function showNotification(opts = {}) {
         setTimeout(() => {
             el.remove();
             visible.delete(el);
+            // 中间通知关闭后其余通知要回填位置：top 只在创建时按 visible.size 算过，
+            // 不回填会让新通知与残留通知重叠（BUG-08）
+            let i = 0;
+            visible.forEach((n) => { n.style.top = `${TOP_OFFSET + i * ITEM_HEIGHT}px`; i += 1; });
         }, CLOSE_ANIMATION);
     };
     el.addEventListener("click", () => {

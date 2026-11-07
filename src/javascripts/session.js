@@ -18,16 +18,11 @@ const OVERLAY_ID = "os-session-overlay";
 
 /**
  * 应用窗口：只认 body 直接子级里的 .window。
- *
- * 判据必须与窗口层一致 —— window-manager.js 的 isWindowElement 明确排除
- * .finderbar / .menu / .dockcontainer / .desktop / .launchpad 里的伪 .window
- * （顶栏「窗口」菜单历史上就出现过 <p class="window">）。这里原来只排了
- * .finderbar 一层，于是菜单 / 桌面图标层里的伪窗口会被强制退出与
- * runningAppNames 当成真应用：关不掉、还算进会话清单。
- *
- * 不直接 import isWindowElement：session.js 由菜单命令分发链路引入，
- * 拉上 window.js → window-manager.js → finderbar.js 会构成循环依赖；
- * 这条选择器就是那一份判据的等价物，改动时两处一起改。
+ * 判据与 window-manager.js 的 isWindowElement 等价（排除 .finderbar/.menu 等处的
+ * 伪 .window —— 顶栏「窗口」菜单历史上就有 <p class="window">）；这里原来只排了
+ * .finderbar 一层，伪窗口会被强制退出与 runningAppNames 当成真应用。
+ * 不直接 import isWindowElement 是避免 session → window.js → window-manager →
+ * finderbar 循环依赖；改动时两处一起改。
  */
 function appWindows() {
     return Array.from(document.querySelectorAll("body > .window"));
@@ -85,7 +80,12 @@ function setVisible(win, visible) {
  * @param {string} label 遮罩文案
  * @param {(finish: () => void) => void} onDismiss 收到用户输入时的处理
  */
+/** 当前遮罩的清理句柄：第二次 show 必须先走 finish 摘监听，
+ * 只摘 DOM 会把旧 onDismiss 留在 window 键盘监听上（BUG-44）。 */
+let activeFinish = null;
+
 function showSessionOverlay(label, onDismiss) {
+    if (activeFinish) { try { activeFinish(); } catch { /* 清理失败不阻塞新遮罩 */ } activeFinish = null; }
     const existing = document.getElementById(OVERLAY_ID);
     if (existing) existing.remove();
 
@@ -99,6 +99,7 @@ function showSessionOverlay(label, onDismiss) {
     document.body.appendChild(overlay);
 
     const finish = () => {
+        if (activeFinish === finish) activeFinish = null;
         window.removeEventListener("keydown", onInput, true);
         overlay.removeEventListener("click", onInput, true);
         overlay.remove();
@@ -107,6 +108,7 @@ function showSessionOverlay(label, onDismiss) {
 
     window.addEventListener("keydown", onInput, true);
     overlay.addEventListener("click", onInput, true);
+    activeFinish = finish;
     return finish;
 }
 
@@ -124,7 +126,9 @@ async function delegateToLock(reason) {
         if (lock?.lockNow) {
             // 先撤掉可能已在显示的会话遮罩（睡眠 -> 唤醒链路会先显示「睡眠中」），
             // 再把界面交给锁屏遮罩，避免两层同 Z.SESSION 的遮罩叠在一起。
-            document.getElementById(OVERLAY_ID)?.remove();
+            // 必须走 finish 摘监听：只 remove 元素会把旧 onDismiss 留在键盘监听上（BUG-44）。
+            if (activeFinish) { try { activeFinish(); } catch { /* 忽略 */ } activeFinish = null; }
+            else document.getElementById(OVERLAY_ID)?.remove();
             lock.lockNow(reason);
             if (lock.isLocked()) return;
         }
@@ -167,7 +171,8 @@ export function forceQuit() {
     }
     const confirmed = window.__dialog?.confirm(
         i18n.t("session.forceQuit", "强制退出"),
-        `${i18n.t("session.forceQuitPrompt", "确定要退出以下应用吗？未保存的内容将丢失。")}\n${names.join("\n")}`
+        `${i18n.t("session.forceQuitPrompt", "以下应用将被退出，未保存的内容会丢失。")}\n${names.join("\n")}`,
+        { danger: true }
     );
     Promise.resolve(confirmed).then((ok) => {
         if (!ok) return;

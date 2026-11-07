@@ -46,9 +46,9 @@ import { initAppearance } from "./appearance.js";
 // --surface-text（黑或白），晚一步就会有一帧「深色磨砂上是深灰字」的不可读文本。
 import { initSurface } from "./surface.js";
 import { initCursor } from "./cursor.js";
-// 权限账本与 API 命名空间必须在插件注册之前就绪：registerPlugin 会广播
-// plugin-registered，api-grants 挂在这个广播上做安装时授权，监听器晚挂一步
-// 内置插件就会漏记权限。os-api 只挂全局、无异步，紧随其后。
+// 权限账本与 API 命名空间必须在插件注册之前就绪：api-grants 通过 registerPlugin
+// 的注册表钩子做安装时授权（addLifecycleHook，不走开放 DOM 事件，防伪造），
+// 钩子晚挂一步内置插件就会漏记权限。os-api 只挂全局、无异步，紧随其后。
 import { initGrants } from "./api-grants.js";
 import "./os-api.js";
 import { initDefaultApps } from "./default-apps.js";
@@ -196,14 +196,21 @@ function ensureServiceWorker() {
     // + 读取已安装插件」之后。首帧本身由 head 里的 wallpaper-boot.js 用 CSS 变量兜住，
     // 这里负责把当前配置落到壁纸元素、算好着色令牌并释放引导覆盖。
     wallpaper.init();
+    // 锁屏要提前到关键路径：刷新前处于锁定态（或开了开机锁定）时必须先把遮罩盖上，
+    // 若随可选模块空闲点亮，会先露出一段可交互的未锁桌面 —— 持久化就成了摆设。
+    // initLock 幂等，空闲期那次调用会直接短路。
+    try {
+        const { initLock } = await import("./lock.js");
+        initLock();
+    } catch (err) { warn("锁屏模块未启用：", err); }
     // initCursor 是异步的（读取并内联光标资源）；不等待它，避免光标问题阻塞整个桌面。
     initCursor().catch?.((err) => warn("光标初始化失败：", err));
     // 插件清单 fetch 与授权账本的 IndexedDB 读取并行：initPlugins() 之后会复用
     // 这批已下载的清单，注册表就绪时间不再叠加在网络往返后面。
     prefetchManifests();
     // 权限账本读回 + 默认应用钩子接线都必须在插件注册之前完成：
-    // 插件清单一经 registerPlugin 就广播 plugin-registered，api-grants 靠它记授权。
-    // 但「监听器已同步挂好」不等于「必须等账本读完」：initGrants() 内部先挂监听再读
+    // 插件清单一经 registerPlugin 就触发生命周期钩子，api-grants 靠它记授权。
+    // 但「钩子已挂上」不等于「必须等账本读完」：initGrants() 内部先挂钩子再读
     // IndexedDB，所以这里不再 await —— 全量读取不再充当启动硬屏障。读取失败只在
     // 内存里表现成空账本，本次会话敏感能力会重新询问，不必拖住插件注册。
     initGrants().catch((err) => warn("授权账本初始化失败，本次会话按空账本继续：", err));
@@ -212,12 +219,19 @@ function ensureServiceWorker() {
     initOfficeBrand();
     // 全局快捷键分发：键位表的唯一真源，必须在任何应用开始监听之前就位
     initKeyboard();
-    initPlugins();
+    // initPlugins() 同步抛错（清单解析崩等）不能带走整条启动链：
+    // 否则 i18n 初始化被跳过（整页无翻译）、可选内核模块永远不被点亮（BUG-40）。
+    try { initPlugins(); } catch (err) { warn("插件注册初始化失败，继续启动：", err); }
     // 多语言与插件注册互不依赖，并行起来：语言包是一次网络往返，串行执行等于把它
     // 叠在插件清单加载之后。init 是 async 的，但公开 API 没承诺一定返回 Promise，
     // 包一层 Promise.resolve 兜住同步实现（同步实现被包进 Promise 后仍然会执行）。
     const i18nPromise = Promise.resolve(i18n.init(i18n.getLanguage()));
-    await Promise.all([pluginsReady(), i18nPromise]);
+    // 锁屏遮罩若已先于语言包盖上（刷新重锁），语言包落地后把遮罩文本重绘成当前语言。
+    i18nPromise.then(() => globalThis.__lock?.refreshTexts?.());
+    // allSettled 而不是 all：pluginsReady() 若 reject，whenIdle 的可选模块
+    // （声音/显示器/锁屏/聚焦/调试/滚动条）照旧点亮 —— 单个非关键子系统故障不能级联（BUG-40）。
+    const settled = await Promise.allSettled([pluginsReady(), i18nPromise]);
+    settled.forEach((r) => { if (r.status === "rejected") warn("启动门槛有一项未达成，继续启动：", r.reason); });
     // 可选内核模块不占启动关键路径：此时桌面已可绘制与交互，把它们挪到空闲帧再并行点亮。
     whenIdle(() => startOptionalModules(defined));
 })();
@@ -267,6 +281,15 @@ function runVersionCheck() {
             if (manifest && manifest.version !== VERSION) {
                 warn(`版本漂移：manifest.json=${manifest.version} version.js=${VERSION}`);
             }
+            // index.html 的 ?v= 缓存戳是注释点名的历史漂移点，一并校验（BUG-49）：
+            // 取当前文档全部样式表/脚本查询串，任何一个与 VERSION 不符都告警。
+            document.querySelectorAll('link[href*="?v="], script[src*="?v="]').forEach((node) => {
+                const url = node.getAttribute("href") || node.getAttribute("src") || "";
+                const stamp = /[?&]v=([^&]+)/.exec(url);
+                if (stamp && stamp[1] !== VERSION) {
+                    warn(`版本漂移：index.html 缓存戳=${stamp[1]} version.js=${VERSION}（${url.split("?")[0]}）`);
+                }
+            });
             try {
                 sessionStorage.setItem(VERSION_CHECKED_KEY, "1");
             } catch (err) { /* 写不进就算了：下次最多重复一次自检 */ }

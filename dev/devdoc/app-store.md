@@ -96,12 +96,14 @@
 
 - 状态落在设置中枢 `store.disabled`（定义在 `app-registry.js`，唯一读写口是
   `disabledIds()` / `isPluginEnabled()` / `setPluginEnabled()`），改了广播 `plugin-enabled-change`。
-- **禁用是真的禁用**：`plugin-manager.load()` / `loadApp()` 直接拒绝；程序坞点击被拦下并给提示；
-  启动台不渲染该应用（但布局条目保留，重新启用回到原位）；聚焦搜索过滤掉它；
-  `getAppByExtension()` 也不再让它接管文件格式。
+- **禁用是真的禁用**：`plugin-manager.load()` / `loadApp()` 直接拒绝；程序坞不渲染该应用的
+  收藏/运行/最近条目（收藏顺序保留，重新启用回到原位）；启动台不渲染该应用（布局条目保留，
+  重新启用回到原位）；聚焦搜索过滤掉它；`getAppByExtension()` 也不再让它接管文件格式。
 - 内置插件可以禁用、不能卸载；ZIP 安装的插件卸载时会先按正常关闭流程收掉它还开着的窗口
   （`window._closeWindow()`），避免「有小圆点没界面」的钉子户。
-- 应用商店自身不可禁用——把它关掉就再没有界面能把任何插件打开。
+- 系统设置与 App Store 允许禁用（收起来后可用对方的 App 列表重新启用；两个都禁用时，
+  苹果菜单的「应用已禁用」确认框会先重新启用再打开）。`visibility.system` 的启动台等
+  系统应用不可禁用，设置与商店的禁用按钮不出现，并显示原因。
 
 ## 发布与打包
 

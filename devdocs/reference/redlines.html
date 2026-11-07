@@ -6,37 +6,39 @@
 <title>红线清单 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="redlines" data-base="../" data-version="0.2.95">
+<body data-page="redlines" data-base="../" data-version="0.4.3">
 <main>
 <h1>红线清单</h1>
-<p class="lede">会被 static-check / deep-check 判失败（或静默出 bug）的约定。改代码前过一遍。</p>
+<p class="lede">写完代码先过这页。每条都标注「谁会拦你」——能被机器拦下的，别等 review 才被发现；机器拦不下的，就是 review 时一定会被要求返工的。</p>
 
 <h2>代码层</h2>
 <table>
 <tr><th>红线</th><th>为什么</th><th>谁拦</th></tr>
 <tr><td><b>MV3 CSP</b>：禁 eval / new Function / 内联 on* 事件属性；菜单 cmd 字符串只认「键名 + 至多一个字符串实参」</td>
-    <td>script-src 'self'</td><td>浏览器（硬）+ menuCommands.js 正则</td></tr>
-<tr><td><b>import 说明符不带 <code>?v=</code></b>（宿主 <code>index.html</code> 的 script/css 带 <code>?v=VERSION</code> 是另一回事）</td>
-    <td>带/不带 = 两个模块，核心模块双求值、全局钩子互相覆盖</td><td>deep-check / 人工</td></tr>
+    <td>MV3 扩展页默认 <code>script-src 'self'</code></td><td>浏览器（硬）+ ui/menuCommands.js 正则</td></tr>
+<tr><td><b>import 说明符不带 <code>?v=</code></b>（宿主 index.html 的 script/css 带 <code>?v=VERSION</code> 是另一回事）</td>
+    <td>带/不带 = 两个模块，内核模块双求值、全局钩子互相覆盖</td><td>deep-check / 人工</td></tr>
 <tr><td>backdrop-filter 一律 <code>var(--surface-blur-N)</code>；磨砂文字一律 <code>var(--surface-text*)</code>；不手写 blur(px)</td>
-    <td>模糊等级由系统统一分配；裸 px 让用户设置静默失效</td><td>static-check 模糊节（含 JS 拼样式串）</td></tr>
+    <td>模糊等级由系统统一分配；裸 px 让用户设置静默失效</td><td>static-check 第 5 节（含 JS 拼样式串）</td></tr>
 <tr><td>墙纸着色必须 <code>calc(&lt;固有浓度&gt; * var(--tint-strength))</code>，颜色走 --tint-rgb 链</td>
     <td>「着色浓度」滑块必须真的乘上</td><td>static-check 5b 节</td></tr>
-<tr><td><b>.window 与 backdrop-filter 元素上禁用 transform / filter / clip-path</b>（blur 动画走 opacity 双片）</td>
+<tr><td><b>.window 与 backdrop-filter 元素上禁用 transform / filter / clip-path</b>（淡入淡出用 opacity 实现）</td>
     <td>新合成层让 backdrop-filter 采样断链 / 错位</td><td>人工（规范）</td></tr>
 <tr><td>窗口 z 只来自焦点栈（window-manager，2050-9000 段）；浮层 z 只走 Z 表</td>
-    <td>两处各管一段，裸 z-index 越界会压穿动态窗口</td><td>deep-check / 层级体检</td></tr>
-<tr><td>运行时资源文件命名 ASCII（法语重音 / emoji 前缀已批转）</td>
-    <td>SW 与 <code>%</code>-编码链路对非 ASCII 的处理边界</td><td>static-check 命名节</td></tr>
+    <td>两处各管一段，裸 z-index 越界会压穿动态窗口</td><td>层级体检 / 人工</td></tr>
+<tr><td>运行时资源文件命名 ASCII</td>
+    <td>SW 与 <code>%</code>-编码链路对非 ASCII 的处理边界</td><td>static-check 资源节</td></tr>
+<tr><td>界面里<b>不出现 emoji</b>（图标用 assets 里的 PNG/SVG 资源）</td>
+    <td>跨平台渲染不一致，且与 macOS 复刻目标冲突</td><td>人工（规范）</td></tr>
 </table>
 
 <h2>文案与 i18n</h2>
 <table>
 <tr><th>红线</th><th>做法</th></tr>
-<tr><td>新增用户可见文案 = 四语键齐备</td><td>zh-CN / en / ja-JP / cat 四份 <code>assets/locales/*.json</code> 同时加；
-    插件自带文案走 <code>registerMessagesAll</code>（四语都写，cat = 中文+喵），<b>不往内核语言包塞键</b></td></tr>
-<tr><td>t(key, fallback) 键必须是<b>字面量</b></td><td>动态拼键（<code>t("a."+x)</code>）会被 static-check 标记；用三目选两个字面量键</td></tr>
-<tr><td>data-i18n 只认两个属性</td><td><code>data-i18n</code> + <code>data-i18n-fallback</code>；placeholder/title 变体是死标记（见 <a href="../api/i18n.html">i18n</a>）</td></tr>
+<tr><td>新增用户可见文案 = 四语键齐备</td><td>内核文案：zh-CN / en / ja-JP / cat 四份 <code>assets/locales/*.json</code> 同时加；
+插件自带文案走 <code>registerMessagesAll</code>（四语都写，cat = 中文+喵），<b>不往内核语言包塞键</b></td></tr>
+<tr><td>t(key, fallback) 键必须是<b>字面量</b>，且必带兜底</td><td>动态拼键（<code>t("a."+x)</code>）会被 static-check 标记；用三目选两个字面量键</td></tr>
+<tr><td>data-i18n 只认两个属性</td><td><code>data-i18n</code> + <code>data-i18n-fallback</code>；placeholder/title 变体没有内核代码读（见 <a href="../api/i18n.html">i18n</a>）</td></tr>
 </table>
 
 <h2>数据与存储</h2>
@@ -45,7 +47,7 @@
 <tr><td>设置读写只走 <code>window.__settings</code></td><td>别往 localStorage 手写第三个键；owner 读法决定落盘形态（on/off）</td></tr>
 <tr><td>日志只走 <code>window.__log</code>（console.* 已被自动归档）</td><td>来源显式写 <code>plugin/&lt;id&gt;</code></td></tr>
 <tr><td>OSFS 路径取 <code>OSFS.TOP</code> / <code>OSFS.scope(id)</code></td><td>不写 <code>"/文档"</code> 字面量；不造虚拟目录层</td></tr>
-<tr><td>temp/ 不可依赖持久性</td><td>读不到 = 缓存未命中，不当错误不当数据库</td></tr>
+<tr><td>temp/ 不可依赖持久性</td><td>读不到 = 缓存未命中，不当错误、不当数据库</td></tr>
 <tr><td>NeedsReauthError 不静默回落</td><td>按 err.name 判别；界面如实说「需要重新授权」，绝不写「已保存」</td></tr>
 <tr><td>删除收口在 trash.js</td><td>UI 侧不直接 OSFS.remove（清倒走 emptyTrash）</td></tr>
 </table>
@@ -53,9 +55,9 @@
 <h2>资源与图标</h2>
 <table>
 <tr><th>红线</th><th>做法</th></tr>
-<tr><td>应用图标一律 PNG</td><td>禁 SVG（Dock/启动台/商店共用位图）；菜单栏单色 glyph 例外</td></tr>
-<tr><td>图标先查 <code>assets/icons/</code>，找到<b>复制</b>进插件目录</td><td>manifest 只写裸文件名；库原文件不移走；没有就<b>不声明</b>（自动落 GENERIC_APP_ICON）</td></tr>
-<tr><td>manifest.permissions 必写（哪怕 []）</td><td>没声明的能力调用直接 ok:false；取值必须来自 15 条 PERMISSION_NAMES</td></tr>
+<tr><td>应用图标一律 PNG</td><td>禁 SVG（程序坞/启动台/商店共用位图）；菜单栏单色 glyph 例外</td></tr>
+<tr><td>图标先查 <code>assets/icons/</code>，找到<b>复制</b>进插件目录</td><td>manifest 只写裸文件名；库原文件不移走；没有就<b>不声明</b>（自动落 GENERIC_APP_ICON 占位图）</td></tr>
+<tr><td>manifest.permissions 必写（哪怕 []）</td><td>没声明的能力调用直接 ok:false；取值只能来自 22 条 PERMISSION_NAMES</td></tr>
 <tr><td>plugin-unload 必须释放全局注册</td><td>监听 / 定时器 / <code>window.__*</code> 钩子 / __menuActions 键 / settings 订阅——模块表不回收旧实例</td></tr>
 </table>
 

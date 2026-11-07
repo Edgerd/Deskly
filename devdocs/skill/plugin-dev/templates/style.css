@@ -1,0 +1,44 @@
+/* 模板样式：所有选择器以 .my-plugin 开头（插件跑在整个桌面的 DOM 里）。
+   模糊只走系统令牌；深浅色用 html[data-theme] 覆盖；缓动统一 cubic-bezier(0.16, 1, 0.3, 1)。 */
+
+.my-plugin .my-plugin-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--surface-text);
+}
+
+.my-plugin .my-plugin-body {
+    padding: 16px;
+    font-size: 13px;
+    color: var(--surface-text);
+}
+
+.my-plugin .my-plugin-run {
+    margin-top: 12px;
+    padding: 4px 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent, #0a84ff);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.my-plugin .my-plugin-run:hover { opacity: 0.85; }
+.my-plugin .my-plugin-run:active { opacity: 0.7; }
+
+/* 深色主题差异用属性选择器覆盖，不写死第二套色值 */
+html[data-theme="dark"] .my-plugin .my-plugin-titlebar {
+    /* 例：深色下的差异覆盖（无需差异时删除本规则） */
+}
+
+/* 减少动态效果：非必要动效在系统偏好开启时关闭 */
+html[data-reduce-motion="on"] .my-plugin .my-plugin-run {
+    transition: none;
+}

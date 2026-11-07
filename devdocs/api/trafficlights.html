@@ -6,10 +6,10 @@
 <title>窗口红绿灯 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="trafficlights" data-base="../" data-version="0.3.6">
+<body data-page="trafficlights" data-base="../" data-version="0.4.3">
 <main>
 <h1>窗口红绿灯（titlebar controls）</h1>
-<p class="lede">一个标签声明三颗灯。结构、符号、hover/禁用/非活跃状态机都封在 Shadow DOM 里，应用只声明位置形态与能力。</p>
+<p class="lede">macOS 窗口左上角的红黄绿三颗灯。你只写一个标签，结构、符号、hover / 禁用 / 非活跃状态机都封在 Shadow DOM 组件里。源码：<code>src/javascripts/ui/trafficLights.js</code>。</p>
 
 <h2>标准写法：放进标题栏</h2>
 <pre><code>&lt;div class="myapp window" data-window="size:900x620 centered"&gt;
@@ -20,60 +20,53 @@
   &lt;section class="myapp-body"&gt;…&lt;/section&gt;
 &lt;/div&gt;</code></pre>
 <ul>
-<li><b>必须放在带 <code>data-titlebar</code> 的元素里</b>：窗口拖拽只认它；没有标题栏元素的窗口才会退回「顶部灯区带」。</li>
-<li><code>placement="titlebar"</code>（缺省）表示内联形态：组件读取标题栏的
-    <code>padding-left</code>，把 <code>margin-left</code> 补齐到 <code>--traffic-inset</code>（20px）。
-    <b>应用不要再写 <code>margin-left: calc(var(--traffic-inset) - 12px)</code></b> 这类补偿，
-    标题栏改内边距也不会把灯推歪。</li>
-<li>标题栏用 <code>display:flex; align-items:center</code> 时三颗灯自动垂直居中；
-    组件自身也带 <code>align-self:center</code> 兜底。</li>
-<li>标题栏不要加 <code>transform</code> / <code>filter</code>：会破坏窗口与侧栏的 backdrop-filter。</li>
+<li><b>必须放在带 <code>data-titlebar</code> 的元素里</b>：窗口拖拽只认它；没有标题栏元素的窗口才退回「悬浮灯」形态。</li>
+<li><code>placement="titlebar"</code>（缺省）是内联形态：组件自动读取标题栏的 <code>padding-left</code>，把自己的 <code>margin-left</code> 补齐到
+<code>--traffic-inset</code>（20px）。<b>应用不要再手写 <code>margin-left: calc(var(--traffic-inset) - 12px)</code></b> 这类补偿——标题栏改内边距也不会把灯推歪。</li>
+<li>标题栏用 <code>display:flex; align-items:center</code> 时三颗灯自动垂直居中（组件自身也带 <code>align-self:center</code> 兜底）。</li>
+<li>标题栏不要加 <code>transform</code> / <code>filter</code>：会破坏窗口与侧栏的 backdrop-filter 采样。</li>
 </ul>
 
 <h2>无标题栏：悬浮定位</h2>
 <pre><code>&lt;deskly-traffic-lights class="wintools" overlay&gt;&lt;/deskly-traffic-lights&gt;</code></pre>
-<p>照片、记事本、Office 这类内容顶到窗口边缘的界面用 <code>overlay</code>
-（等价于 <code>placement="overlay"</code>）：绝对定位到
-<code>left: var(--traffic-inset); top: var(--traffic-top)</code>，不占布局。</p>
+<p>照片、记事本、Office 这类内容顶到窗口边缘的界面用 <code>overlay</code>（等价于 <code>placement="overlay"</code>）：
+绝对定位到 <code>left: var(--traffic-inset); top: var(--traffic-top)</code>，不占布局。</p>
 
-<h2>能力开关</h2>
-<pre><code>&lt;deskly-traffic-lights class="wintools" variant="dialog"&gt;&lt;/deskly-traffic-lights&gt;  最小化 / 缩放禁用
-&lt;deskly-traffic-lights class="wintools" no-zoom&gt;&lt;/deskly-traffic-lights&gt;            只禁用缩放
+<h2>能力开关（禁用某些灯）</h2>
+<pre><code>&lt;deskly-traffic-lights class="wintools" variant="dialog"&gt;&lt;/deskly-traffic-lights&gt;  &lt;!-- 对话框形态：最小化 / 缩放禁用 --&gt;
+&lt;deskly-traffic-lights class="wintools" no-zoom&gt;&lt;/deskly-traffic-lights&gt;            &lt;!-- 只禁用缩放 --&gt;
 &lt;deskly-traffic-lights class="wintools" no-minimize no-close&gt;&lt;/deskly-traffic-lights&gt;</code></pre>
-<p>禁用规则只收紧、不放宽：<code>variant="dialog"</code> 与 manifest 的能力声明求交，
+<p>禁用规则<b>只收紧、不放宽</b>：<code>variant="dialog"</code> 与 manifest 的能力声明求交，
 不会出现「清单说可最小化，于是对话框的禁用位又被点亮」的分叉。</p>
 
-<h2>JS API（src/javascripts/ui/trafficLights.js）</h2>
+<h2>JS API</h2>
 <table>
 <tr><th>导出</th><th>说明</th></tr>
 <tr><td><code>attachTrafficLights(win, { anchor, placement, variant, noMinimize, noZoom })</code></td>
-    <td><b>推荐入口</b>。幂等：把灯插成 <code>anchor</code> 的第一个子节点；<code>anchor</code>
-    接受元素或选择器，缺省取窗口内第一个 <code>[data-titlebar]</code>。没有标题栏或显式
-    <code>placement:"overlay"</code> 时退回窗口根并悬浮定位。已有的 overlay 灯不会被误搬进标题栏。</td></tr>
-<tr><td><code>createTrafficLights(opts)</code></td><td>创建游离宿主（测试或自定义挂载时用）。</td></tr>
-<tr><td><code>mountTrafficLights(win, opts)</code></td><td><code>attachTrafficLights</code> 的兼容别名；
-    window-manager 在第三方窗口缺灯时自动调用。</td></tr>
-<tr><td><code>getTrafficLights(win)</code></td><td>取窗口自己的灯宿主（<code>:scope</code> 优先，避免命中嵌套窗口）。</td></tr>
-<tr><td><code>setTrafficLightsEnabled(win, caps)</code></td><td>按 <code>{close,minimize,zoom}</code> 收紧能力；
-    只能关、不能开。</td></tr>
-<tr><td><code>setTrafficLightsActive(win, active)</code></td><td>切换非活跃灰化，只改类名不触发布局。</td></tr>
-<tr><td><code>TAG</code> / <code>ACTION_EVENT</code></td><td><code>deskly-traffic-lights</code> 与
-    <code>deskly:window-action</code>。动作冒泡给 window-manager，组件不直接改窗口状态。</td></tr>
+    <td><b>推荐入口</b>，幂等：把灯插成 <code>anchor</code> 的第一个子节点；<code>anchor</code> 接受元素或选择器，
+    缺省取窗口内第一个 <code>[data-titlebar]</code>。没有标题栏、或显式 <code>placement:"overlay"</code> 时退回窗口根悬浮定位。
+    已有的 overlay 灯不会被误搬进标题栏。</td></tr>
+<tr><td><code>createTrafficLights(opts)</code></td><td>创建游离宿主（测试或自定义挂载时用）</td></tr>
+<tr><td><code>mountTrafficLights(win, opts)</code></td><td><code>attachTrafficLights</code> 的兼容别名；window-manager 在第三方窗口缺灯时自动调用</td></tr>
+<tr><td><code>getTrafficLights(win)</code></td><td>取窗口自己的灯宿主（<code>:scope</code> 优先，避免命中嵌套窗口）</td></tr>
+<tr><td><code>setTrafficLightsEnabled(win, caps)</code></td><td>按 <code>{close, minimize, zoom}</code> 收紧能力；<b>只能关、不能开</b></td></tr>
+<tr><td><code>setTrafficLightsActive(win, active)</code></td><td>切换非活跃灰化；只改类名不触发布局</td></tr>
+<tr><td><code>TAG</code> / <code>ACTION_EVENT</code></td><td><code>"deskly-traffic-lights"</code> 与 <code>"deskly:window-action"</code>。
+动作事件冒泡给 window-manager 处理，组件自己不直接改窗口状态</td></tr>
 </table>
 
 <h2>几何令牌：只覆盖令牌，不重写布局</h2>
 <table>
 <tr><th>令牌</th><th>默认</th><th>说明</th></tr>
-<tr><td><code>--traffic-size</code></td><td>12px</td><td>圆点直径；符号尺寸由它推导</td></tr>
+<tr><td><code>--traffic-size</code></td><td>12px</td><td>圆点直径；内部符号尺寸由它推导</td></tr>
 <tr><td><code>--traffic-gap</code></td><td>8px</td><td>三颗灯间距</td></tr>
 <tr><td><code>--traffic-inset</code></td><td>20px</td><td>到窗口左缘的距离（内联形态由组件自动补齐）</td></tr>
 <tr><td><code>--traffic-titlebar</code></td><td>38px</td><td><code>--traffic-top</code> 由它推导；标题栏更高时在标题栏上覆盖它</td></tr>
 <tr><td><code>--traffic-z</code></td><td>10</td><td>内容浮层压住灯时调高（照片预览用 210）</td></tr>
 </table>
 
-<div class="note"><b>排查顺序</b> 灯的位置不对 → 先确认它是不是标题栏的第一个子节点、标题栏有没有
-<code>data-titlebar</code>；再看是否有应用样式覆盖了 <code>margin-left</code>。灯被内容盖住 → 查
-<code>--traffic-z</code> 与浮层 z-index，不要反向压低内容层。</div>
+<div class="note"><b>排查顺序</b> 灯位置不对 → 先确认它是不是标题栏的第一个子节点、标题栏有没有 <code>data-titlebar</code>；
+再看是否有应用样式覆盖了 <code>margin-left</code>。灯被内容盖住 → 查 <code>--traffic-z</code> 与浮层 z-index，不要反向压低内容层。</div>
 
 </main>
 <script src="../assets/pages.js"></script>

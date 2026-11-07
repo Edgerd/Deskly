@@ -6,59 +6,68 @@
 <title>架构总览 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="architecture" data-base="../" data-version="0.2.95">
+<body data-page="architecture" data-base="../" data-version="0.4.3">
 <main>
 <h1>架构总览</h1>
-<p class="lede">执行模型、数据流与「版本与更新」规则。写任何代码之前先读这页。</p>
+<p class="lede">这页回答三个问题：代码怎么跑起来的、数据怎么流动的、升级版本要动哪几处。写任何代码之前先读这页。</p>
 
-<h2>执行模型（最重要的两条）</h2>
-<ol>
-<li><b>没有 iframe。</b> mod 由 <code>plugin-manager.js</code> fetch 三件资源后注入<b>宿主主文档</b>：
-HTML 片段 <code>insertAdjacentHTML</code> 进 body，脚本是全新 URL 的 <code>&lt;script type="module"&gt;</code>。
-所以 mod 共享整个桌面 DOM，也共享全部 <code>window.__*</code> 钩子。</li>
-<li><b>冷加载。</b> 启动只 fetch 14 份 <code>manifest.json</code>（带 <code>?v=VERSION</code>）建立注册表，
-派发 <code>plugins-ready</code>；点击应用时才拉 style/html/script。详见 <a href="cold-load.html">冷加载机制</a>。</li>
-</ol>
+<h2>执行模型（最重要的两件事）</h2>
+<h3>1. 没有 iframe，插件和桌面住在同一个文档里</h3>
+<p>用户点击图标时，<code>plugin-manager.js</code> 把插件的三个文件拉下来注入<b>宿主主文档</b>：
+HTML 片段 <code>insertAdjacentHTML</code> 进 body，样式加成 <code>&lt;link&gt;</code>，脚本以全新 URL 注入为 <code>&lt;script type="module"&gt;</code>。
+所以你的插件能摸到整个桌面的 DOM，也能摸到全部 <code>window.__*</code> 全局钩子——方便，也意味着你要自觉（选择器带自己的类名前缀、卸载时清理全局注册）。</p>
+<h3>2. 冷加载：启动只读清单，点击才加载内容</h3>
+<p>开机时系统只 fetch 全部内置插件的 <code>manifest.json</code>（清单即 <code>BUILTIN_IDS</code>，带 <code>?v=VERSION</code> 缓存戳）建立注册表，
+再从 IndexedDB 还原用户装过的 ZIP 插件，最后广播 <code>plugins-ready</code>。程序坞、启动台、商店都是监听这个事件才渲染的。
+你的 <code>style.css / index.html / script.js</code> 要等用户点击图标才被拉取。细节与两条硬约束见<a href="cold-load.html">冷加载机制</a>。</p>
 
-<h2>模块图（内核 → 消费方）</h2>
+<h2>模块图（内核依赖方向，自上而下被消费）</h2>
 <pre><code>settings.js（最底，不 import 任何内核模块）
    ▲
-osfs.js（单一根 + virtual/disk 双后端，同样不 import）   i18n.js / zindex.js / log.js（叶子）
+osfs.js（文件存储：单一根 + virtual/disk 双后端）   i18n.js / zindex.js / log.js（叶子模块）
    ▲
 app-registry.js（应用注册表 + broadcast 事件总线）
    ▲
 plugin-manager.js（装载 / 卸载 / 图标解析 / ZIP 安装）   api-grants.js（权限账本）
    ▲
-finderbar.js（顶栏 + 菜单 + cmd 分发）· dock.js · window-manager.js · controlcenter.js
+finderbar.js（顶栏菜单）· dock.js · window-manager.js · controlcenter.js
    ▲
-mods/*（13 个内置插件，含多应用套件 office = 文稿/表格/演示）</code></pre>
+mods/*（内置插件，清单见 BUILTIN_IDS；office 是多应用套件：word / excel / ppt）</code></pre>
+<p>记这张图的意义：<b>下层不知道上层的存在</b>。你写插件时可以 import 任何下层模块，但永远不要反过来——内核模块不会、也不该 import 你的插件。</p>
 
-<h2>数据流三主路</h2>
+<h2>数据流三条主路</h2>
 <table>
-<tr><th>路</th><th>入口</th><th>广播</th><th>消费方</th></tr>
-<tr><td>设置</td><td><code>window.__settings.set(key, v)</code>（唯一写入方）</td><td><code>settings-changed</code>（document，detail = 对象）+ <code>__settings.on/subscribe</code></td><td>owner 模块（dock / controlcenter / surface / sound / display…）+ 任意订阅者</td></tr>
-<tr><td>日志</td><td><code>window.__log.info/warn/error/debug</code>（console.* 也被自动归档）</td><td>—（内核缓冲，跨窗口跨刷新留存）</td><td>系统设置 › 调试面板查询 / 导出 / 复制</td></tr>
-<tr><td>事件总线</td><td><code>Deskly.bus.emit(topic, data)</code>（形状 = <code>app-registry.broadcast</code>：document + bubbles + CustomEvent.detail）</td><td>同名 CustomEvent</td><td>跨插件 / 跨内核模块通知</td></tr>
+<tr><th>路</th><th>写入方</th><th>你怎么收到变化</th><th>典型消费方</th></tr>
+<tr><td>设置</td><td><code>window.__settings.set(key, v)</code>（唯一写入入口）</td><td>document 事件 <code>settings-changed</code>，或 <code>__settings.on(key, fn)</code></td><td>程序坞 / 控制中心 / 表面 / 音效等 owner 模块 + 你的插件</td></tr>
+<tr><td>日志</td><td><code>window.__log.info/warn/error/debug</code>（console.* 也被自动归档）</td><td>不广播；进内核缓冲，跨刷新留存</td><td>顶栏「调试 → 查看运行记录」查询 / 导出</td></tr>
+<tr><td>事件总线</td><td><code>Deskly.bus.emit(topic, data)</code> 或内核 <code>app-registry.broadcast()</code></td><td>同名 CustomEvent（document 派发、bubbles: true，window 上也能收到）</td><td>插件间通知、内核生命周期广播</td></tr>
 </table>
 
-<h2>版本与更新（?v= 三处规则）</h2>
+<h2>缓存戳规则（为什么资源后面有个 ?v=）</h2>
 <table>
-<tr><th>位置</th><th>写法</th><th>原因</th></tr>
-<tr><td><code>manifest.json</code> fetch（冷加载注册）</td><td><code>?v=VERSION</code></td><td>随发布自动失效缓存</td></tr>
-<tr><td><code>index.html</code> 里宿主资源（script/css）</td><td><code>?v=VERSION</code></td><td>同上；版本升级时<b>整站</b>资源一起失效</td></tr>
-<tr><td>mod 的 style.css / index.html / 插件 manifest</td><td>内置 <code>?v=VERSION</code>；ZIP 安装 <code>Date.now()</code></td><td>ZIP 可被同 id 覆盖安装，必须每次取新</td></tr>
+<tr><th>资源</th><th>戳值</th><th>为什么</th></tr>
+<tr><td>插件 manifest.json（启动注册）</td><td><code>?v=VERSION</code></td><td>每次发布自动失效，同一版本内复用缓存</td></tr>
+<tr><td>宿主 index.html 里的 script / css</td><td><code>?v=VERSION</code>（当前 15 处）</td><td>升级 = 整站资源一起失效</td></tr>
+<tr><td>插件的 style.css / index.html</td><td>内置插件 <code>?v=VERSION</code>；商店 ZIP 插件 <code>Date.now()</code></td><td>ZIP 允许同 id 覆盖安装，必须每次拿新的</td></tr>
+<tr><td>插件入口 script.js</td><td><b>永远 <code>Date.now()</code>（+ 序号）</b></td><td>入口顶层要重跑 init()，URL 稳定会被 ES module 缓存命中，二次打开就不执行了</td></tr>
 </table>
-<div class="warn"><b>红线</b> ES module 的 <code>import</code> 说明符<b>永远不带</b> <code>?v=</code>：带与不带是两个模块，
-核心模块被求值两次 → 两份状态互相覆盖全局钩子（settings / log / 注册表都会分裂）。
-宿主资源升级 = 改 <code>version.js</code> 的 <code>VERSION</code> + 全仓 <code>index.html</code> 的 <code>?v=</code> 串（当前 15 处），见 <a href="../reference/changelog.html">版本与更新</a>。</div>
+<div class="warn"><b>红线</b> ES module 的 <code>import</code> 说明符<b>永远不带 <code>?v=</code></b>。带与不带会被浏览器当成两个模块，
+内核模块被求值两次 → 两份状态互相覆盖全局钩子（设置、日志、注册表全部分裂）。这条 deep-check 会拦。</div>
+
+<h2>升版本要同步的三处</h2>
+<ol>
+<li><code>src/javascripts/version.js</code> 的 <code>VERSION</code>（资源戳与「关于本机」都取它）；</li>
+<li>扩展根 <code>manifest.json</code> 的 <code>version</code> 与 <code>version_name</code>；</li>
+<li>根 <code>index.html</code> 里全部 <code>?v=</code> 串（当前 15 处）。</li>
+</ol>
+<p>然后在 <code>docs/产品更新信息.md</code> 头部按既有格式补一条更新记录。详见<a href="../reference/changelog.html">版本与更新</a>。</p>
 
 <h2>「没有 iframe」的两条推论</h2>
 <ul>
-<li>mod 里的 <code>document</code>、<code>window</code> 就是宿主桌面本身：别假设自己独占 DOM（选择器要带 mod 的作用域前缀）；
-   也别假设 <code>window.location.reload()</code> 有语义——扩展新标签页里它只会重载整个桌面。</li>
-<li><code>window.Deskly</code> 是<b>能力</b>门面不是沙箱：mod 直接 import 内核模块（<code>../../src/javascripts/xxx.js</code>）
-   是允许的（内置 mod 都这么做），第三方 ZIP 插件靠 <code>sw.js</code> 拦截 <code>./mods/&lt;id&gt;/</code> 路径拿到同等待遇；
-   能力边界由 <code>manifest.permissions</code> + <code>api-grants.js</code> 账本约束，见 <a href="../api/deskly.html">Deskly</a>。</li>
+<li>你的 <code>document</code>、<code>window</code> 就是桌面本身。别假设独占 DOM；也别调用 <code>window.location.reload()</code>——那只会重载整个桌面。</li>
+<li>内置插件直接 <code>import</code> 内核模块（<code>../../src/javascripts/xxx.js</code>）是允许且鼓励的；
+商店 ZIP 插件由 <code>sw.js</code>（Service Worker）拦截 <code>./mods/&lt;id&gt;/</code> 路径、从 IndexedDB 回源，拿到同等待遇。
+能力边界由 <code>manifest.permissions</code> + api-grants.js 账本约束，见 <a href="../api/deskly.html">Deskly</a>。</li>
 </ul>
 
 </main>

@@ -1,0 +1,12 @@
+<!-- 模板使用：把 my-plugin / MyPlugin / myPlugin 三处占位全部替换成你的 id / 类名 / i18n 命名空间。
+     窗口尺寸只写在这一个文件里（data-window），不要去 manifest 里对第二份数字。 -->
+<div class="my-plugin window" data-window="size:420x560 centered">
+    <header class="my-plugin-titlebar" data-titlebar>
+        <deskly-traffic-lights class="wintools" placement="titlebar"></deskly-traffic-lights>
+        <span class="my-plugin-title" data-i18n="myPlugin.title" data-i18n-fallback="我的插件">我的插件</span>
+    </header>
+    <section class="my-plugin-body">
+        <p data-i18n="myPlugin.hint" data-i18n-fallback="在这里放你的界面">在这里放你的界面</p>
+        <button type="button" class="my-plugin-run" data-i18n="myPlugin.run" data-i18n-fallback="运行">运行</button>
+    </section>
+</div>

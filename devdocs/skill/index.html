@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>插件开发技能包（喂给 AI） · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="skill" data-base="../" data-version="0.4.3">
+<main>
+<h1>插件开发技能包（喂给 AI）</h1>
+<p class="lede">这是一个面向 AI 编码助手的技能包（skill）：把目录整体喂给 AI，它就能按本仓库规范从零做出一个 Deskly 插件。人类读者把这页当导览即可。</p>
+
+<h2>包里有什么</h2>
+<pre><code>skill/plugin-dev/
+├── SKILL.md                  # 技能主文件（带 name/description frontmatter，AI 入口）
+├── checklist.md              # 交付前自检清单（逐条可判否）
+└── templates/                # 可直接复用的骨架（改 id 与文案即可）
+    ├── manifest.json
+    ├── index.html
+    ├── style.css
+    └── script.js</code></pre>
+
+<h2>怎么用</h2>
+<ol>
+<li>把 <code>skill/plugin-dev/SKILL.md</code> 的内容发给 AI（或把目录放进它的技能加载路径）；</li>
+<li>告诉它你的插件要做什么（名称、界面、需要的系统能力）；</li>
+<li>它会按规范产出 <code>mods/&lt;id&gt;/</code> 四个文件 + 图标声明，并自检<a href="plugin-dev/checklist.md">交付清单</a>；</li>
+<li>你拿到产物后跑 <code>node dev/static-check.mjs</code> 复核（参见<a href="../reference/dev-tools.html">开发自检工具</a>）。</li>
+</ol>
+
+<h2>技能包覆盖的规范要点</h2>
+<ul>
+<li>真实运行模型（注入宿主文档、无 iframe 沙箱）与权限账本边界；</li>
+<li>manifest 全字段、图标 PNG 硬规则、路径三种写法；</li>
+<li>冷加载两条铁律（入口重跑、全局资源必须在 plugin-unload 释放）；</li>
+<li>主题（<code>html[data-theme]</code> 浅色/深色/自动）与四语 i18n（zh-CN / en / ja-JP / cat）；</li>
+<li>macOS Sequoia 复刻样式规范：模糊令牌、<code>cubic-bezier(0.16, 1, 0.3, 1)</code> 缓动、禁 emoji、尊重减少动态效果；</li>
+<li>宿主 API 清单（Deskly / __settings / __log / __dialog / __notify / __popover / paths.js）与 22 条权限名；</li>
+<li>安装与打包流程（static-check → package-plugin → ZIP 三级安装链）。</li>
+</ul>
+
+<div class="note"><b>文件清单</b> <a href="plugin-dev/SKILL.md">SKILL.md</a> · <a href="plugin-dev/checklist.md">checklist.md</a> ·
+<a href="plugin-dev/templates/manifest.json">templates/manifest.json</a> · <a href="plugin-dev/templates/index.html">templates/index.html</a> ·
+<a href="plugin-dev/templates/style.css">templates/style.css</a> · <a href="plugin-dev/templates/script.js">templates/script.js</a></div>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -6,36 +6,52 @@
 <title>设置中枢 __settings · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="settings" data-base="../" data-version="0.2.95">
+<body data-page="settings" data-base="../" data-version="0.4.3">
 <main>
 <h1>设置中枢 __settings</h1>
-<p class="lede">唯一设置读写入口：define / get / set / subscribe，系统设置面板自动渲染。</p>
+<p class="lede">全系统唯一的设置读写入口。你注册的设置项会自动出现在「系统设置」界面里，不用自己画设置面板。源码：<code>src/javascripts/settings.js</code>。</p>
 
-<h2>键名与存储槽</h2>
-<p>键形如 <code>owner.key</code>；槽名由 owner 派生（<code>webstartos_&lt;owner&gt;</code> 一类）——
-<b>不要手写第三个 localStorage 键</b>。owner 模块的既有读法（如 <code>=== "on"</code>）决定了落盘形态。</p>
+<h2>这是什么 / 为什么用它</h2>
+<p>每个插件都想存点自己的配置。如果各写各的 localStorage，键名会打架、系统设置界面也管不到你。
+中枢的规矩是：<b>所有设置都经过 <code>window.__settings</code> 读写</b>，键形如 <code>owner.key</code>（如 <code>dock.size</code>、<code>myPlugin.enabled</code>），
+存进哪个 localStorage 槽由 owner 派生，你不用关心——但<b>不要绕过它手写第三个 localStorage 键</b>。</p>
 
-<h2>类型、校验与序列化（四种）</h2>
+<h2>方法清单</h2>
 <table>
-<tr><th>type</th><th>要点</th></tr>
-<tr><td><code>boolean</code></td><td>落盘 <code>"on"/"off"</code>（owner 读法所定）；读回 on/true/1、off/false/0 都认。
-<b>未注册的裸键</b>例外：写 <code>"true"/"false"</code> 读回还原成布尔。想让界面认出你的键就先 define。</td></tr>
-<tr><td><code>number</code></td><td><code>min/max/step</code>：超界<b>不拒绝而是钳到边界再按 step 取整</b>，返回钳后值。</td></tr>
-<tr><td><code>string</code></td><td>可配 <code>values</code> 白名单：不在候选内的写入<b>直接拒绝</b>（reason 形如「取值 neon 不在候选值 light / dark / auto 内」）。</td></tr>
-<tr><td><code>json</code></td><td>对象或 JSON 文本；坏文本被拒；对象默认值与存储值<b>浅合并</b>（新版新增字段自动带默认值）。</td></tr>
+<tr><th>方法</th><th>说明</th></tr>
+<tr><td><code>define(def)</code> / <code>defineMany(list)</code></td><td>注册设置项（类型、默认值、界面呈现），注册后系统设置面板自动出现控件</td></tr>
+<tr><td><code>get(key, fallback?)</code></td><td>读值（带类型解码与缓存）</td></tr>
+<tr><td><code>set(key, value, opts?)</code></td><td>写值，返回信封（见下节）</td></tr>
+<tr><td><code>reset(key)</code></td><td>恢复默认值</td></tr>
+<tr><td><code>isDefault(key)</code></td><td>当前值是否等于默认值</td></tr>
+<tr><td><code>list(scope?)</code></td><td>列出已注册项</td></tr>
+<tr><td><code>on(key, fn)</code></td><td>订阅单个键的变化，返回退订函数</td></tr>
+<tr><td><code>subscribe(fn)</code></td><td>订阅全部变化（fn 收 {key, value, …}）</td></tr>
+<tr><td><code>snapshot(scope?)</code></td><td>导出已注册项的原始存储文本（备份/诊断用）</td></tr>
 </table>
 
-<h2>set() 返回信封：三种失败要分开处理</h2>
+<h2>四种类型与校验规则</h2>
+<table>
+<tr><th>type</th><th>行为要点</th></tr>
+<tr><td><code>boolean</code></td><td>落盘 <code>"on"/"off"</code>（owner 模块的既有读法决定的形态）；读回时 on/true/1、off/false/0 都认。<b>未注册的裸键</b>例外：写 "true"/"false" 读回还原成布尔。想让系统认出你的键，就先 define。</td></tr>
+<tr><td><code>number</code></td><td>配 <code>min/max/step</code>：超界<b>不拒绝，而是钳到边界再按 step 取整</b>，返回钳后的值。</td></tr>
+<tr><td><code>string</code></td><td>可配 <code>values</code> 候选白名单：写入不在候选内的值<b>直接拒绝</b>（reason 形如「取值 neon 不在候选值 light / dark / auto 内」）。</td></tr>
+<tr><td><code>json</code></td><td>接受对象或 JSON 文本；坏文本被拒；对象默认值与存储值<b>浅合并</b>（新版新增字段自动带默认值）。</td></tr>
+</table>
+
+<h2>set() 返回信封：三种「失败」要分开处理</h2>
+<pre><code>const r = __settings.set("myPlugin.opacity", 2);
+// r = { ok, key, value, persisted, changed, reason? }</code></pre>
 <table>
 <tr><th>字段</th><th>含义</th></tr>
 <tr><td><code>ok</code></td><td>是否通过校验；<code>false</code> 时 <code>value</code> 是<b>当前值</b>（不是你传的）</td></tr>
-<tr><td><code>value</code></td><td>校验/钳制后真正生效的值</td></tr>
+<tr><td><code>value</code></td><td>校验/钳制后真正生效的值（比如传 2 被钳到 1）</td></tr>
 <tr><td><code>persisted</code></td><td>是否写进 localStorage；<code>false</code> = 本次会话能用，刷新回退</td></tr>
-<tr><td><code>changed</code></td><td>是否与旧值不同；同值写入<b>不广播不记日志</b></td></tr>
+<tr><td><code>changed</code></td><td>是否与旧值不同；<b>同值写入不广播、不记日志</b></td></tr>
 <tr><td><code>reason</code></td><td>仅拒绝时出现（中文说明，同时进 __log 的 error）</td></tr>
 </table>
 
-<h2>define / defineMany（插件注册自己的设置项）</h2>
+<h2>define：让设置项出现在系统设置里</h2>
 <pre><code>__settings.defineMany([
   { key: "myPlugin.enabled", type: "boolean", default: true, owner: "myPlugin", pane: "plugins",
     label: "启用我的插件", hint: "关闭后不再注入任何界面", control: "switch", group: "我的插件", order: 10 },
@@ -44,36 +60,39 @@
     format: "fixed1", group: "我的插件", order: 20 },
 ]);</code></pre>
 <ul>
-<li><code>pane: "plugins"</code> 归到系统设置「插件」面板：收录规则 = owner 不是 system、pane 缺省或 plugins、没被 hidden；
-    逐行由 <code>autoRow()</code> 按 control 生成控件（switch / slider / segmented / …）。</li>
-<li><b>三条生命周期硬约束</b>：① 在插件初始化时就 define（注册了才出现在设置里）；
-    ② define 必须可重复调用（入口脚本每次打开都重跑，同名定义做<b>字段合并</b>，天然幂等；别在 apply 闭包里捕外部状态）；
-    ③ 没有撤销接口——卸载后定义仍留表里，要「关掉即隐藏」用 <code>hidden</code> 或在 apply 里兜缺失状态。</li>
+<li><code>pane: "plugins"</code> 把设置项归到「系统设置 › 插件」面板：收录规则 = owner 不是 system、pane 缺省或为 plugins、没被 hidden。
+每行控件由系统按 <code>control</code> 自动生成（switch / slider / segmented / …）。</li>
+<li><b>三条生命周期约束</b>：
+① 在插件初始化时就 define（定义了才出现在设置界面）；
+② define 必须<b>可重复调用</b>——入口脚本每次打开都重跑，同名定义做字段合并，天然幂等；所以别在 apply 闭包里捕获外部状态；
+③ 没有「撤销定义」接口——卸载后定义仍留在表里。想「关掉即隐藏」就用 <code>hidden</code> 字段，或在 apply 里兜住缺失状态。</li>
 </ul>
 
-<h2>event 与 apply：二选一</h2>
+<h2>event 与 apply：二选一，别都写</h2>
 <table>
-<tr><th>写法</th><th>行为</th></tr>
-<tr><td><code>apply: (v, {previous, persisted, source}) =&gt; {}</code></td><td>落盘后由中枢调用；抛错只记 error 不打断写入。owner 自己会把值应用到真实状态时用。</td></tr>
-<tr><td><code>event: "my-change"</code></td><td>中枢在 window 上补发旧格式 CustomEvent，detail 是<b>序列化字符串</b>（json 例外给对象）。owner 只有监听没有 setter 的历史模块用（dock 7 项 / 启动台 2 项 / Siri 1 项）。</td></tr>
+<tr><th>写法</th><th>行为</th><th>什么时候用</th></tr>
+<tr><td><code>apply: (v, {previous, persisted, source}) =&gt; {}</code></td><td>落盘后由中枢调用；抛错只记 error 不打断写入</td><td>owner 自己把值应用到真实状态（推荐）</td></tr>
+<tr><td><code>event: "my-change"</code></td><td>中枢在 window 上补发一个 CustomEvent，detail 是<b>序列化字符串</b>（json 类型例外，给对象）</td><td>只有监听没有 setter 的历史模块（dock 7 项 / 启动台 2 项 / Siri 1 项）</td></tr>
 </table>
-<div class="warn"><b>同一个定义里别同时写</b>：owner 的 apply 里往往自己就 dispatchEvent，中枢再补发一次 →
-同一事件派发两遍、监听方执行两遍。新插件两者都不必写：需要即时生效就订阅 <code>settings-changed</code>。</div>
+<div class="warn"><b>同一个定义里两个都写会派发两遍</b>（owner 的 apply 里往往自己 dispatchEvent，中枢再补发一次，监听方执行两遍）。
+新插件两个都不必写：需要即时生效就订阅 <code>settings-changed</code>。</div>
 
-<h2>订阅变更</h2>
-<pre><code>const off = __settings.on("myPlugin.opacity", (value, detail) =&gt; repaint(value));
-// 或接口级：__settings.subscribe(d =&gt; { if (d.key.startsWith("myPlugin.")) ...; })
-// 或 document 统一事件：detail = {key, value, previous, persisted, type}（对象）
+<h2>订阅变更（三种姿势）</h2>
+<pre><code>// 1) 单键订阅（最常用）
+const off = __settings.on("myPlugin.opacity", (value, detail) =&gt; repaint(value));
+// 2) 全量订阅
+const off2 = __settings.subscribe(d =&gt; { if (d.key.startsWith("myPlugin.")) repaint(); });
+// 3) document 统一事件：detail = {key, value, previous, persisted, type}
 document.addEventListener("settings-changed", onChanged);</code></pre>
 <ul>
-<li>同值写入不广播（别指望它做心跳）；<code>opts.silent</code> 批量恢复也不广播；</li>
-<li><b>必须在 <code>plugin-unload</code> 里退订</b>（入口脚本每次重跑，模块表不回收旧实例，订阅连同捕获的已卸载 DOM 会永久累积）。</li>
+<li>同值写入不广播（别拿它当心跳）；批量恢复（<code>opts.silent</code>）也不广播。</li>
+<li><b>必须在 plugin-unload 里退订</b>——入口脚本每次打开都重跑，旧订阅连同捕获的已卸载 DOM 会永久累积（内存泄漏 + 重复执行）。</li>
 </ul>
 
 <h2>别把密钥放进设置</h2>
-<p><code>snapshot()</code> 会把已注册项的<b>原始存储文本</b>整份导出（备份/诊断用），
-<code>settings-changed</code> 的 detail 与 __log 的写入记录同样带值。仓库示范（锁屏口令）：
-哈希与盐存设置中枢<b>之外</b>的自有槽，<code>SHA-256(盐:口令)</code> 才落盘，日志里既无明文也无摘要（<code>lock.js</code>）。</p>
+<p><code>snapshot()</code> 会把已注册项的<b>原始存储文本</b>整份导出；<code>settings-changed</code> 的 detail 和 __log 的写入记录同样带值。
+所以口令类数据要存设置中枢<b>之外</b>的自有槽，且只存哈希。仓库示范（lock.js 锁屏口令）：
+<code>SHA-256(盐:口令)</code> 才落盘，日志里既无明文也无摘要。</p>
 
 </main>
 <script src="../assets/pages.js"></script>

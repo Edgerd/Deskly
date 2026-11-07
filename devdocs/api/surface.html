@@ -6,56 +6,61 @@
 <title>表面：模糊与可读文字 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="surface" data-base="../" data-version="0.2.95">
+<body data-page="surface" data-base="../" data-version="0.4.3">
 <main>
 <h1>表面：模糊与可读文字</h1>
-<p class="lede">backdrop-filter 只有一个来源：系统令牌。裸 blur(px) 会被 static-check 判失败。</p>
+<p class="lede">macOS 的毛玻璃效果在全站只有一个来源：系统令牌。你手写 <code>blur(12px)</code>，用户的「模糊等级」设置就对你失效——所以 static-check 会直接判失败。源码：<code>src/javascripts/surface.js</code>。</p>
 
-<h2>模糊令牌（CSS 侧常用路径）</h2>
-<pre><code>backdrop-filter: blur(var(--surface-blur-3));   /* 等级 0-4：关闭/极轻/轻柔/标准/浓重 → 0/4/8/12/18px */
-color: var(--surface-text);                     /* 主题面板档 */
-color: var(--surface-text-wallpaper);           /* 墙纸档 */</code></pre>
+<h2>这是什么</h2>
+<p>系统设置里有一个「模糊等级」滑块（5 档：关闭 / 极轻 / 轻柔 / 标准 / 浓重，对应 0 / 4 / 8 / 12 / 18px）。
+它改的不是某个具体元素，而是一组 CSS 变量：<code>--surface-blur-1</code> 到 <code>--surface-blur-5</code>（按角色分的五档，倍数 1 / 1.75 / 2.75 / 4 / 6.5）。
+你的界面只要引用令牌，等级切换就对你自动生效；手写像素值，你就脱离了这套系统。</p>
+
+<h2>CSS 侧正确写法</h2>
+<pre><code>backdrop-filter: blur(var(--surface-blur-3));   /* 角色档 1-5：3 是常规面板，5 是启动台那种全屏重素材 */
+color: var(--surface-text);                     /* 主题面板档文字（菜单 / 弹层 / 提示条） */
+color: var(--surface-text-wallpaper);           /* 墙纸档文字（背后就是墙纸的表面） */</code></pre>
 <table>
 <tr><th>令牌</th><th>用途</th></tr>
-<tr><td><code>--surface-blur-1…5</code></td><td>模糊半径（等级由系统统一分配，用户「模糊等级」设置改的是这套）</td></tr>
-<tr><td><code>--surface-text*</code></td><td><b>主题面板档</b>文字（判定输入 effectiveBase().panel；菜单/弹层/提示条不吃墙纸着色）</td></tr>
-<tr><td><code>--surface-text-wallpaper*</code></td><td><b>墙纸档</b>（背后就是墙纸的表面：全屏浮层、开墙纸着色时的侧栏/控制中心/预览 chip）</td></tr>
+<tr><td><code>--surface-blur-1 … --surface-blur-5</code></td><td>模糊半径五档（系统按用户等级统一赋值）</td></tr>
+<tr><td><code>--surface-text*</code></td><td><b>主题面板档</b>文字色：判定输入是面板底色；菜单 / 弹层 / 提示条不吃墙纸着色</td></tr>
+<tr><td><code>--surface-text-wallpaper*</code></td><td><b>墙纸档</b>文字色：背后就是墙纸的表面（全屏浮层、开着墙纸着色时的侧栏 / 控制中心 / 预览 chip）</td></tr>
 </table>
-<p>切档不是 JS 登记，而是<b>样式表里一条可复制的配方</b>：在
-<code>html[data-wallpaper-tint="on"]</code> 的规则里把四条 <code>--surface-text*</code> 指向
-<code>--surface-text-wallpaper*</code>（自定义属性沿继承树生效）。</p>
+<p>「切档」不需要 JS 登记：在样式表的 <code>html[data-wallpaper-tint="on"]</code> 规则里把四条 <code>--surface-text*</code> 指向
+<code>--surface-text-wallpaper*</code> 即可（自定义属性沿继承树生效）。</p>
 
 <h2>带侧栏的窗口：分两块表面</h2>
 <ul>
-<li>窗口根 <code>background: transparent</code>、实色只铺内容区、边栏用半透明档做真毛玻璃
-    （参照 <code>mods/finder/style.css</code>）；</li>
-<li>根上铺实色 = 在边栏背后垫平色板，backdrop-filter 只是糊自家底板；</li>
-<li><b>别在窗口根写 <code>isolation: isolate</code></b>——它把根变成 backdrop root，采样范围被截进窗口内部。</li>
+<li>窗口根 <code>background: transparent</code>，实色只铺内容区，侧栏用半透明档做真毛玻璃（参照 <code>mods/finder/style.css</code>）。</li>
+<li>如果在窗口根铺实色，等于在侧栏背后垫了一块平色板——backdrop-filter 糊的只是自家底板，墙纸透不上来。</li>
+<li><b>别在窗口根写 <code>isolation: isolate</code></b>：它会把根变成 backdrop root，采样范围被截进窗口内部。</li>
 </ul>
 
 <h2>墙纸着色：浓度必须真的乘上</h2>
-<p>每条墙纸着色规则的固有浓度写成 <code>calc(&lt;固有浓度&gt; * var(--tint-strength))</code>，
-颜色只走 <code>var(--tint-rgb)</code> / <code>var(--tint-color)</code> 那条链。没乘因子或绕过链直接读
-<code>--window-tint-rgb</code> 都会被 static-check 5b 节拦下（否则「着色浓度」滑块拖着真实界面不动）。</p>
+<p>每条墙纸着色规则的固有浓度要写成 <code>calc(&lt;固有浓度&gt; * var(--tint-strength))</code>，颜色只走
+<code>var(--tint-rgb)</code> / <code>var(--tint-color)</code> 这条链。没乘因子、或绕过链直接读 <code>--window-tint-rgb</code>，
+都会被 static-check 5b 节拦下——否则「着色浓度」滑块拖着，你的界面却纹丝不动。</p>
 
 <h2>__surface 接口</h2>
 <table>
 <tr><th>接口</th><th>说明</th></tr>
-<tr><td><code>getLevel()</code></td><td>当前等级（0-4）；存储值非法回落 3</td></tr>
-<tr><td><code>setLevel(0..4)</code></td><td>写 <code>appearance.blurLevel</code>，返回布尔（越界被中枢<b>钳制</b>不拒绝）</td></tr>
-<tr><td><code>levels()</code></td><td>5 条 {value, label, unit}</td></tr>
-<tr><td><code>token(role)</code></td><td>返回 <code>var(--surface-blur-N)</code> 字符串（role 钳 1-5，缺省 3）</td></tr>
-<tr><td><code>apply(el, {role})</code></td><td>给「自己底色和全局不一样」的浮层登记局部表面（按它底色算局部四支文字令牌），返回注销函数；被墙纸染深的侧栏<b>不走这里</b>（那是样式表配方）</td></tr>
-<tr><td><code>apply(el, {over:"wallpaper"})</code></td><td>「这块表面的背景就是墙纸」→ 推导改走墙纸档（启动台/预览/锁屏类）</td></tr>
+<tr><td><code>getLevel()</code></td><td>当前等级（0-4）；存储值非法时回落 3</td></tr>
+<tr><td><code>setLevel(0..4)</code></td><td>写 <code>appearance.blurLevel</code> 设置项，返回布尔（越界被中枢<b>钳制</b>不拒绝）</td></tr>
+<tr><td><code>levels()</code></td><td>5 条 {value, label, unit}（label：关闭/极轻/轻柔/标准/浓重）</td></tr>
+<tr><td><code>token(role)</code></td><td>返回 <code>"var(--surface-blur-N)"</code> 字符串（role 钳 1-5，缺省 3）</td></tr>
+<tr><td><code>apply(el, {role, blurPx, over})</code></td><td>给「自己底色和全局不一样」的浮层登记局部表面（按它自己的底色算局部文字令牌），返回注销函数</td></tr>
+<tr><td><code>apply(el, {over:"wallpaper"})</code></td><td>声明「这块表面的背景就是墙纸」→ 文字色推导改走墙纸档（启动台 / 预览 / 锁屏类）</td></tr>
+<tr><td><code>releaseAll()</code></td><td>释放全部登记（面板销毁时用）</td></tr>
+<tr><td><code>effectiveBase()</code> / <code>currentTextColor(scope)</code></td><td>当前底色（含着色）/ 当前文字色（"panel" | "wallpaper" 两档），做预览与自检用</td></tr>
 </table>
-<p>等级写入走设置中枢（广播 settings-changed），系统设置里改 / 代码里改两边不会各说各话。</p>
+<p>等级写入走设置中枢（广播 <code>settings-changed</code>），所以系统设置里改、代码里改，两边不会各说各话。</p>
 
-<h2>逃生舱（确实要一个阶梯表达不了的模糊值）</h2>
+<h2>逃生舱（确实需要一个阶梯表达不了的模糊值）</h2>
 <pre><code>.my-odd-surface { --surface-blur: 26px; }   /* 行尾必须带注释：/* 逃生舱：<理由> *&#47; */</code></pre>
-<p>机器门禁（static-check「模糊必须走系统令牌」节）扫 <code>blur(&lt;数字&gt;px)</code> 字面量与
-「有 blur 但没引用 <code>var(--surface-blur</code>」，覆盖 <code>assets/stylesheets/**</code>、<code>mods/**</code>、
-<code>src/**</code> 的 .css 与 .js（JS 里拼样式串写裸 px 一样会红）。<code>blurPx</code> 是 lint 盲区
-（内联样式里落 <code>--surface-blur: 26px</code>，源码没有 blur( 文本）——<b>但代价一分没少</b>：用户等级对它照样无感。</p>
+<p>机器门禁（static-check「模糊必须走系统令牌」节）扫 <code>blur(&lt;数字&gt;px)</code> 字面量和「有 blur 但没引用 <code>var(--surface-blur</code>」，
+覆盖 <code>assets/stylesheets/**</code>、<code>mods/**</code>、<code>src/**</code> 的 .css 与 .js（JS 里拼样式串写裸 px 一样会红）。
+注意 <code>blurPx</code>（<code>__surface.apply(el,{blurPx:26})</code>）是 lint 盲区：源码里没有 <code>blur(</code> 文本——
+<b>但代价一分没少</b>：用户的等级设置对它照样无感。非必要不用。</p>
 
 </main>
 <script src="../assets/pages.js"></script>

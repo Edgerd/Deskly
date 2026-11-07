@@ -1,12 +1,7 @@
 /**
- * docs.js — 文档站布局引擎（顶栏 / 侧栏 / 本页目录 / 上下页导航 / 侧栏过滤）
- *
- * 页面约定：
- *   <body data-page="<id>" data-base="">            根目录页面
- *   <body data-page="<id>" data-base="../">         一级子目录页面
- *   <body data-page="<id>" data-base="../../">      二级子目录页面
- * data-base 指「本页到站点根」的相对前缀；docs.js 用它修正 pages.js 里的站点根相对链接。
- * 扩展：新增页面 = 新建一个 html（body 带 data-page/data-base）+ assets/pages.js 加一条。
+ * docs.js — 文档站布局引擎（顶栏 / 侧栏 / 本页目录 / 上下页导航 / 侧栏过滤）。
+ * 页面约定：<body data-page="<id>" data-base="../">，data-base 是「本页到站点根」的相对前缀，
+ * 用它修正 pages.js 里的站点根相对链接。新增页面 = 新建 html（带 data-page/data-base）+ assets/pages.js 加一条。
  */
 (function () {
   "use strict";
@@ -43,7 +38,7 @@
   /* ---- 侧栏 ---- */
   var sb = document.createElement("aside");
   sb.className = "docs-sidebar";
-  var html = '<input type="search" placeholder="过滤本页目录…" aria-label="过滤">';
+  var html = '<input type="search" name="docs-filter" placeholder="过滤本页目录…" aria-label="过滤">';
   (window.DOCPAGES || []).forEach(function (s) {
     html += "<h4>" + esc(s.section) + "</h4><ul>";
     s.items.forEach(function (it) {

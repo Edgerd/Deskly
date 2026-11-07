@@ -6,14 +6,14 @@
 <title>废纸篓闭环 trash.js · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="trash" data-base="../" data-version="0.2.95">
+<body data-page="trash" data-base="../" data-version="0.4.3">
 <main>
 <h1>废纸篓闭环 trash.js</h1>
-<p class="lede">v0.2.95 新增内核：/废纸篓 的唯一读写入口。OSFS.remove 在 UI 侧只经这里收口。</p>
+<p class="lede">/废纸篓 的唯一读写入口。UI 侧所有「删除」都经这里收口，业务代码不再直接调 <code>OSFS.remove</code>。源码：<code>src/javascripts/trash.js</code>。</p>
 
 <h2>为什么有它</h2>
-<p>旧版唯一的删除路径是 <code>OSFS.remove</code> 硬删——「删了就找不回」。闭环后：
-拖/移文件进废纸篓 → 图标变满 → 访达可见 → 「放回原处」可撤销 → 「清倒」弹确认且真删。</p>
+<p>直接 <code>OSFS.remove</code> 是硬删——「删了就找不回」。闭环之后的完整体验：
+拖/移文件进废纸篓 → Dock 图标变满 → 访达里能看到 → 「放回原处」可撤销 → 「清倒」弹确认且真删。</p>
 
 <h2>模块与事件</h2>
 <pre><code>import { moveToTrash, putBack, dropFileToTrash, emptyTrash,
@@ -27,34 +27,34 @@ document.addEventListener("trash-changed", (e) =&gt; {
 <h2>API</h2>
 <table>
 <tr><th>函数</th><th>语义</th><th>返回</th></tr>
-<tr><td><code>moveToTrash(srcPath)</code></td><td>OSFS.move 进 /废纸篓（唯一名顺延 <code>a (1).txt</code>，不覆盖）+
-    写溯源伴生 <code>&lt;名&gt;.deskly-origin</code>（JSON {originalPath, movedAt}）</td><td><code>{ok, path?, reason?}</code>；
-    reason: "notfound"（源不存在）/ "error"；NeedsReauthError 原样抛出</td></tr>
-<tr><td><code>putBack(trashPath)</code></td><td>读伴生还原原路径；原目录没了（被清倒过）落 /文档；
-    <b>没有伴生的条目（拖入的原生文件）返回 noorigin，调用方保持「放回原处」禁用——不编造原路径</b></td><td><code>{ok, path?, reason?}</code></td></tr>
-<tr><td><code>dropFileToTrash(file)</code></td><td>程序坞拖入分支：原生 File 直接写进 /废纸篓（无溯源）</td><td><code>{ok, path?}</code></td></tr>
-<tr><td><code>emptyTrash()</code></td><td>逐条递归移除（目录 {recursive:true}）+ 清伴生</td><td><code>{ok, removed}</code></td></tr>
+<tr><td><code>moveToTrash(srcPath)</code></td><td>把文件/文件夹 OSFS.move 进 /废纸篓（唯一名顺延 <code>a (1).txt</code>，不覆盖），
+并写溯源伴生文件 <code>&lt;名&gt;.deskly-origin</code>（JSON：<code>{originalPath, movedAt}</code>）</td><td><code>{ok, path?, reason?}</code>；
+reason: <code>"notfound"</code>（源不存在）/ <code>"error"</code>；NeedsReauthError 原样抛出</td></tr>
+<tr><td><code>putBack(trashPath)</code></td><td>读伴生文件还原到原路径；原目录没了落 /文档。
+<b>没有伴生的条目（从系统拖入的原生文件）返回 noorigin</b>——调用方保持「放回原处」禁用，不编造原路径</td><td><code>{ok, path?, reason?}</code></td></tr>
+<tr><td><code>dropFileToTrash(file)</code></td><td>Dock 拖入分支：原生 File 直接写进 /废纸篓（无溯源信息）</td><td><code>{ok, path?}</code></td></tr>
+<tr><td><code>emptyTrash()</code></td><td>逐条递归移除（目录按 {recursive:true}）+ 清理伴生文件</td><td><code>{ok, removed}</code></td></tr>
 <tr><td><code>isTrashNotEmpty()</code></td><td>满/空判定（<b>伴生文件不算内容</b>）</td><td>boolean</td></tr>
+<tr><td><code>desktopPathFor(name)</code></td><td>生成 /桌面 下的唯一路径（同名顺延），桌面新建文件/文件夹用</td><td>string</td></tr>
 </table>
 
-<h2>三条入口（已接通，勿再造）</h2>
+<h2>三条已接通的入口（勿再各造一套）</h2>
 <table>
 <tr><th>入口</th><th>行为</th></tr>
-<tr><td>桌面</td><td>拖入文件 / 新建文件夹时内容落 <code>/桌面</code>（同名顺延不覆盖，改名同步记录）；
-    右键「移到废纸篓」= moveToTrash；<b>遗留无记录的图标</b>保持旧行为（移除 DOM），不假装进过废纸篓</td></tr>
-<tr><td>访达</td><td>右键「删除」（文件入口 v0.2.95 补齐）= 移入废纸篓；/废纸篓 内给「放回原处」（有伴生才启用）
-    + 空白处右键「清倒废纸篓...」（带确认）；视图自动过滤 <code>.deskly-origin</code> 伴生（记账文件，不是真实体）</td></tr>
-<tr><td>程序坞</td><td>拖 OS 文件进废纸篓 = dropFileToTrash；<b>点击废纸篓</b> = 打开访达并导航到 /废纸篓
-    （「前往」菜单也有该项）；图标满/空由 trash-changed 驱动（「常规」变体自动切同色族「装满」版，
-    显式黑白/透明变体不动，见 trashIcon.getTrashIconForFullness）</td></tr>
+<tr><td>桌面</td><td>拖入文件 / 新建文件夹时内容落 <code>/桌面</code>（同名顺延不覆盖，改名同步记录）；右键「移到废纸篓」= moveToTrash；
+<b>遗留无记录的图标</b>保持旧行为（只移除 DOM），不假装进过废纸篓</td></tr>
+<tr><td>访达</td><td>右键「删除」= 移入废纸篓；/废纸篓 内提供「放回原处」（有伴生才启用）+ 空白处右键「清倒废纸篓...」（带确认）；
+视图自动过滤 <code>.deskly-origin</code> 伴生（那是记账文件，不是真实体）</td></tr>
+<tr><td>程序坞</td><td>拖 OS 文件进废纸篓 = dropFileToTrash；<b>点击废纸篓</b> = 打开访达并导航到 /废纸篓（「前往」菜单也有该项）；
+图标满/空由 trash-changed 驱动（「常规」变体自动切同色族「装满」版，显式黑白/透明变体不动，见 trashIcon.getTrashIconForFullness）</td></tr>
 </table>
 
 <h2>开发者规则</h2>
 <ul>
-<li><b>UI 侧删除统一走 moveToTrash / emptyTrash</b>，不再直接 <code>OSFS.remove</code>（顶层夹内容除外）；</li>
-<li>伴生后缀常量 <code>TRASH_ORIGIN_SUFFIX</code>（".deskly-origin"）——你渲染 /废纸篓 列表时用它过滤；</li>
-<li>NeedsReauthError 不要吞：权限未批时图标态保持现值、界面如实提示重新授权（别假装「是空的」）；</li>
-<li>磁盘后端下伴生文件会在用户真实文件夹里可见（<code>xxx.deskly-origin</code>）——设计内行为，命名带 deskly 前缀便于识别。</li>
+<li><b>UI 侧删除统一走 moveToTrash / emptyTrash</b>，不再直接 <code>OSFS.remove</code>（顶层夹内容除外）。</li>
+<li>伴生后缀常量 <code>TRASH_ORIGIN_SUFFIX</code>（<code>".deskly-origin"</code>）——你渲染 /废纸篓 列表时用它过滤。</li>
+<li><b>NeedsReauthError 不要吞</b>：权限未批时图标态保持现值、界面如实提示「需要重新授权」，别假装「是空的」。</li>
+<li>磁盘后端下，伴生文件会在用户的真实文件夹里可见（<code>xxx.deskly-origin</code>）——设计内行为，命名带 deskly 前缀便于识别。</li>
 </ul>
 
 </main>

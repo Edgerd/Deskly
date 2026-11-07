@@ -6,48 +6,59 @@
 <title>开发自检工具 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="dev-tools" data-base="../" data-version="0.2.95">
+<body data-page="dev-tools" data-base="../" data-version="0.4.3">
 <main>
 <h1>开发自检工具</h1>
-<p class="lede">五个 Node 脚本 + 应用内自检。全绿 = 退出码 0；断言条数随定义表增长，别把打印的数字当契约。</p>
+<p class="lede">几个 Node 脚本 + 应用内自检。全绿 = 退出码 0。文中括号里的数量是 2026-11-03 的实测输出，<b>随代码增长而变，别把数字当契约</b>。</p>
+
+<h2>这是什么</h2>
+<p>项目没有构建链，浏览器是唯一运行时。能在磁盘上查出来的错，就不该等肉眼在浏览器里撞——这些脚本就是干这个的。
+仓库<b>没有 package.json</b>（无构建设计），Node 20+ 直接跑；Node 18 需要临时建一个 <code>{ "type": "module" }</code> 的 package.json（跑完删掉），否则动态 import 项目 .js 会按 CJS 解析报错。</p>
 
 <h2>脚本一览</h2>
 <table>
-<tr><th>脚本</th><th>跑什么</th><th>什么时候跑</th></tr>
+<tr><th>脚本</th><th>查什么</th><th>什么时候跑</th></tr>
 <tr><td><code>node dev/static-check.mjs</code></td>
-    <td><b>不执行模块</b>的磁盘一致性：import 说明符指向的文件在不在、说明符与 &lt;script src&gt; 上有没有误挂 ?v=、
-        代码/HTML 引用的 assets 是否真存在（404）、四语言包键位齐不齐、data-i18n 指向的键在不在、
-        面板 paneId 与注册表对不上、manifest 声明的文件在不在插件目录、模糊值是否走系统令牌、
-        墙纸着色是否乘 --tint-strength、<b>permissions 三方对齐</b>（PERMISSION_NAMES / LABELS / manifest 声明）</td>
-    <td>新增插件、改名或移动资源、动文案键、改 backdrop-filter / 墙纸着色规则</td></tr>
+    <td><b>不执行模块</b>的磁盘一致性，分 8 节：①② import 说明符指向的文件存在、说明符与 &lt;script src&gt; 上没误挂 <code>?v=</code>；
+    ③ 代码/HTML 引用的 assets 资源真实存在；④ 四语言包键位齐、data-i18n 指向的键存在、插件面板 paneId 与注册表对齐；
+    ⑤ 模糊值必须走系统令牌；⑤b 墙纸着色必须乘 <code>--tint-strength</code>；⑥ manifest 声明的文件在插件目录里；
+    ⑦ <b>permissions 三方对齐</b>（PERMISSION_NAMES / LABELS / 各 manifest 声明）；⑧ 设置文案风格 + 术语禁用词（glossary.md）</td>
+    <td>新增插件、改名或移动资源、动文案键、改 backdrop-filter / 墙纸着色规则之后</td></tr>
 <tr><td><code>node --experimental-vm-modules dev/deep-check.mjs</code></td>
-    <td>深度静态审计：全部 JS 模块的 import 说明符与导出符号表（当前 147 模块 / 390 import）</td>
-    <td>动了内核模块结构后</td></tr>
+    <td>深度静态审计：全部 JS 模块的 import 说明符与导出符号表（模块与 import 数量以脚本输出为准）</td>
+    <td>动了内核模块结构之后</td></tr>
 <tr><td><code>node dev/settings-fulltest.mjs</code></td>
     <td><b>每一条设置项</b>：默认值合法、落盘文本、读回一致、非法值拒绝/钳制、reset、与 owner 历史键逐字一致、
-        pane/control 与系统设置注册表对得上（当前 72 项遍历）</td>
-    <td>增删设置项、改 pane/control</td></tr>
+    pane/control 与系统设置注册表对齐（项数以脚本输出为准）</td>
+    <td>增删设置项、改 pane/control 之后</td></tr>
 <tr><td><code>node dev/settings-harness.mjs</code></td>
     <td>设置中枢 + 日志系统<b>本身</b>的行为（槽名推导、on/off、钳制、拒绝、jsonPath、订阅退订、门槛、留存、缓冲上限）</td>
-    <td>动过 settings.js / log.js 时</td></tr>
+    <td>动过 settings.js / log.js 之后</td></tr>
 <tr><td><code>node dev/osfs-check.mjs</code></td>
     <td>OSFS 双后端行为（move / ConflictError / 顶层保护 / scope 沙箱）</td>
-    <td>动过 osfs.js / trash.js 时</td></tr>
+    <td>动过 osfs.js / trash.js 之后</td></tr>
+<tr><td><code>node dev/package-plugin.mjs &lt;id&gt;</code></td>
+    <td>导出商店 ZIP（打包即校验：id 与目录名一致、依赖落在插件目录内、宿主依赖存在）</td>
+    <td>发布插件时</td></tr>
+<tr><td><code>node dev/genie-check.mjs</code></td>
+    <td>最小化「神奇效果」的几何自动化校验</td>
+    <td>动过最小化动画之后</td></tr>
+<tr><td><code>node dev/calc-check.mjs</code>（含 convert / programmer 两个变体）</td>
+    <td>计算器运算逻辑回归</td>
+    <td>动过 mods/calculator 之后</td></tr>
+<tr><td><code>node dev/store-check.mjs</code></td>
+    <td>商店逻辑自检（注意：Node 18 下 vm.SyntheticModule 不可用会失败——环境问题，非代码错）</td>
+    <td>动过 store-api.js 之后</td></tr>
+<tr><td><code>node dev/build-manual-content.mjs</code></td>
+    <td>重建手册（manual）内容索引</td>
+    <td>改过手册内容之后</td></tr>
 </table>
-<p>另：<code>dev/package-plugin.mjs &lt;id&gt;</code> 导出 ZIP（打包即校验）；<code>dev/store-check.mjs</code>
-（商店逻辑，Node 18 下 vm.SyntheticModule 不可用会失败——环境问题，非代码错）。</p>
 
-<div class="warn"><b>运行前置</b> 仓库<b>没有 package.json</b>（无构建链设计）。Node 20+ 直接跑；
-Node 18 需要临时建一个 <code>{ "type": "module" }</code> 的 package.json（跑完删掉）——
-否则动态 import 项目 .js 会按 CJS 解析报「Cannot use import statement outside a module」。</div>
-
-<h2>应用内自检（真实浏览器存储上）</h2>
+<h2>应用内自检（跑在真实浏览器存储上）</h2>
 <ul>
-<li><code>runSelfTest()</code>（debug.js）：遍历 settings.list()，逐项「写探针值 → 回读比对 → 查存储槽 →
-    判 isDefault → 还原用户原值」，弹窗报告并可跳运行记录；</li>
-<li>「调试」菜单：查看运行记录 / 清空 / 导出 / 复制 / 切门槛 / <b>重载当前插件</b>（验证 plugin-unload 是否清干净）
-    / 输出设置表 / 层级体检；</li>
-<li>顶栏「调试」菜单由 <code>debug.developerMode</code> 门控（只门控菜单显隐，不门控日志系统本身）。</li>
+<li><code>runSelfTest()</code>（debug.js）：遍历 settings.list()，逐项「写探针值 → 回读比对 → 查存储槽 → 判 isDefault → 还原用户原值」，弹窗报告并可跳运行记录。</li>
+<li>顶栏「调试」菜单：查看运行记录 / 清空 / 导出 / 复制 / 切门槛 / <b>重载当前插件</b>（验证 plugin-unload 是否清干净）/ 输出设置表 / 层级体检。</li>
+<li>「调试」菜单由 <code>debug.developerMode</code> 设置项门控（只门控菜单显隐，不门控日志系统本身）。</li>
 </ul>
 
 </main>

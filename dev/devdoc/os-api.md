@@ -22,11 +22,11 @@
 |------|----------|------|
 | 声明 | `registerPlugin` 广播 `plugin-registered`，账本按 `manifest.permissions` 记一条 granted | `app-registry.js:79` → `api-grants.js:249` |
 | 安装清单 | ZIP 安装前展示权限清单，点「取消」整段终止、不落库 | `api-grants.js:showPermissionChecklist()`、`store-api.js:394`（确认在落库之前） |
-| 运行激活 | 敏感能力弹「拒绝 / 仅这次 / 始终允许」，三按钮复用既有系统对话框 | `api-grants.js:327`、`ui/alert.js:105` |
+| 运行激活 | 敏感能力弹「拒绝 / 仅此一次 / 始终允许」，三按钮由 `ui/dialog.js` 的权限对话统一渲染 | `api-grants.js:327`、`ui/dialog.js` |
 | 拦截点 | 每个受管方法用 `guard(权限名, 实现)` 包着，权限名写在定义处 | `os-api.js:53` |
 
 - **敏感**的只有 4 类外加 `system-patch:*`（`api-grants.js:73`）：改默认应用、跨应用窗口样式、
-  主题包、写文件。其余（读文件、启动应用、小组件、动态图标、自身样式）**装时就激活**、不弹窗 ——
+  主题包、文件存储。其余（读文件、启动应用、小组件、动态图标、自身样式）**装时就激活**、不弹窗 ——
   否则 14 个内置插件开机各弹一轮。
 - **未声明的能力直接拒绝**：返回 `{ok:false, denied:true, reason:"未授权：…"}`，
   不会弹「要不要授权」，因为能弹窗就等于声明没有意义。

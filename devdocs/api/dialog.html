@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>系统弹窗 dialog · Deskly 开发者文档</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body data-page="dialog" data-base="../" data-version="0.4.3">
+<main>
+<h1>系统弹窗 dialog</h1>
+<p class="lede">全项目唯一的弹窗实现。渲染在 <code>src/javascripts/ui/dialog.js</code>，焦点、按键与取消值的判定在 <code>src/javascripts/ui/dialog-model.js</code>；内核与插件共用同一份，旧的 <code>window.__dialog</code> 只是指向它的薄门面。</p>
+
+<h2>三个入口</h2>
+<table>
+<tr><th>入口</th><th>位置</th><th>包含的方法</th></tr>
+<tr><td><code>Deskly.ui.dialog</code></td><td><code>os-api.js</code></td><td><code>alert</code> / <code>error</code> / <code>confirm</code> / <code>prompt</code> / <code>choose</code> / <code>progress</code>。插件用它，<b>没有 <code>permission</code></b></td></tr>
+<tr><td><code>window.__dialog</code></td><td><code>ui/alert.js</code></td><td>旧门面：<code>alert</code> / <code>error</code> / <code>confirm</code> / <code>messageBox</code> / <code>prompt</code>。保留是为了不改动既有调用点的位置参数签名</td></tr>
+<tr><td><code>dialog</code>（ES 模块）</td><td><code>ui/dialog.js</code></td><td>全部方法（含 <code>permission</code>）。内核模块与 <code>api-grants.js</code> 用它</td></tr>
+</table>
+<p>三者背后是同一份实现，不存在第二套弹窗。新代码优先用 <code>Deskly.ui.dialog</code>（对象形式、参数自解释）；维护老代码时可继续走 <code>window.__dialog</code>。</p>
+
+<h2>方法签名与返回值</h2>
+<table>
+<tr><th>方法</th><th>参数</th><th>返回</th></tr>
+<tr><td><code>alert({title, message, okText, icon, html})</code></td><td>单按钮提示</td><td><code>Promise&lt;"ok"&gt;</code></td></tr>
+<tr><td><code>error({title, message, okText, icon, html})</code></td><td>单按钮错误，按钮用红色</td><td><code>Promise&lt;"ok"&gt;</code></td></tr>
+<tr><td><code>confirm({title, message, confirmText, cancelText, danger, icon, html})</code></td><td>确认 / 取消两项</td><td><code>Promise&lt;boolean&gt;</code></td></tr>
+<tr><td><code>prompt({title, message, value, placeholder, password, confirmText, cancelText})</code></td><td>一个文本输入框</td><td><code>Promise&lt;string|null&gt;</code></td></tr>
+<tr><td><code>choose({title, message, buttons, dismissValue, …})</code></td><td>任意按钮表；<code>buttons</code> 项为 <code>{label, value, style}</code></td><td><code>Promise&lt;任意按钮值&gt;</code></td></tr>
+<tr><td><code>permission({appId, appName, permission, label, description, consequence, icon})</code></td><td>权限授权，仅内核可调</td><td><code>Promise&lt;"deny"|"once"|"always"&gt;</code></td></tr>
+<tr><td><code>progress({title, message})</code></td><td>不确定进度</td><td>控制器 <code>{update, close, fail}</code></td></tr>
+</table>
+<p><code>message</code> 默认按纯文本渲染（换行转 <code>&lt;br&gt;</code>），只有传 <code>html: true</code> 才当 HTML 解析。插件文案一律走纯文本，别为了排版打开 <code>html</code>。</p>
+
+<h2>取消约定：任何时候都有明确返回值</h2>
+<table>
+<tr><th>方法</th><th>确认</th><th>取消（Esc / 点遮罩）</th></tr>
+<tr><td><code>confirm</code></td><td><code>true</code></td><td><code>false</code></td></tr>
+<tr><td><code>prompt</code></td><td>输入的字符串</td><td><code>null</code></td></tr>
+<tr><td><code>permission</code></td><td><code>"once"</code> / <code>"always"</code></td><td><code>"deny"</code></td></tr>
+<tr><td><code>choose</code></td><td>所点按钮的 <code>value</code></td><td>调用方传入的 <code>dismissValue</code></td></tr>
+<tr><td><code>alert</code> / <code>error</code></td><td><code>"ok"</code></td><td>同样 <code>"ok"</code>（单按钮没有取消态）</td></tr>
+</table>
+<p>这两条路径走同一个取消值，不会出现 <code>undefined</code>：</p>
+<ul>
+<li>按 <code>Esc</code>；</li>
+<li>点遮罩本身（<b>只判 <code>target === 遮罩</code></b>，点弹窗内部不算）。</li>
+</ul>
+<p><code>choose</code> 的 <code>dismissValue</code> 建议显式给（<code>false</code> / <code>"cancel"</code> / <code>null</code>）；缺省值是 <code>null</code>。</p>
+
+<h2>键盘与焦点</h2>
+<table>
+<tr><th>操作</th><th>行为</th></tr>
+<tr><td><code>Esc</code></td><td>取取消值。进度弹窗不允许取消，按 Esc 无反应</td></tr>
+<tr><td><code>Tab</code> / <code>Shift+Tab</code></td><td>在按钮与输入框之间循环，不跑出弹窗</td></tr>
+<tr><td><code>Enter</code></td><td>执行当前焦点项；没有焦点时落到默认项</td></tr>
+<tr><td>初始焦点</td><td>普通弹窗在主按钮；输入弹窗在输入框（并全选）；<code>danger</code> 弹窗在安全项</td></tr>
+<tr><td>关闭后</td><td>焦点回到触发弹窗的元素</td></tr>
+</table>
+<p>弹窗可以叠加：新弹窗压在旧弹窗之上，只有栈顶那一层处理键盘，底下那层保持打开，等它自己的 Promise 被处理。</p>
+
+<h2>danger：危险操作把焦点放在安全项</h2>
+<p>删除、覆盖、清空、重置、强制退出这类不可逆操作传 <code>danger: true</code>，会同时改变两件事：</p>
+<ul>
+<li>确认按钮改用 destructive 样式，视觉权重与后果一致；</li>
+<li><b>初始焦点落在「取消」</b>，所以直接按 Enter 只会取消，不会误删。</li>
+</ul>
+<pre><code>const ok = await Deskly.ui.dialog.confirm({
+    title: "「草稿.md」将立即删除，不经过废纸篓，无法撤销。",
+    message: "删除后无法恢复。",
+    confirmText: "删除",
+    danger: true,
+});
+if (!ok) return;</code></pre>
+<p>内核里已接线的位置：桌面删除与废纸篓、清倒废纸篓、强制退出、卸载与覆盖安装、清除历史、替换与清除登录密码、清除本地数据、恢复默认设置、删除相簿与永久删除照片、Office 未保存更改。</p>
+
+<h2>权限请求只能由内核发起</h2>
+<p><code>permission()</code> 的返回值是 <code>"deny"</code> / <code>"once"</code> / <code>"always"</code>，按钮固定为「拒绝 / 仅此一次 / 始终允许」。它不是普通弹窗，插件不能自己弹：</p>
+<ul>
+<li><code>Deskly.ui.dialog</code> 上没有 <code>permission</code>；<code>window.__dialog</code> 上也没有；</li>
+<li>插件即使直接 <code>import</code> 该函数，调用栈里出现 <code>mods/&lt;id&gt;/</code> 帧就按 <code>"deny"</code> 返回并记一条 warn；</li>
+<li>授权框由 <code>api-grants.js</code> 在敏感能力首次被调用时发起。</li>
+</ul>
+<div class="note"><b>为什么</b> 如果插件能自弹授权框，它就能造出一枚系统样式的「始终允许」，账本随即失去意义。声明能力请写 <code>manifest.permissions</code>，运行期交给系统询问。</div>
+
+<h2>进度提示</h2>
+<pre><code>const p = Deskly.ui.dialog.progress({ title: "正在导出", message: "准备文件…" });
+p.update({ message: "写入第 2 个文件…" });
+p.close();                       // 正常收尾
+// p.fail("导出失败：磁盘空间不足"); // 把说明换成失败原因，再由调用方 close()</code></pre>
+<p>进度弹窗没有按钮、不可 Esc、不可点遮罩关闭，只有调用方能收尾。默认条为不确定进度动画，只动 <code>transform</code>。</p>
+
+<h2>从旧写法迁移</h2>
+<table>
+<tr><th>旧写法</th><th>改法</th></tr>
+<tr><td><code>window.alert("标题")</code></td><td><code>await Deskly.ui.dialog.alert({ title, message })</code></td></tr>
+<tr><td><code>window.confirm("…")</code></td><td><code>await Deskly.ui.dialog.confirm({ title, message })</code>——返回 <code>boolean</code></td></tr>
+<tr><td><code>window.prompt("…")</code></td><td><code>await Deskly.ui.dialog.prompt({ title, message, value })</code>——返回 <code>string|null</code></td></tr>
+<tr><td><code>__dialog.messageBox({…})</code></td><td><code>await Deskly.ui.dialog.choose({ buttons, dismissValue })</code></td></tr>
+<tr><td>插件自造的遮罩 + 浮层</td><td>换成上面任一入口，别再做第二套弹窗</td></tr>
+</table>
+<p>不要直接调用浏览器原生的 <code>alert</code> / <code>confirm</code> / <code>prompt</code>：样式与宿主不一致，而且会阻塞整页脚本。</p>
+
+<h2>视觉与动效</h2>
+<p>外壳沿用宿主提供的 <code>swift-messagebox</code>（毛玻璃与圆角），遮罩与进度条样式由 <code>ui/dialog.js</code> 自行注入，不改共享样式表。过渡只用 <code>opacity</code> 与 <code>transform</code>，缓动 <code>cubic-bezier(.32,.72,0,1)</code>；<code>html[data-reduce-motion="on"]</code> 下关闭过渡与进度动画。层级取 <code>zindex.js</code> 的 <code>Z.MODAL</code>（遮罩）与 <code>Z.MODAL + 1</code>（弹窗本体），界面不使用 emoji。</p>
+
+</main>
+<script src="../assets/pages.js"></script>
+<script src="../assets/docs.js"></script>
+</body>
+</html>

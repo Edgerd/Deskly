@@ -6,54 +6,68 @@
 <title>冷加载机制 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="cold-load" data-base="../" data-version="0.2.95">
+<body data-page="cold-load" data-base="../" data-version="0.4.3">
 <main>
 <h1>冷加载机制</h1>
-<p class="lede">「启动只注册清单，点击才加载内容」的原理、缓存戳语义与两条硬约束。</p>
+<p class="lede">「启动只注册清单，点击才加载内容」——这页讲清楚它怎么工作，以及由此而来的两条硬约束。写插件踩的坑，一半出自这里。</p>
 
-<h2>两个阶段</h2>
-<h3>阶段一：启动注册（仅清单）</h3>
-<p><code>plugin-manager.init()</code>（bootstrap.js 调用）按 <code>BUILTIN_IDS</code>（13 个）逐个
-<code>fetch('./mods/{id}/manifest.json?v=' + VERSION)</code> 建注册表，再从 IndexedDB 还原已安装 ZIP 插件，
-最后派发 <code>plugins-ready</code>。程序坞监听它校准图标，启动台 / 商店据此渲染。
-<b>不加载任何界面 / 样式 / 脚本</b>。首屏 Network 面板应看到 13 个 manifest.json 请求。</p>
-<h3>阶段二：点击加载（按需）</h3>
-<p><code>load(id)</code> 按<b>顺序</b>拉三件（不是并行）：</p>
+<h2>这是什么 / 为什么这么设计</h2>
+<p>Deskly 开机要快。内置插件如果把全部界面、样式、脚本一次性加载，首屏会卡在几十个请求和几百万次 DOM 操作上。
+所以系统分两个阶段：启动时只读每个插件的 <code>manifest.json</code>（几 KB），把名字、图标、入口登记进注册表；
+真正的界面资源，等用户点击图标那一刻才拉取。注册快、启动快，代价是插件代码要写「可被反复装载卸载」的形态。</p>
+
+<h2>阶段一：启动注册（仅清单）</h2>
 <ol>
-<li><code>style.css</code> → <code>&lt;link id="plugin-style-&lt;id&gt;"&gt;</code> 追加进 head，<b>按 id 去重</b>；</li>
-<li><code>index.html</code> → fetch 后 <code>insertAdjacentHTML("beforeend")</code>；</li>
-<li><code>script.js</code> → 每次<b>先删旧脚本再注入新的</b>（全新 URL）；</li>
-<li>新 <code>.window</code> 交给 <code>window-manager.manage()</code> 绑行为，按 <code>data-window</code> / manifest 落实尺寸。</li>
+<li><code>plugin-manager</code> 的 <code>prefetchManifests()</code> 按 <code>BUILTIN_IDS</code>（全部内置 id，数量随版本增长）<b>并行</b>拉取
+<code>./mods/&lt;id&gt;/manifest.json?v=VERSION</code>；</li>
+<li>逐个 <code>registerPlugin()</code> 登记进注册表（每个注册都会广播 <code>plugin-registered</code>，权限账本靠它记账）；</li>
+<li>从 IndexedDB 还原用户安装过的 ZIP 插件；</li>
+<li><code>markReady()</code> 并广播 <code>plugins-ready</code>。程序坞、启动台、商店都监听这个事件渲染。</li>
 </ol>
-<p><code>load()</code> 自带并发去重（<code>loadingMap</code>）：同 id 加载中复用同一 Promise，连点不注两份。</p>
+<p>这一阶段<b>不加载任何界面、样式、脚本</b>。首屏打开 Network 面板，应该只看到与 <code>BUILTIN_IDS</code> 等量条的 <code>manifest.json</code> 请求（外加 ZIP 插件的）。</p>
 
-<h2>缓存戳的真实语义（有意为之）</h2>
+<h2>阶段二：点击加载（按需）</h2>
+<p>用户点击图标 → <code>load(id)</code> 按<b>顺序</b>（不是并行）拉三件资源：</p>
+<ol>
+<li><code>style.css</code> → 包成 <code>&lt;link id="plugin-style-&lt;id&gt;"&gt;</code> 追加进 <code>&lt;head&gt;</code>，按 id 去重；</li>
+<li><code>index.html</code> → fetch 后 <code>insertAdjacentHTML("beforeend")</code> 注入 body；</li>
+<li><code>script.js</code> → <b>每次先移除旧脚本元素、再以全新 URL 注入新的</b>；</li>
+<li>新出现的 <code>.window</code> 交给 <code>window-manager.manage()</code> 绑定拖拽 / 缩放 / 红绿灯，按 <code>data-window</code> 与 manifest 落实尺寸。</li>
+</ol>
+<p><code>load()</code> 自带并发去重（内部一张 loadingMap）：同一个插件正在加载时，重复点击复用同一个 Promise，不会注两份。</p>
+
+<h2>缓存戳的真实语义（有意为之，别「修」它）</h2>
 <table>
 <tr><th>资源</th><th>戳值</th><th>语义</th></tr>
-<tr><td>manifest.json</td><td><code>VERSION</code></td><td>随发布失效，同一发布内复用</td></tr>
-<tr><td>style.css / index.html</td><td>内置 <code>VERSION</code>；ZIP 安装 <code>Date.now()</code></td><td>已安装资源可被同 id 覆盖安装，必须每次取新</td></tr>
-<tr><td>script.js（入口）</td><td><b>永远 <code>Date.now()</code></b></td><td>入口顶层要跑 init()，URL 稳定会被 ES module 缓存命中 →「二次打开失效」</td></tr>
+<tr><td>manifest.json</td><td><code>?v=VERSION</code></td><td>随发布失效，同一发布内复用缓存</td></tr>
+<tr><td>style.css / index.html</td><td>内置 <code>?v=VERSION</code>；商店 ZIP 插件 <code>Date.now()</code></td><td>ZIP 允许同 id 覆盖安装，必须每次取新</td></tr>
+<tr><td>script.js（入口）</td><td><b>永远 <code>Date.now()</code> + 递增序号</b></td><td>入口顶层要重跑 init()；URL 稳定会被 ES module 缓存命中 →「第二次打开不执行」</td></tr>
 </table>
 
 <h2>两条硬约束（代价：模块表不回收旧实例）</h2>
 <ol>
-<li><b>入口脚本每次重跑</b> → 它注册的全局资源（document/window 监听、定时器、轮询、<code>window.__*</code> 钩子、
-    <code>__menuActions</code> 键）必须在 <code>plugin-unload</code> 回调里释放。旧实例的监听不会随脚本元素移除而消失，
-    会永久累积。内置示范：finder / notepad / system-settings / photos 的 script.js 都有该监听。</li>
-<li><b>被 import 的子模块只有一份实例</b>（URL 稳定，跨打开复用）→ 入口的 init() 必须自己复位状态、
-    对订阅去重。不能假设「新实例 = 干净状态」。</li>
+<li><b>入口脚本每次打开都重跑</b> → 它注册的全局资源（document/window 监听、定时器、轮询、<code>window.__*</code> 钩子、<code>__menuActions</code> 键）
+必须在 <code>plugin-unload</code> 回调里亲手释放。旧脚本元素被移除了，但它注册的监听器<b>不会</b>跟着消失，会永久累积。
+内置示范：calculator / notepad / photos / launchpad / vs_code 的 script.js 里都有这个监听。</li>
+<li><b>被 import 的子模块只有一份实例</b>（URL 稳定，跨打开复用）→ 入口的 init() 必须自己复位状态、对订阅去重。
+不能假设「这次打开 = 干净状态」。</li>
 </ol>
 
-<h2>卸载事件</h2>
+<h2>卸载与生命周期事件</h2>
 <table>
-<tr><th>事件</th><th>detail</th><th>语义</th></tr>
-<tr><td><code>plugin-unload</code></td><td><code>{id}</code></td><td>单应用关闭 / 整个插件无存活窗口；移除 style 与脚本元素</td></tr>
-<tr><td><code>plugin-app-unload</code></td><td><code>{id, appId}</code></td><td>多应用插件：关掉其中一个应用窗口（外壳仍在）</td></tr>
-<tr><td><code>plugin-app-load</code></td><td><code>{id, appId, windowName, el}</code></td><td>多应用插件：每个应用窗口就绪（外壳只在第一个时注过一次）</td></tr>
-<tr><td><code>plugin-app-open</code></td><td><code>{id, appId, windowName, file}</code></td><td>访达双击带文件打开；窗口已存在也派发（换文件复用窗口）</td></tr>
+<tr><th>事件</th><th>detail</th><th>什么时候发</th></tr>
+<tr><td><code>plugins-ready</code></td><td><code>{plugins}</code></td><td>注册表就绪（内置插件全部注册 + ZIP 还原完成）</td></tr>
+<tr><td><code>plugin-registered</code></td><td>完整 manifest 对象</td><td>每个插件注册时（权限账本的 grantAll 挂在这里）</td></tr>
+<tr><td><code>plugin-unload</code></td><td><code>{id}</code></td><td>单应用插件关窗 / 多应用插件没有存活窗口时；系统随后移除样式与脚本元素。<b>你的全局监听、定时器都在这个回调里释放</b></td></tr>
+<tr><td><code>plugin-app-load</code></td><td><code>{id, appId, windowName, el}</code></td><td>多应用插件：每个应用窗口就绪（外壳只在第一个应用时注过一次）</td></tr>
+<tr><td><code>plugin-app-unload</code></td><td><code>{id, appId}</code></td><td>多应用插件：关掉其中一个应用窗口（外壳还在）</td></tr>
+<tr><td><code>plugin-app-open</code></td><td><code>{id, appId, windowName, file}</code></td><td>访达双击带文件打开；窗口已存在也会派发（换文件复用窗口）</td></tr>
+<tr><td><code>plugin-unregistered</code></td><td><code>{id}</code></td><td>插件被卸载/移除（权限账本在这里清账）</td></tr>
 </table>
-<div class="note"><b>调试技巧</b> 顶栏「调试 → 重载当前插件」= 关窗再开窗，专门用来验证你的
-<code>plugin-unload</code> 是否清干净（重载后若界面叠了两层、菜单项多了，就是没释放）。</div>
+<p>这些事件都在 document 上派发（<code>bubbles: true</code>），所以在 window 或 document 上监听都能收到——内核两种写法都有，保持一致即可。</p>
+
+<div class="note"><b>调试技巧</b> 顶栏「调试 → 重载当前插件」= 关窗再开窗，专门用来验证你的 <code>plugin-unload</code> 清没清干净：
+重载后如果界面叠了两层、菜单项多了一倍、日志重复打印，就是有资源没释放。</div>
 
 </main>
 <script src="../assets/pages.js"></script>

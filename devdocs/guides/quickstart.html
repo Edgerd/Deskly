@@ -6,35 +6,44 @@
 <title>五分钟写第一个插件 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="quickstart" data-base="../" data-version="0.2.95">
+<body data-page="quickstart" data-base="../" data-version="0.4.3">
 <main>
 <h1>五分钟写第一个插件</h1>
-<p class="lede">以 <code>mods/about/</code>（最小完整骨架）为模板。会拆计算逻辑的看 <code>mods/calculator/</code>。</p>
+<p class="lede">目标：做一个能在程序坞里点开、带一个窗口的小插件。全程只要四个文件，不用任何构建工具。模板照抄 <code>mods/about/</code>（最小完整骨架）；想看带计算逻辑的例子看 <code>mods/calculator/</code>。</p>
 
-<h2>五步</h2>
+<h2>这是什么</h2>
+<p>一个 Deskly 插件就是一个文件夹，里面装着「清单 + 界面 + 样式 + 逻辑」。系统启动时只读清单（冷加载），用户点击图标时才把你的界面和脚本注入桌面。所以你的代码是「被点活」的，不是常驻的。</p>
+
+<h2>五步跑通</h2>
 <ol>
-<li>建目录 <code>mods/&lt;id&gt;/</code>：manifest.json + index.html + style.css + script.js（+ 图标，规则见下）；</li>
-<li>把 id 加进 <code>src/javascripts/plugin-manager.js</code> 的 <code>BUILTIN_IDS</code>（内置插件才需要；走商店分发则不用）；</li>
-<li>在浏览器里刷新扩展新标签页：程序坞出现图标，点击开窗；</li>
-<li>跑 <a href="../reference/dev-tools.html">node dev/static-check.mjs</a>（键位 / 资源 / import 全量核对）；</li>
-<li>有计算逻辑：把纯函数拆进独立文件被 entry import（冷加载的模块表特性见 <a href="cold-load.html">冷加载</a>）。</li>
+<li><b>建目录</b> <code>mods/my-plugin/</code>，放四个文件：<code>manifest.json</code>、<code>index.html</code>、<code>style.css</code>、<code>script.js</code>（图标规则见第 4 步）。</li>
+<li><b>注册 id</b>：把 <code>"my-plugin"</code> 加进 <code>src/javascripts/plugin-manager.js</code> 的 <code>BUILTIN_IDS</code> 数组（只有内置插件需要这步；走商店 ZIP 分发的不用）。</li>
+<li><b>刷新看效果</b>：重载扩展，打开新标签页，程序坞里出现你的图标，点击开窗。</li>
+<li><b>跑自检</b>：<code>node dev/static-check.mjs</code>——manifest 声明的文件在不在、权限名写没写对、资源引用 404 不 404，一次全查。</li>
+<li><b>验证卸载干净</b>：顶栏「调试 → 重载当前插件」，如果你的界面叠了两层、菜单项多了一倍，说明 <code>plugin-unload</code> 没清干净（见下文「最容易踩的坑」）。</li>
 </ol>
 
-<h2>最小 manifest（全字段表见<a href="plugin-format.html">插件包格式</a>）</h2>
+<h2>四个文件怎么写</h2>
+<h3>1. manifest.json（清单，唯一事实来源）</h3>
 <pre><code>{
   "id": "my-plugin",
   "name": "我的插件",
   "version": "1.0.0",
-  "entry": "window",            // window | fullscreen
+  "entry": "window",
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "window": { "width": 420, "height": 560, "centered": true, "resizable": true },
-  "permissions": []            // 哪怕不用能力也要写 []（static-check 第 7 节核对）
+  "permissions": []
 }</code></pre>
+<ul>
+<li><code>id</code> 必须和目录名一致，小写蛇形命名（只允许 <code>[A-Za-z0-9][A-Za-z0-9._-]*</code>，不能含 <code>..</code>）。</li>
+<li><code>entry</code> 二选一：<code>window</code>（窗口应用，绝大多数）或 <code>fullscreen</code>（启动台那种全屏）。</li>
+<li><code>permissions</code> <b>必须写，哪怕用不上也要写 <code>[]</code></b>——static-check 第 7 节会核对这个字段。取值只能来自 22 条权限名（见 <a href="../api/deskly.html">Deskly</a> 页权限表）。</li>
+<li>全字段表见<a href="plugin-format.html">插件包格式</a>。</li>
+</ul>
 
-<h2>index.html（HTML 片段，不是完整文档）</h2>
-<pre><code>&lt;div class="window" data-window="size:420x560;resizable:false"&gt;
+<h3>2. index.html（HTML 片段，不是完整网页）</h3>
+<pre><code>&lt;div class="my-plugin window" data-window="size:420x560 centered"&gt;
   &lt;header class="titlebar" data-titlebar&gt;
     &lt;deskly-traffic-lights class="wintools" placement="titlebar"&gt;&lt;/deskly-traffic-lights&gt;
     &lt;span&gt;我的插件&lt;/span&gt;
@@ -43,40 +52,77 @@
     &lt;p data-i18n="myPlugin.title" data-i18n-fallback="我的插件"&gt;我的插件&lt;/p&gt;
   &lt;/section&gt;
 &lt;/div&gt;</code></pre>
-<p><code>data-window</code> 的键（size / min / max / aspect / center / resizable / titlebar / snap / blur）
-以 <code>window-manager.js</code> 为准；与 <code>manifest.window</code> 冲突时<b>以 data-window 为准</b>。
-红绿灯的位置、能力开关与 JS 挂载 API 见<a href="../api/trafficlights.html">窗口红绿灯</a>。</p>
+<ul>
+<li>根元素<b>恰好一个</b>，必须带 <code>.window</code> 类——窗口管理器靠它认窗口。</li>
+<li>红绿灯组件 <code>&lt;deskly-traffic-lights&gt;</code> 放在带 <code>data-titlebar</code> 的标题栏里；没有标题栏的内容型界面（看图、写字）用 <code>overlay</code> 悬浮形态。详见<a href="../api/trafficlights.html">窗口红绿灯</a>。</li>
+<li><code>data-window</code> 声明窗口尺寸与能力（键名 camelCase / kebab / 全小写都认；表外的会被忽略并在 console 里警告）：
+<table>
+<tr><th>写法</th><th>含义</th></tr>
+<tr><td><code>size:420x560</code> / <code>min:…</code> / <code>max:…</code></td><td>初始 / 最小 / 最大尺寸（宽x高）</td></tr>
+<tr><td><code>width</code> / <code>height</code> / <code>minWidth</code> / <code>minHeight</code> / <code>maxWidth</code> / <code>maxHeight</code></td><td>同上的按字段写法（数字），与 <code>Deskly.windows.configure</code> 字段同名</td></tr>
+<tr><td><code>resizable:true|false</code></td><td>可否拖拽缩放</td></tr>
+<tr><td><code>minimizable</code> / <code>maximizable</code></td><td>是否允许最小化 / 缩放（红绿灯禁用态）</td></tr>
+<tr><td><code>centered</code></td><td>打开时居中</td></tr>
+<tr><td><code>draggable:true|false</code></td><td>标题栏是否可拖动</td></tr>
+<tr><td><code>fixed</code> / <code>modal</code> / <code>multiWindow</code></td><td>固定不可变 / 模态 / 允许多窗口</td></tr>
+<tr><td><code>role</code> / <code>parent</code> / <code>level</code> / <code>snap</code> / <code>titlebar</code> / <code>trafficLights</code></td><td>窗口角色 / 父窗 / 层级 / 吸附 / 标题栏选择器 / 红绿灯形态（字符串）</td></tr>
+<tr><td><code>dragAxis</code> / <code>resizeAxis</code></td><td>限制拖动 / 缩放轴向</td></tr>
+<tr><td><code>aspectRatio:16:9</code></td><td>固定宽高比（也可写数值）</td></tr>
+<tr><td><code>dragBounds:visible</code> / <code>dragBounds:x,y,w,h</code></td><td>拖动边界</td></tr>
+</table>
+与 <code>manifest.window</code> 冲突时<b>以 data-window 为准</b>（应用是尺寸的权威）。</li>
+</ul>
 
-<h2>script.js（ES Module，顶层直接 init）</h2>
+<h3>3. script.js（ES Module，顶层直接初始化）</h3>
 <pre><code>import { i18n } from '../../src/javascripts/i18n.js';
 
+// 插件自带文案：四语都写是仓库规约（cat = 萌猫语言，中文加「喵」尾）
 i18n.registerMessagesAll({
-  "zh-CN": { myPlugin: { title: "我的插件", run: "运行" } },
-  en:      { myPlugin: { title: "My Plugin", run: "Run" } },
+  "zh-CN": { myPlugin: { title: "我的插件" } },
+  "en":    { myPlugin: { title: "My Plugin" } },
+  "ja-JP": { myPlugin: { title: "マイプラグイン" } },
+  "cat":   { myPlugin: { title: "我的插件喵" } },
 });
 
 function init() {
   const root = document.querySelector('.window[data-plugin-id="my-plugin"]');
-  // 界面逻辑
+  if (!root) return;
+  // …界面逻辑…
 }
 init();
 
-// ★ 冷加载硬约束：全局注册必须在 plugin-unload 里释放
+// ★ 硬约束：顶层注册的全局资源必须在 plugin-unload 里释放
 window.addEventListener("plugin-unload", (e) => {
   if (e.detail?.id !== "my-plugin") return;
-  // 解绑 document/window 监听、清定时器、delete window.__menuActions 里你加的键
+  // 摘掉你挂的 document/window 监听、清定时器、delete window.__menuActions 里你加的键
 });</code></pre>
-
-<h2>图标（硬规则）</h2>
 <ul>
-<li>应用图标<b>一律 PNG，禁止 SVG</b>；</li>
-<li>先到 <code>assets/icons/</code>（含 dock/、folder/ 子目录）找，找到就<b>复制</b>进插件目录，
-    <code>manifest.icon</code> 只写裸文件名（如 <code>"icon.png"</code>）——ZIP 要求插件目录自包含；</li>
-<li>库里没有合适的就<b>不声明</b> icon，系统自动落 <code>GENERIC_APP_ICON</code> 占位图（<code>assets/icons/dock/Launcher.png</code>）；不引用、不凑数、不自绘。</li>
+<li>import 路径相对<b>文件自身</b>：插件在 <code>mods/my-plugin/</code>，回内核就是 <code>../../src/javascripts/…</code>。<b>import 说明符永远不要带 <code>?v=</code></b>（带了等于把内核模块再加载一份，全局状态会分裂）。</li>
+<li>系统给你的窗口根会自动带 <code>data-plugin-id="你的id"</code>，用它做选择器，别用裸 <code>.window</code>（桌面上全是别的窗口）。</li>
 </ul>
 
-<div class="okbox"><b>跑通标准</b> 程序坞出现你的图标 → 点击开窗且红绿灯可拖动/缩放 →
-右上角显示「设置」齿轮可改你的设置项 → 顶栏出现你的自定义菜单 → <code>static-check</code> 全绿。</div>
+<h3>4. style.css</h3>
+<ul>
+<li>作用域自觉：所有选择器以你的窗口类开头（<code>.my-plugin …</code>），你跑在整个桌面的 DOM 里，裸写 <code>p {…}</code> 会污染全站。</li>
+<li>毛玻璃只能写 <code>backdrop-filter: blur(var(--surface-blur-3));</code> 这类系统令牌，<b>禁止手写 <code>blur(12px)</code></b>（static-check 会判失败）。文字色用 <code>var(--surface-text)</code>。为什么、还有哪些令牌，见<a href="../api/surface.html">表面</a>。</li>
+</ul>
+
+<h2>图标规则（硬性）</h2>
+<ul>
+<li>应用图标<b>一律 PNG，禁止 SVG</b>（程序坞 / 启动台 / 商店共用同一张位图）。</li>
+<li>先到 <code>assets/icons/</code>（含 <code>dock/</code>、<code>folder/</code> 子目录）找现成的，找到就<b>复制</b>进插件目录，<code>manifest.icon</code> 只写裸文件名（如 <code>"icon.png"</code>）——ZIP 分发要求插件目录自包含，库里原文件不要移走。</li>
+<li>实在没有合适的就<b>不写 icon 字段</b>，系统自动落占位图（<code>assets/icons/dock/Launcher.png</code>）。不引用、不凑数、不自绘。</li>
+</ul>
+
+<h2>最容易踩的坑（冷加载两条铁律）</h2>
+<ol>
+<li><b>入口脚本每次打开都重跑</b>（系统故意用全新 URL 注入它），它注册的全局监听、定时器、<code>window.__*</code> 钩子不会被自动回收——必须在 <code>plugin-unload</code> 回调里亲手释放，否则越开越卡、菜单越堆越多。</li>
+<li><b>被 import 的子模块只有一份实例</b>（URL 稳定，跨打开复用）——所以 <code>init()</code> 要自己复位状态，订阅先去重，不能假设「这次打开 = 干净状态」。原理见<a href="cold-load.html">冷加载机制</a>。</li>
+</ol>
+
+<div class="okbox"><b>跑通标准</b> 程序坞出现你的图标 → 点击开窗、红绿灯能关能拖 → <code>node dev/static-check.mjs</code> 全绿 → 「调试 → 重载当前插件」后界面不叠影、监听不翻倍。</div>
+
+<div class="note"><b>想让 AI 帮你写？</b> 本站附带一份面向 AI 的技能包：<a href="../skill/plugin-dev/SKILL.md">skill/plugin-dev</a>（含模板文件与交付前自检清单），直接喂给 AI 即可按本仓库规范产出插件。</div>
 
 </main>
 <script src="../assets/pages.js"></script>

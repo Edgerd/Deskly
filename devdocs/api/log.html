@@ -6,39 +6,46 @@
 <title>日志 __log · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="log" data-base="../" data-version="0.2.95">
+<body data-page="log" data-base="../" data-version="0.4.3">
 <main>
 <h1>日志 __log</h1>
-<p class="lede">可查、可留存、可导出的运行记录；300+ 处裸 console.* 已被自动归档。</p>
+<p class="lede">可查、可留存、可导出的运行记录。你的 <code>console.*</code> 早就被自动归档了——但显式用 __log，才能按来源分类、按级别过滤。源码：<code>src/javascripts/log.js</code>。</p>
 
-<h2>方法</h2>
+<h2>这是什么</h2>
+<p>桌面里有十几个插件和几十个内核模块同时跑，出了问题只看 console 根本分不清是谁打的。
+__log 把每条日志挂上「级别 + 来源」存进内核缓冲（跨窗口、跨刷新留存），在顶栏「调试 → 查看运行记录」里可以按来源/级别筛选、导出、复制。
+log.js 求值时会给原生 <code>console.*</code> 包一层——先归档再原样输出，所以旧代码不用改造，浏览器控制台行为完全不变。</p>
+
+<h2>方法清单</h2>
 <table>
 <tr><th>方法</th><th>说明</th></tr>
-<tr><td><code>info/warn/error/debug(source, msg, data?)</code></td><td>按级别写一条；被门槛过滤时返回 null</td></tr>
+<tr><td><code>info(source, msg, data?)</code> / <code>warn</code> / <code>error</code> / <code>debug</code></td><td>按级别写一条；被门槛滤掉时返回 null</td></tr>
 <tr><td><code>entry(level, source, msg, data?)</code></td><td>级别是变量时的统一入口；非法级别按 info 归档</td></tr>
-<tr><td><code>for(source)</code></td><td>绑定来源的子日志器（.info/.warn/.error/.debug/.entry/.timer）</td></tr>
-<tr><td><code>timer(label)</code></td><td><code>timer("首屏").stop()</code> 以 info 记毫秒差并返回数字</td></tr>
-<tr><td><code>assert(cond, source, msg)</code></td><td>不成立记 error 并返回 false</td></tr>
-<tr><td><code>query(opts?)</code> / <code>recent(n=100)</code> / <code>count()</code> / <code>stats()</code></td><td>条件筛选 / 最近 n 条（时间正序）/ 条数 / 分级分来源统计（含 capacity、dropped）</td></tr>
+<tr><td><code>for(source)</code></td><td>返回绑定来源的子日志器（.info/.warn/.error/.debug/.entry/.timer）</td></tr>
+<tr><td><code>timer(label)</code></td><td><code>__log.timer("首屏").stop()</code> 以 info 记毫秒差并返回数字</td></tr>
+<tr><td><code>assert(cond, source, msg)</code></td><td>条件不成立记 error 并返回 false</td></tr>
+<tr><td><code>query(opts?)</code> / <code>recent(n=100)</code> / <code>count()</code> / <code>stats()</code></td><td>条件筛选 / 最近 n 条（时间正序）/ 总条数 / 分级分来源统计（含 capacity 与 dropped）</td></tr>
 </table>
 
-<h2>门槛与来源分类</h2>
+<h2>门槛与来源分类（两个最容易误会的行为）</h2>
 <ul>
-<li>六个调试项由 log.js 自注册：<code>debug.logLevel</code>（门槛）/ <code>debug.bufferSize</code> /
-    <code>debug.persist</code> / <code>debug.captureConsole</code> / <code>debug.captureErrors</code> / <code>debug.persistCount</code>。
-    <b>默认门槛是 <code>info</code></b>——你写的 debug 不出现是门槛滤掉的，不是丢了；排查时先
-    <code>__settings.set("debug.logLevel","debug")</code>。</li>
-<li>来源统一带类别前缀：已含斜杠的照用；<b>裸名按内核模块白名单判定，未命中一律归 <code>plugin/</code></b>。
-    插件请显式写 <code>plugin/&lt;你的id&gt;</code>——哪天内核加了同名模块，你的日志会静默跑进 kernel/ 里，「按程序分类」维度就废了。</li>
+<li><b>默认门槛是 <code>info</code></b>：你写的 <code>debug(...)</code> 不出现，是门槛滤掉的，不是丢了。
+排查时先 <code>__settings.set("debug.logLevel","debug")</code>。
+相关六个设置项由 log.js 自注册：<code>debug.logLevel</code>（门槛）/ <code>debug.bufferSize</code> / <code>debug.persist</code> /
+<code>debug.captureConsole</code> / <code>debug.captureErrors</code> / <code>debug.persistCount</code>。</li>
+<li><b>来源统一带类别前缀</b>：已经含斜杠的照用（如 <code>kernel/dock</code>）；裸名按内核模块白名单判定，<b>未命中一律归 <code>plugin/</code></b>。
+所以插件要显式写 <code>plugin/&lt;你的id&gt;</code>——哪天内核加了同名模块，你的日志会静默跑进 kernel/ 里，「按程序分类」维度就废了。</li>
 </ul>
-<pre><code>const log = __log.for("plugin/my-plugin");
-log.info("界面就绪");            // → source = "plugin/my-plugin"
-log.timer("首屏").stop();</code></pre>
 
-<h2>缓冲与留存</h2>
-<p>缓冲在内核（跨窗口、跨刷新）；已写的代码不必改造——<code>console.*</code> 在 log.js 求值时就被包了一层，
-先归档再原样输出，浏览器控制台行为不变。应用内查看：顶栏「调试 → 查看运行记录」
-（清空 / 导出文件 / 复制剪贴板 / 切门槛 / 重载当前插件都在那个菜单里）。</p>
+<h2>推荐写法</h2>
+<pre><code>const log = window.__log.for("plugin/my-plugin");
+log.info("界面就绪");
+log.warn("配置缺失，使用默认值", { key: "opacity" });
+log.timer("首屏").stop();          // → info 级别记录耗时毫秒数</code></pre>
+
+<h2>在哪里看</h2>
+<p>顶栏「调试 → 查看运行记录」：清空 / 导出文件 / 复制剪贴板 / 切换门槛 / 重载当前插件都在那个菜单里。
+「调试」菜单本身由 <code>debug.developerMode</code> 设置项门控（只控制菜单显隐，不影响日志系统本身）。</p>
 
 </main>
 <script src="../assets/pages.js"></script>

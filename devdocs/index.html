@@ -6,38 +6,50 @@
 <title>总览与架构 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
-<body data-page="index" data-base="" data-version="0.2.95">
+<body data-page="index" data-base="" data-version="0.4.3">
 <main>
 <h1>总览与架构</h1>
-<p class="lede">Deskly 是一个运行在 Chrome / Edge 新标签页里的 macOS Sequoia 桌面（纯 HTML/CSS/JS，MV3，零框架零构建）。本站是<b>插件开发者</b>手册：写 mod、声明能力、接入系统接口。</p>
+<p class="lede">Deskly 是一个运行在 Chrome / Edge 新标签页里的 macOS Sequoia 桌面：纯 HTML/CSS/JS、MV3、零框架零构建。本站教你怎么给它写插件（mod），并解释系统是怎么拼起来的。</p>
 
-<h2>它是什么，不是什么</h2>
+<h2>这是什么</h2>
+<ul>
+<li>一个浏览器扩展（MV3）。装好以后，你打开每一个新标签页，看到的都是一整套模拟 macOS 的桌面：菜单栏、程序坞、窗口、启动台、控制中心。</li>
+<li>一套插件系统。每个应用（计算器、访达、记事本……）都是 <code>mods/&lt;id&gt;/</code> 下的一个独立目录，系统自带一组内置插件（清单见 <code>plugin-manager.js</code> 的 <code>BUILTIN_IDS</code>），也可以通过应用商店安装第三方 ZIP 插件。</li>
+<li>一份开放的内部接口。插件通过 <code>window.Deskly</code> 申请系统能力（启动别的应用、读写文件、订阅事件），通过 <code>window.__settings</code> 注册自己的设置项，通过 <code>i18n</code> 做多语言。</li>
+</ul>
+
+<h2>它不是什么（三条最常见的误会）</h2>
 <table>
-<tr><th>是</th><th>不是</th></tr>
-<tr><td>Chrome/Edge 扩展（MV3，script-src 'self'，新标签页里启动一整套桌面）</td><td>不是 iframe 应用集合：13 个 mod 全部<b>注入到宿主文档</b>里跑（plugin-manager fetch + 注入），共享同一份 DOM</td></tr>
-<tr><td><code>window.Deskly</code> 是受权限门禁的<b>能力</b>入口（fs/apps/bus/settings/meta）</td><td>它不是沙箱边界：mod 跑在宿主主文档里，能碰全页 DOM；安全边界 = manifest.permissions 声明 + 设置/日志/层级等规约</td></tr>
-<tr><td>冷加载：启动只 fetch 14 份 manifest.json，点击才拉三件资源</td><td>没有构建链、没有 npm、没有打包器；开发自检是 Node 脚本（<a href="reference/dev-tools.html">见 dev-tools</a>）</td></tr>
+<tr><th>误会</th><th>真相</th></tr>
+<tr><td>「插件跑在沙箱 iframe 里」</td><td>不是。内置 mod 全部由 plugin-manager fetch 后<b>注入宿主主文档</b>，和桌面共享同一份 DOM。安全边界是 manifest 里的 <code>permissions</code> 声明 + api-grants.js 的授权账本，是「同意与记账」，不是隔离。</td></tr>
+<tr><td>「有构建步骤，要装 npm 依赖」</td><td>没有。仓库没有 package.json，浏览器直接跑源码。自检靠 <code>dev/*.mjs</code> 几个 Node 脚本（见<a href="reference/dev-tools.html">开发自检工具</a>）。</td></tr>
+<tr><td>「window.Deskly 是全部接口」</td><td>不是。Deskly 只是<b>受权限门禁的那部分</b>。设置（__settings）、日志（__log）、弹窗（<code>Deskly.ui.dialog</code>，旧名 <code>__dialog</code>）、通知（__notify）等全局钩子可以直接用，完整清单见<a href="api/events.html">事件与全局接口</a>，弹窗细节见<a href="api/dialog.html">系统弹窗 dialog</a>。</td></tr>
 </table>
 
 <h2>四层结构（改代码前先认清自己在哪层）</h2>
 <table>
 <tr><th>层</th><th>位置</th><th>内容</th><th>改动约束</th></tr>
-<tr><td><b>ui/</b> 框架</td><td><code>src/javascripts/ui/</code> + <code>assets/stylesheets/ui/</code></td><td>菜单栏、窗口、弹窗、浮层、通知、右键菜单、桌面图标共用语义</td><td>跨 mod 复用；样式只走系统令牌</td></tr>
-<tr><td><b>mods/</b> 应用</td><td><code>mods/{id}/</code>（13 个内置插件）</td><td>每个插件 = manifest + index.html + style.css + script.js + icon.png</td><td>自包含目录，可整体打成 ZIP 分发</td></tr>
-<tr><td><b>src/</b> 内核</td><td><code>src/javascripts/</code>（52+ 模块）+ <code>assets/stylesheets/</code>（main/dock/finderbar）</td><td>程序坞、启动台、控制中心、设置中枢、日志、OSFS、层级表、i18n…</td><td>mod 通过 import 与 <code>window.__*</code> 消费，不反改</td></tr>
-<tr><td><b>assets/</b> 资源</td><td><code>assets/icons|images|svgs|locales</code></td><td>图标库、界面图、语言包（zh-CN/en/ja-JP/cat 四语）</td><td>图标一律 PNG；运行时文件名必须 ASCII</td></tr>
+<tr><td><b>ui/ 框架</b></td><td><code>src/javascripts/ui/</code>（模块数以实测为准）</td><td>弹窗、通知、浮层、右键菜单、窗口红绿灯、桌面图标</td><td>跨插件复用；样式只走系统令牌</td></tr>
+<tr><td><b>mods/ 应用</b></td><td><code>mods/{id}/</code>（内置插件清单见 <code>BUILTIN_IDS</code>，不写死数量）</td><td>每个插件 = manifest.json + index.html + style.css + script.js + 图标</td><td>目录自包含，可整体打成 ZIP 分发</td></tr>
+<tr><td><b>src/ 内核</b></td><td><code>src/javascripts/</code>（50 个顶层模块，以脚本实测为准）</td><td>程序坞、启动台、控制中心、设置中枢、日志、OSFS 文件存储、层级表、i18n、插件管理器……</td><td>插件通过 import 与 <code>window.__*</code> 消费，不反改</td></tr>
+<tr><td><b>assets/ 资源</b></td><td><code>assets/icons|images|locales|…</code></td><td>图标库、界面字形、四语言包（zh-CN / en / ja-JP / cat）</td><td>应用图标一律 PNG；运行时文件名必须 ASCII</td></tr>
 </table>
 
 <h2>开发流程（最短路径）</h2>
 <ol>
-<li><a href="guides/quickstart.html">五分钟写第一个插件</a>：抄 <code>mods/about/</code> 骨架 → 改 manifest → 加进 <code>BUILTIN_IDS</code> → 自检；</li>
-<li>要系统能力时查 <a href="api/deskly.html">window.Deskly</a> 与 <a href="api/events.html">事件地图</a>，能力名写进 <code>manifest.permissions</code>；</li>
-<li>样式只写模糊令牌与文字令牌，<a href="reference/redlines.html">红线清单</a>逐条过；</li>
-<li>收尾跑 <a href="reference/dev-tools.html">static-check / deep-check / settings-fulltest</a>，全绿再提。</li>
+<li>跟做 <a href="guides/quickstart.html">五分钟写第一个插件</a>：抄 <code>mods/about/</code> 骨架 → 改 manifest → 注册 → 刷新看效果。</li>
+<li>需要系统能力时查 <a href="api/deskly.html">window.Deskly</a> 与 <a href="api/events.html">事件地图</a>，把用到的权限名写进 <code>manifest.permissions</code>。</li>
+<li>写样式只许用系统模糊令牌与文字令牌，写完过一遍<a href="reference/redlines.html">红线清单</a>。</li>
+<li>收尾跑 <a href="reference/dev-tools.html">static-check / deep-check / settings-fulltest</a>，全绿再交付。</li>
 </ol>
 
-<div class="note"><b>扩展本站</b>
-新增一篇文档 = 在 <code>guides/</code>、<code>api/</code> 或 <code>reference/</code> 下加一个 HTML（<code>&lt;body data-page data-base&gt;</code>）+ 在 <code>assets/pages.js</code> 注册一条。侧栏 / 顶栏 / 上下页导航 / 本页目录全部自动生成。详见 <a href="README.md">README.md</a>。</div>
+<h2>本文档的时效性怎么保证</h2>
+<p>每页页脚都标了<b>适用版本</b>（当前 <b>0.4.3</b>，取自 <code>src/javascripts/version.js</code> 的 <code>VERSION</code> 常量，与扩展 manifest 同步）。
+文中所有 API 名、事件名、字段、数值都在该版本源码里逐条核对过；会随版本漂移的数字（模块数、断言数、设置项数）都注明了「以脚本实测为准」。</p>
+<div class="note"><b>最近一次核对</b> 2026-11-03：对照 <code>src/javascripts/</code>（含 ui/）、<code>mods/*/manifest.json</code>、<code>index.html</code>、<code>manifest.json</code>、<code>sw.js</code>、<code>dev/*.mjs</code> 逐条验证，并实跑 static-check / deep-check / settings-fulltest 三个脚本取证。
+发现文档与代码冲突时<b>一律以代码为准</b>；无法从代码证实的旧说法直接删除。核对方法详见 <a href="README.md">README.md</a>。</div>
+
+<div class="note"><b>扩展本站</b> 新增一篇文档 = 在 <code>guides/</code>、<code>api/</code> 或 <code>reference/</code> 下加一个 HTML（<code>&lt;body data-page data-base&gt;</code>）+ 在 <code>assets/pages.js</code> 注册一条。侧栏、顶栏、上下页导航、本页目录全部自动生成。</div>
 
 </main>
 <script src="assets/pages.js"></script>

@@ -6,52 +6,53 @@
 <title>多语言 i18n · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="i18n" data-base="../" data-version="0.2.95">
+<body data-page="i18n" data-base="../" data-version="0.4.3">
 <main>
 <h1>多语言 i18n</h1>
-<p class="lede">四语（zh-CN / en / ja-JP / cat「萌猫语言」= 中文+喵）；插件自带文案走 registerMessages，不碰内核语言包。</p>
+<p class="lede">系统界面支持四种语言：zh-CN（中文）/ en / ja-JP / cat（萌猫语言，中文加「喵」尾）。插件自己的文案用 <code>registerMessagesAll</code> 注册，<b>不要往内核语言包里塞键</b>。源码：<code>src/javascripts/i18n.js</code>。</p>
 
-<h2>用法</h2>
+<h2>怎么用</h2>
 <p><code>i18n</code> 不是全局对象，按站内惯例 import：</p>
 <pre><code>import { i18n } from '../../src/javascripts/i18n.js';</code></pre>
 <table>
 <tr><th>方法</th><th>说明</th></tr>
-<tr><td><code>t(key, fallback)</code></td><td>点分路径取值；缺失回退 fallback（<b>每个调用都要带字面量兜底</b>——static-check 核对「无兜底调用」）</td></tr>
+<tr><td><code>t(key, fallback)</code></td><td>点分路径取值（<code>"myPlugin.title"</code>）；缺失回退 fallback。<b>每个调用都必须带字面量兜底</b>——static-check 会核对「无兜底调用」</td></tr>
 <tr><td><code>hasKey(key)</code></td><td>当前语言（含插件注册文案）里有没有这个键</td></tr>
-<tr><td><code>getSupportedLanguages()</code></td><td>支持语言表；别在界面硬编码四门语言</td></tr>
-<tr><td><code>getLanguage() / setLanguage(lang)</code></td><td>当前代号 / 切换并持久化、重刷界面（越界代号<b>抛错</b>）</td></tr>
-<tr><td><code>applyTranslations(root?)</code></td><td>对新注入子树应用 data-i18n</td></tr>
-<tr><td><code>registerMessages(lang, obj)</code> / <code>registerMessagesAll(byLang)</code></td><td>注册插件自带文案，返回并入叶子键数</td></tr>
-<tr><td><code>onChange(fn)</code></td><td>订阅语言切换（回调收新代号，返回退订函数；plugin-unload 里记得 off()）</td></tr>
+<tr><td><code>getSupportedLanguages()</code></td><td>支持语言表 [{code, label}]；画语言选择器用它，别硬编码四门语言</td></tr>
+<tr><td><code>getLanguage()</code> / <code>setLanguage(lang)</code></td><td>当前代号 / 切换并持久化、重刷界面（越界代号<b>抛错</b>）</td></tr>
+<tr><td><code>applyTranslations(root?)</code></td><td>对子树里带 <code>data-i18n</code> 的元素就地翻译（默认扫全文）</td></tr>
+<tr><td><code>registerMessages(lang, obj)</code> / <code>registerMessagesAll(byLang)</code></td><td>注册插件自带文案，返回并入的叶子键数</td></tr>
+<tr><td><code>onChange(fn)</code></td><td>订阅语言切换（回调收新代号，返回退订函数；<b>plugin-unload 里记得退订</b>）</td></tr>
 </table>
 
-<h2>插件自带文案（关键行为）</h2>
+<h2>插件自带文案（推荐姿势）</h2>
 <pre><code>i18n.registerMessagesAll({
   "zh-CN": { myPlugin: { title: "我的插件", run: "运行" } },
-  en:      { myPlugin: { title: "My Plugin", run: "Run" } },
+  "en":    { myPlugin: { title: "My Plugin", run: "Run" } },
+  "ja-JP": { myPlugin: { title: "マイプラグイン", run: "実行" } },
+  "cat":   { myPlugin: { title: "我的插件喵", run: "运行喵" } },
 });
 const title = i18n.t("myPlugin.title", "我的插件");   // 缺键靠 fallback，界面不会空</code></pre>
 <ul>
-<li>插件文案写进独立的 <code>pluginMessages</code> 表，生效字典 = 「内核包为底 + 插件包叠上」<b>深合并</b>——
-    内核重新拉包 / 切语言都不会抹掉插件键，内核改同命名空间的某个键也不会清空你的兄弟键；</li>
-<li>注册与内核加载先后无关（语言包没到位也会先建条目）；</li>
-<li><b>四语齐备是规约</b>：仓库惯例是四份都写（cat = 萌猫语言，中文加「喵」尾）；只写两语会让其余语言落到兜底文案。</li>
+<li>插件文案写进独立的 <code>pluginMessages</code> 表，生效字典 =「内核语言包为底 + 插件包叠上」<b>深合并</b>：
+内核重新拉包 / 切语言都不会抹掉你的键；内核改了同命名空间的某个键，也不会清空你的兄弟键。</li>
+<li>注册时机与内核加载先后无关（语言包没到位也会先建条目）。</li>
+<li><b>四语齐备是规约</b>：只写两语，其余语言的用户就只能看到兜底文案。</li>
 </ul>
 
-<h2>构建时文案要随语言重建</h2>
-<div class="warn"><b>下拉选项、标签数组这类「构建时算出来」的文案必须订阅 <code>onChange</code> 重建</b>，
-否则会永远冻在切换前的语言上（旧版缺陷）。动态键拼接（<code>t("a." + x)</code>）会被 static-check 标记——键必须是字面量。</div>
-
-<h2>data-i18n 机制</h2>
+<h2>data-i18n：HTML 里的声明式翻译</h2>
 <pre><code>&lt;span data-i18n="myPlugin.run" data-i18n-fallback="运行"&gt;运行&lt;/span&gt;</code></pre>
 <ul>
-<li>命中的元素被写 <code>textContent</code>（不是 innerHTML）——标记里别放 HTML；</li>
-<li>插件 HTML 是<b>打开时才注入</b>的，内核挂了 MutationObserver：新节点带 data-i18n 就地翻译；
-    自己动态插的片段若 observer 还没跑，直接 <code>i18n.applyTranslations(node)</code>；</li>
-<li><b>内核只认 <code>data-i18n</code> 与 <code>data-i18n-fallback</code> 两个属性</b>：<code>data-i18n-placeholder</code> /
-    <code>data-i18n-title</code> 没有任何代码读（notepad 里是它自己补的一轮翻译，抄了那段才有用；访达里的同名牌是死标记）。
-    JS 拼出来的文案走 <code>t(key, fallback)</code>。</li>
+<li>命中的元素被写入 <code>textContent</code>（不是 innerHTML）——所以标记里别放 HTML。</li>
+<li>插件 HTML 是打开时才注入的，内核挂了 MutationObserver：新出现的带 <code>data-i18n</code> 的节点会被就地翻译，你不用管。
+如果是自己动态插入的片段、observer 还没跑到，可以手动 <code>i18n.applyTranslations(node)</code>。</li>
+<li><b>内核只认 <code>data-i18n</code> 与 <code>data-i18n-fallback</code> 两个属性</b>。<code>data-i18n-placeholder</code> / <code>data-i18n-title</code>
+没有任何内核代码读（个别插件自己补了一轮翻译才有用，不是系统能力）。JS 拼出来的文案一律走 <code>t(key, fallback)</code>。</li>
 </ul>
+
+<h2>构建时文案必须随语言重建</h2>
+<div class="warn"><b>下拉选项、标签数组这类「构建时算出来」的文案，必须订阅 <code>onChange</code> 重建</b>，否则永远冻在切换前的语言上。
+另外，动态拼键（<code>t("a." + x)</code>）会被 static-check 标记——键必须是字面量，需要分支时用三目选两个字面量键。</div>
 
 </main>
 <script src="../assets/pages.js"></script>

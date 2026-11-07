@@ -6,74 +6,121 @@
 <title>window.Deskly（能力入口） · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="deskly" data-base="../" data-version="0.2.95">
+<body data-page="deskly" data-base="../" data-version="0.4.3">
 <main>
 <h1>window.Deskly（能力入口）</h1>
-<p class="lede">唯一受权限门禁的接口组。薄壳：每个方法委托给既有 owner，不重造能力。</p>
+<p class="lede">插件申请系统能力的统一入口。它是一层薄壳：每个方法都委托给内核里已有的 owner 模块（文件→OSFS、应用→plugin-manager、事件→document），不重新造一份。本页所有方法签名以 <code>src/javascripts/os-api.js</code> 为准。</p>
 
 <h2>三条硬约定</h2>
 <ol>
 <li><b>受管方法一律返回信封</b> <code>{ok, value?, reason?, permission?}</code>，<b>永不抛错</b>：
-<code>const r = await Deskly.fs.read("data/a.md"); if (!r.ok) return r.reason;</code></li>
-<li><b>调用前在 <code>manifest.json</code> 的 <code>permissions</code> 里声明</b>；没声明 = 直接 <code>ok:false</code>（不弹窗）；</li>
-<li><code>fs</code> 的路径默认相对你自己的 <code>/AppData/&lt;插件id&gt;/</code>，越不出这个目录（<code>osfs.scope(id)</code> 守边界）。</li>
+<pre><code>const r = await Deskly.fs.read("data/a.md");
+if (!r.ok) { console.warn(r.reason); return; }
+const file = r.value;</code></pre>
+被拒绝时是 <code>ok:false</code> 带中文原因，不是崩、也不是静默拿到 undefined 继续跑。</li>
+<li><b>用之前先在 manifest.json 的 <code>permissions</code> 里声明</b>。没声明 = 直接 <code>ok:false</code>（连弹窗都没有）。</li>
+<li><code>fs</code> 的相对路径默认锁在你自己的 <code>/AppData/&lt;插件id&gt;/</code> 沙箱里，越不出去（OSFS.scope 守边界）。</li>
 </ol>
-<p>免权限的只有：<code>apps.list</code> / <code>apps.info</code> / <code>bus.*</code> / <code>fs.home</code> /
-<code>fs.temp</code> / <code>meta.*</code>（目录、事件与自省，不构成能力）。</p>
+<p><b>免权限的方法</b>（目录、事件与自省，不构成能力，随便调）：
+<code>apps.list</code>、<code>apps.info</code>、<code>bus.*</code>、<code>fs.home</code>、<code>fs.temp</code>、<code>windows.state</code>、<code>meta.*</code>。</p>
 
-<h2>权限账本（15 条，api-grants.js）</h2>
+<h2>权限账本（22 条权限名，以 api-grants.js 的 <code>PERMISSION_NAMES</code> 为准）</h2>
+<p>两层机制：<b>安装时</b>用户确认一次清单（grantAll 记账）；<b>运行时</b>敏感权限第一次调用再弹一次「拒绝 / 仅此一次 / 始终允许」（弹窗实现见<a href="dialog.html">系统弹窗 dialog</a>）。
+账本存在 IndexedDB（库 <code>webstartos-grants</code>），跨会话生效；覆盖安装不会清账。</p>
 <table>
 <tr><th>权限名</th><th>说明</th><th>敏感（首调弹确认）</th></tr>
-<tr><td><code>apps:launch</code></td><td>启动应用</td><td>安装时一次授权后静默</td></tr>
-<tr><td><code>default-apps:read</code></td><td>查扩展名/协议当前由谁打开</td><td>静默</td></tr>
+<tr><td><code>apps:launch</code></td><td>启动其它应用</td><td>否</td></tr>
+<tr><td><code>default-apps:read</code></td><td>查询扩展名/协议当前由谁打开</td><td>否</td></tr>
 <tr><td><code>default-apps:write</code></td><td>改绑扩展名/协议（含 http:/https: 接管）</td><td><span class="pill sens">敏感</span></td></tr>
-<tr><td><code>widgets</code></td><td>桌面小组件</td><td>静默</td></tr>
-<tr><td><code>dynamic-icons</code></td><td>动态图标（dock/启动台/商店/访达同步刷新）</td><td>静默</td></tr>
-<tr><td><code>window-style:self</code></td><td>改自己窗口样式</td><td>静默</td></tr>
-<tr><td><code>window-style:others</code></td><td>改别人窗口样式（主题包）</td><td><span class="pill sens">敏感</span> 激活一次覆盖后续</td></tr>
-<tr><td><code>theme:apply</code></td><td>整套切换配色</td><td><span class="pill sens">敏感</span></td></tr>
-<tr><td><code>files:read</code> / <code>files:write</code></td><td>读写文件；写到 AppData 之外逐次确认</td><td>write 越沙箱 <span class="pill sens">敏感</span></td></tr>
-<tr><td><code>system-patch:dock / finderbar / desktop / wallpaper / menu</code></td><td>给对应系统组件插入/替换内容（5 条）</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>widgets</code></td><td>桌面小组件（接口未落地，见文末）</td><td>否</td></tr>
+<tr><td><code>dynamic-icons</code></td><td>动态图标（接口未落地）</td><td>否</td></tr>
+<tr><td><code>window-style:self</code></td><td>改自己窗口样式（接口未落地）</td><td>否</td></tr>
+<tr><td><code>window-style:others</code></td><td>改别人窗口样式（主题包类能力）</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>theme:apply</code></td><td>整套切换界面配色</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>files:read</code></td><td>读文件（自己的 AppData）</td><td>否</td></tr>
+<tr><td><code>files:write</code></td><td>文件存储（本应用数据目录内）</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>system-patch:dock</code> / <code>:finderbar</code> / <code>:desktop</code> / <code>:wallpaper</code> / <code>:menu</code></td><td>给对应系统组件插入/替换内容（接口未落地）</td><td><span class="pill sens">敏感</span>（整个前缀都算）</td></tr>
+<tr><td><code>window:read-others</code></td><td>读取其他应用窗口的状态与事件</td><td>否</td></tr>
+<tr><td><code>window:manage-others</code></td><td>改动、关闭或置顶其他应用的窗口</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>window:chrome</code></td><td>隐藏整组窗口控件或关闭按钮</td><td><span class="pill sens">敏感</span></td></tr>
+<tr><td><code>window:level</code></td><td>把自己的窗口提升到浮动层或面板层</td><td>否</td></tr>
+<tr><td><code>quicklook:register</code></td><td>为自己支持的文件格式提供快速查看预览</td><td>否</td></tr>
+<tr><td><code>menus:register</code></td><td>在桌面与访达的文件右键菜单中增加条目</td><td>否</td></tr>
+<tr><td><code>shortcuts:write</code></td><td>在桌面创建或移除应用的快捷方式</td><td>否</td></tr>
 </table>
-<p>判据是「会不会影响别人 / 会不会丢数据」。读文件、启动应用、小组件、动态图标、自身样式属于
-「装了就该能用」——安装时一次性授权，不再打扰（否则开机 13 个内置插件各弹一轮）。</p>
+<p>敏感的判据是「会不会影响别人 / 会不会丢数据」。读文件、启动应用这类「装了就该能用」的，安装时一次授权后静默通行——
+否则开机每个内置插件都会各弹一轮，用户只会一路点拒绝。</p>
 
-<h2>Deskly.apps</h2>
-<pre><code>await Deskly.apps.launch("office.word");              // appId 或显示名都行
-const all = await Deskly.apps.list();                  // 免权限
-await Deskly.apps.default.set(".md", "notepad");        // 键：扩展名带点 / 协议带冒号
-await Deskly.apps.default.resolve("http:");             // 生效值 + 来源（user/system/manifest）
-await Deskly.apps.default.reset(".md");</code></pre>
-<p>默认应用解析是<b>三级回退</b>：用户改绑 → 出厂默认（SYSTEM_DEFAULTS）→ 插件 <code>apps[].formats</code> 声明；
-用户的手工改绑永远压过声明。</p>
+<h2>Deskly.apps（启动与默认应用）</h2>
+<pre><code>await Deskly.apps.launch("office.word");      // 需 apps:launch；appId、插件 id、显示名都行
+const all = Deskly.apps.list();                // 免权限：全部可启动应用摘要 [{appId, pluginId, name, displayName, entry}]
+const rec = Deskly.apps.info("文稿");          // 免权限：单个应用完整记录，查不到返回 null
 
-<h2>Deskly.fs</h2>
-<pre><code>const dir = Deskly.fs.home();                 // {path, temp, config, data}（免权限）
-await Deskly.fs.write("data/notes.md", "…");  // 自动补父目录，不必先 mkdir
-const f = await Deskly.fs.read("data/notes.md"); // File 对象
-await Deskly.fs.writeAt("/文档/导出.txt", "…"); // 越出沙箱：按敏感逐次确认
-// 硬边界：指向 /AppData/别人 的路径无论有没有权限都拒绝</code></pre>
+await Deskly.apps.default.set(".md", "notepad");   // 需 default-apps:write；键 = 扩展名带点 / 协议带冒号
+await Deskly.apps.default.get(".md");              // 需 read：当前由谁打开
+await Deskly.apps.default.resolve(".md");          // 需 read：生效值 + 来源（user / system / manifest）
+await Deskly.apps.default.reset(".md");            // 需 write：恢复系统默认</code></pre>
+<p>默认应用是<b>三级回退</b>：用户手工改绑 → 出厂默认（SYSTEM_DEFAULTS，23 条）→ 插件自我声明（单应用插件写根级 <code>formats</code>，多应用套件写 <code>apps[].formats</code>）。用户的改绑永远压过声明。</p>
 
-<h2>Deskly.bus</h2>
-<pre><code>const off = Deskly.bus.on("default-apps-changed", (detail) => repaint(detail));
-Deskly.bus.emit("my-topic", payload);   // 同步派发；形状 = 内核 broadcast（document + bubbles + detail）
-// plugin-unload 里 off()</code></pre>
+<h2>Deskly.fs（文件，默认锁在自己的沙箱）</h2>
+<pre><code>const dir = Deskly.fs.home();                       // 免权限：{path, temp, config, data} 四个绝对路径
+await Deskly.fs.write("data/notes.md", "…");        // 需 files:write；自动补父目录，不必先 mkdir
+const r = await Deskly.fs.read("data/notes.md");    // 需 files:read；r.value 是 File 对象
+await Deskly.fs.list("data");                        // 需 files:read
+await Deskly.fs.remove("data/old.md");               // 需 files:write
+const ok = await Deskly.fs.exists("data/notes.md");  // 需 files:read
+const st = await Deskly.fs.stat("data/notes.md");    // 需 files:read；大小 / 修改时间 / 类型
+await Deskly.fs.rename("data/a.md", "data/b.md");    // 需 files:write；同沙箱内移动
+await Deskly.fs.copy("data/a.md", "data/backup/a.md"); // 需 files:write；目标写完整路径
+const tmp = Deskly.fs.temp("cache.json");            // 免权限：临时目录路径（关窗即可丢的东西放这）
+await Deskly.fs.writeAt("/文档/导出.txt", "…");      // 需 files:write；写沙箱外的公开路径</code></pre>
+<p><b>一条不给弹窗机会的硬边界</b>：指向 <code>/AppData/&lt;别人的id&gt;/</code> 的路径，无论有没有权限都拒绝——跨插件读别人的私有数据永远不行。</p>
 
-<h2>Deskly.meta</h2>
-<p>自省：<code>meta.apps()</code> / <code>meta.permissions()</code>（本插件已声明账目）/ <code>meta.version()</code> 等，全部免权限。</p>
+<h2>Deskly.bus（事件总线）</h2>
+<pre><code>const off = Deskly.bus.on("default-apps-changed", (detail) =&gt; repaint(detail));
+Deskly.bus.emit("my-topic", payload);       // 免权限；document 派发、bubbles:true
+off();                                       // ★ plugin-unload 里必须退订
+// "system:" 前缀的 topic 改在 window 上收发，与内核的 window 级事件（如 dock-size-change）对齐</code></pre>
+<p>形状与内核 <code>app-registry.broadcast()</code> 完全一致，所以内核那批广播（settings-changed / plugin-unload / default-apps-changed…）在这里都收得到。完整事件地图见<a href="events.html">事件与全局接口</a>。</p>
 
-<h2>未实现占位（别照着写）</h2>
+<h2>Deskly.windows（声明自己窗口的尺寸）</h2>
+<pre><code>await Deskly.windows.configure(null, { width: 500, height: 640, resizable: false });
+// target：窗口元素 / 窗口 id / null（= 自己的窗口）。只能配自己的窗口（按 data-plugin-id 校验），配别人的直接 ok:false
+const st = Deskly.windows.state(el);   // 免权限：读框架 / 缩放态 / 全屏态</code></pre>
+<p>静态尺寸写在 HTML 的 <code>data-window</code> 里，运行期才知道的尺寸（比如按文档内容定初始大小）用这个接口改。字段与 <code>data-window</code> 同一套。</p>
+
+<h2>Deskly.ui.dialog（系统弹窗，免权限）</h2>
+<p>确认、提示、错误、输入、多选与进度都从这里出窗，权限框不在此列（只能由内核在敏感能力首次调用时发起）。</p>
+<pre><code>const ok = await Deskly.ui.dialog.confirm({ title: "要删除「草稿.md」吗？", message: "删除后无法撤销。", danger: true });
+const name = await Deskly.ui.dialog.prompt({ title: "新建文件夹", message: "名称", value: "未命名文件夹" }); // 取消返回 null
+await Deskly.ui.dialog.alert({ title: "已完成", message: "文件已导出。" });</code></pre>
+<p>取消值、焦点规则、进度控制器与迁移写法见<a href="dialog.html">系统弹窗 dialog</a>。</p>
+
+<h2>Deskly.meta（自省，全部免权限）</h2>
+<table>
+<tr><th>成员</th><th>说明</th></tr>
+<tr><td><code>meta.version</code></td><td>当前系统版本号（<b>属性，不是函数</b>，如 <code>"0.4.3"</code>）</td></tr>
+<tr><td><code>meta.language()</code> / <code>meta.languages()</code></td><td>当前语言代号 / 支持语言表 [{code, label}]</td></tr>
+<tr><td><code>meta.onLanguageChange(fn)</code></td><td>订阅语言切换，返回退订函数（plugin-unload 里调用）</td></tr>
+<tr><td><code>meta.appName(nameOrId)</code></td><td>把 appId / 插件 id / 中文原名翻成当前语言显示名</td></tr>
+<tr><td><code>meta.permissions()</code></td><td>22 条权限名全表 + 中文描述 + 是否敏感</td></tr>
+<tr><td><code>meta.grants()</code> / <code>meta.grantedIds()</code></td><td>自己的授权账本（<b>只查自己</b>，跨插件查询一律不给）</td></tr>
+<tr><td><code>meta.can(permission)</code></td><td>某权限现在能不能直接调（只查账，不弹窗、不改状态）</td></tr>
+<tr><td><code>meta.caller()</code></td><td>调试用：当前识别出的调用者插件 id（null = 认不出）</td></tr>
+</table>
+
+<h2>未实现占位（存在但别用）</h2>
+<p>以下分组签名已立、实现未落地，调用一律返回 <code>{ok:false, reason:"未实现（改造提示词 N）"}</code>：</p>
 <table>
 <tr><th>分组</th><th>状态</th></tr>
-<tr><td><code>Deskly.widgets.*</code></td><td>未实现（返回 <code>{ok:false, reason:"未实现（改造提示词 4）"}</code>）</td></tr>
-<tr><td><code>Deskly.windows.style.set / applyTheme</code></td><td>未实现（提示词 5）</td></tr>
-<tr><td><code>Deskly.icons.set</code></td><td>未实现（提示词 6）</td></tr>
-<tr><td><code>Deskly.system.patch.*</code></td><td>未实现（提示词 7）</td></tr>
+<tr><td><code>Deskly.widgets.*</code>（create / update / remove / on / emit）</td><td>占位</td></tr>
+<tr><td><code>Deskly.windows.style.set / applyTheme</code></td><td>占位</td></tr>
+<tr><td><code>Deskly.icons.set</code></td><td>占位</td></tr>
+<tr><td><code>Deskly.system.patch.apply / remove</code></td><td>占位</td></tr>
 </table>
-<p>提示词 7 落地前，改顶栏与菜单仍走<b>登记式</b>接口：<code>registerFinderbarIcon()</code>
-（需在 <code>plugin-unload</code> 里 <code>unregisterFinderbarIcon()</code>，卸载不会自动摘）与
-<code>window.__menuActions</code>（你加的键必须在 <code>plugin-unload</code> 里 <code>delete</code>——那张表在
-finderbar 求值期只挂一次）。</p>
+<p>在 system.patch 落地前，改顶栏与菜单仍走<b>登记式</b>接口：<code>registerFinderbarIcon({id, icon, onClick, order})</code>
+（配套 <code>unregisterFinderbarIcon(id)</code>，从 finderbar.js import；<b>卸载不会自动摘，必须在 plugin-unload 里反注册</b>）
+与 <code>window.__menuActions</code>（你加的键同样要在 plugin-unload 里 <code>delete</code>）。</p>
 
 </main>
 <script src="../assets/pages.js"></script>

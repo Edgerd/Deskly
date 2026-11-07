@@ -1,23 +1,23 @@
-/* ============================================================
- * Siri Orb — 右上角悬浮球（Three.js 渲染容器）
- * 设计要点：
- * 1. position: fixed 右上角（顶栏下方），紧凑尺寸。
- * 2. 仅用 opacity 动画（避免 transform 触发 GPU 合成层破坏亚克力禁忌）。
- * 3. 透明背景，无边框无阴影，纯 Orb 发光效果。
- * ============================================================ */
+/* Siri Orb — 右上角悬浮球（Canvas 2D 渲染容器）。
+ *
+ * 面板本身不画任何东西：压层、光晕、球体、高光全部在 canvas 里按 devicePixelRatio
+ * 生成（见 orb-renderer.js），所以这里没有背景渐变，也没有 overflow:hidden ——
+ * 任何面板级裁切都会在外圈留一条硬边。
+ *
+ * 动画只有 opacity：常驻浮层不加 transform，也不使用 backdrop-filter，
+ * 避免 Chrome 把它提成额外合成层。
+ */
 
 .siri-panel {
   position: fixed;
   top: 44px;   /* 顶栏高度下方 */
-  right: 16px; /* 靠右边缘 */
-  width: 150px;
-  height: 150px;
+  right: 16px;
+  width: 120px;
+  height: 120px;
   z-index: 9499; /* 菜单浮层封顶（见 zindex.js）：高于窗口(≤9000)，低于 Dock(9500)/启动台(9600)/模态(9610)/顶栏(9999) */
-  border-radius: 50%; /* 圆形 */
   background: transparent;
-  overflow: hidden;
-  opacity: 0;
   pointer-events: none;
+  opacity: 0;
   transition: opacity 0.3s ease-out;
 }
 
@@ -32,7 +32,6 @@
   transition: opacity 0.25s ease-in;
 }
 
-/* WebGL 画布填满面板 */
 .siri-panel canvas {
   display: block;
   width: 100% !important;

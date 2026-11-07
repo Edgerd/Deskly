@@ -1,0 +1,15 @@
+{
+  "id": "launchpad",
+  "name": "启动台",
+  "version": "2.1.0",
+  "entries": [
+    {
+      "version": "0.3.5",
+      "date": "2026-11-02",
+      "type": "improved",
+      "items": [
+        "优化开关动画：打开时内容更早可读，关闭不再固定等待。"
+      ]
+    }
+  ]
+}

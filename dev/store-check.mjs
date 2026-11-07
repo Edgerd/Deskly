@@ -1,14 +1,9 @@
 /**
- * dev/store-check.mjs — 商店数据层（store-api.js）的 Node 断言
- *
- * 为什么不在浏览器里跑这些：商店界面必须在浏览器里验，但「解包是否完整、失败有没有
- * 回滚、清单字段有没有被清洗」是纯逻辑，磁盘上就能判对错；而回滚路径在浏览器里
- * 要真的装一个坏包才能触发，成本太高。
- *
- * 做法：用 vm.SourceTextModule 把 `src/javascripts/store-api.js` 当真模块求值，
- * 只替掉它的加载器依赖（IndexedDB 落库、ZIP 解压、fetch、授权弹窗、设置中枢），
- * 注册表 `app-registry.js` 用**真的那份**——启用/禁用、id 校验与广播都要真的走到。
- *
+ * dev/store-check.mjs — 商店数据层（store-api.js）的 Node 断言。
+ * 商店界面必须在浏览器里验；解包完整性、失败回滚、清单清洗是纯逻辑，磁盘上就能判对错
+ * （回滚路径在浏览器里要真的装一个坏包才能触发，成本太高）。
+ * 做法：vm.SourceTextModule 把 store-api.js 当真模块求值，只替加载器依赖
+ * （IndexedDB 落库、ZIP 解压、fetch、授权弹窗、设置中枢）；注册表 app-registry.js 用真的那份。
  * 用法：`node --experimental-vm-modules dev/store-check.mjs`（全绿退出码 0）
  */
 
@@ -324,13 +319,28 @@ eq("占位图不加戳", S.getEntry("a").icon.startsWith("./mods/a/"), true);
 
 /* 4. 启用 / 禁用（真注册表 + 广播） */
 eq("默认可用", S.isPluginEnabled("a"), true);
-eq("商店自身不可禁用", S.setEnabled("app-store", false).ok, false);
 eq("禁用成功", S.setEnabled("a", false).enabled, false);
 eq("禁用后列表反映状态", S.getEntry("a").enabled, false);
 eq("禁用项计入「已禁用」分类", S.categories().find((c) => c.key === "disabled").count, 1);
 eq("禁用广播已发出", broadcasts.some((e) => e.type === "plugin-enabled-change" && e.detail.id === "a" && e.detail.enabled === false), true);
 S.setEnabled("a", true);
 eq("重新启用", S.getEntry("a").enabled, true);
+
+/* 4b. 可禁用范围：系统设置 / App Store 可以收起来，启动台等 system 应用不行 */
+reset([
+    { id: "app-store", name: "App Store", version: "1", icon: "as.png", type: "app", entry: "window" },
+    { id: "system-settings", name: "系统设置", version: "1", icon: "ss.png", type: "app", entry: "window" },
+    { id: "launchpad", name: "启动台", version: "1", icon: "lp.png", type: "app", entry: "fullscreen", visibility: { system: true } },
+]);
+eq("App Store 允许禁用", S.setEnabled("app-store", false).ok, true);
+eq("App Store 禁用后列表状态", S.getEntry("app-store").enabled, false);
+eq("App Store 允许重新启用", S.setEnabled("app-store", true).ok, true);
+eq("系统设置允许禁用", S.setEnabled("system-settings", false).ok, true);
+eq("系统设置允许重新启用", S.setEnabled("system-settings", true).ok, true);
+eq("启动台拒绝禁用", S.setEnabled("launchpad", false).ok, false);
+eq("启动台被拒后仍启用", S.isPluginEnabled("launchpad"), true);
+eq("启动台不提供禁用位", S.getEntry("launchpad").disableable, false);
+check("启动台给出禁用原因", typeof S.getEntry("launchpad").disableReason === "string" && S.getEntry("launchpad").disableReason.length > 0, S.getEntry("launchpad").disableReason);
 
 /* 5. SW 探测与安装校验 */
 reset([GOOD]);

@@ -6,7 +6,12 @@ import {
   genieBands,
   genieParams,
   genieSourceAt,
+  GENIE_HANDOFF,
+  GENIE_HANDOFF_MS,
+  GENIE_MS,
   GENIE_STAGE_SPLIT,
+  geomProgress,
+  materialWeight,
   pinchScale,
 } from "../src/javascripts/wm/genie-geometry.js";
 
@@ -160,6 +165,70 @@ for (const side of ["bottom", "left", "right"]) {
   // 越界像素靠着色器的 cover 归零：源码必须保留这条边界裁剪。
   assert.match(rendererSrc, /float\s+cover\s*=\s*clamp\(\s*min\(\s*edge\.x\s*\/\s*deriv\.x\s*,\s*edge\.y\s*\/\s*deriv\.y\s*\)\s*,\s*0\.0\s*,\s*1\.0\s*\)/,
     "着色器丢失边界裁剪，越界像素会采样到快照外沿产生拖影");
+}
+
+// --- 材质交接：几何冻结 + 覆盖层不透明度连续爬升 ---
+{
+  const samples = Array.from({ length: 101 }, (_, i) => i / 100);
+  let prev = 0;
+
+  for (const p of samples) {
+    const w = materialWeight(p);
+    assert.ok(w >= 0 && w <= 1, `p=${p} 权重越界 ${w}`);
+    // 必须单调不减：禁止阈值式切换
+    assert.ok(w >= prev - 1e-9, `材质权重在 p=${p} 回退`);
+    prev = w;
+    const g = geomProgress(p);
+    close(g, p <= GENIE_HANDOFF ? 0 : (p - GENIE_HANDOFF) / (1 - GENIE_HANDOFF));
+  }
+
+  // 交接段两端必须精确落在 0 / 1
+  close(materialWeight(0), 0, 1e-9);
+  close(materialWeight(GENIE_HANDOFF), 1, 1e-9);
+  close(materialWeight(1), 1, 1e-9);
+  close(geomProgress(0), 0, 1e-9);
+  close(geomProgress(GENIE_HANDOFF), 0, 1e-9);
+  close(geomProgress(1), 1, 1e-9);
+
+  // 交接段内几何必须完全冻结：覆盖层与真窗同一像素，材质切换才看不出来
+  const model = buildGenieModel(rect, { x: 700, y: 760 }, "bottom");
+  const frozen = genieBands(model, 0);
+  for (let p = 0; p <= GENIE_HANDOFF; p += 0.01) {
+    const now = genieBands(model, geomProgress(p));
+    for (let i = 0; i < now.length; i += 1) {
+      close(now[i].dx, frozen[i].dx, 1e-9);
+      close(now[i].dy, frozen[i].dy, 1e-9);
+      close(now[i].dw, frozen[i].dw, 1e-9);
+      close(now[i].dh, frozen[i].dh, 1e-9);
+    }
+  }
+
+  // 真实帧节奏：60fps 一帧前进 16.7/GENIE_MS 个进度点，交接跨 5~6 帧。
+  // 理论下限 1/5.6≈0.18（线性），对称 S 曲线中段最陡约 1.6 倍，取 0.45 作上限：
+  // 超过它就意味着某一帧吃掉了大半变化，又回到阈值切换。
+  const frameStep = 16.7 / GENIE_MS;
+  let maxStep = 0;
+  let blendedFrames = 0;
+  const frameRows = [];
+  for (let p = 0; p < GENIE_HANDOFF - 1e-9; p += frameStep) {
+    const a = materialWeight(Math.min(p, GENIE_HANDOFF));
+    const b = materialWeight(Math.min(p + frameStep, GENIE_HANDOFF));
+    maxStep = Math.max(maxStep, b - a);
+    if (b > 1e-6 && b < 1 - 1e-6) blendedFrames += 1;
+    frameRows.push(`${Math.min(p + frameStep, GENIE_HANDOFF).toFixed(3)}→${b.toFixed(3)}`);
+  }
+  assert.ok(blendedFrames >= 4, `交接只有 ${blendedFrames} 帧中间态，等同阈值切换`);
+  assert.ok(maxStep < 0.45, `交接单帧跳变 ${maxStep}，已接近一帧换完`);
+
+  assert.equal(GENIE_HANDOFF_MS, Math.round(GENIE_MS * GENIE_HANDOFF));
+  assert.ok(GENIE_HANDOFF_MS >= 70 && GENIE_HANDOFF_MS <= 130);
+
+  const rows = [0, 0.02, 0.05, 0.09, 0.15, 0.3, 0.5, 0.75, 1].map((p) => {
+    return `p=${p.toFixed(2)} 覆盖层不透明度 ${materialWeight(p).toFixed(3)} 几何 ${geomProgress(p).toFixed(3)}`;
+  });
+  console.log("genie material handoff: " + GENIE_HANDOFF_MS + "ms / " + GENIE_MS + "ms（几何冻结段）");
+  for (const row of rows) console.log("  " + row);
+  console.log("  handoff @60fps 覆盖层不透明度: " + frameRows.join(" "));
 }
 
 console.log("genie-check: three-way geometry, local sampling, inverse mapping, pinch, travel and fade passed");

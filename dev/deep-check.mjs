@@ -1,23 +1,8 @@
 /**
- * dev/deep-check.mjs — 深度静态审计（磁盘即权威，浏览器不参与）
- *
- * 为什么还需要第二个检查器：static-check.mjs 管的是「文件在不在、键位齐不齐、令牌用没用」，
- * 但它不看**具名导入与导出的对应关系**，也不看**成员访问是否存在**。而插件重写后最常见的
- * 整模块崩溃恰恰是这两类：
- *   · `does not provide an export named 'X'` → 应用直接白屏
- *   · `Object.foo is not a function`        → 点了没反应，只在特定路径上炸
- *
- * 所有判定都跑在**掩码后的源码**上（注释、字符串、模板串、正则字面量统一挖空成空格），
- * 否则 `log.js` 这种字符串会被读成 `log.js()` 的成员调用 —— 假警报会让检查器失去可信度，
- * 而失去可信度的检查器比没有检查器更糟。
- *
- *   A 每个非 vendor JS 都能被 ES 模块解析器解析（语法门）
- *   B import { a, b } from './x.js' —— a/b 必须在 x.js 的导出集里
- *   C import D from './x.js' —— x.js 必须有 default
- *   D 对象字面量 / 静态类导出的成员存在性（OSFS.xxx、VFS.xxx、Z.xxx …）
- *   E 调用了一个既没在本文件声明、也没导入、也不是浏览器全局的名字
- *   F 安全与 CSP：eval / new Function / document.write / 条件里的赋值
- *
+ * dev/deep-check.mjs — 深度静态审计（磁盘即权威，浏览器不参与）。
+ * 补 static-check.mjs 不看、却最常整模块崩溃的两类：具名导入与导出对不上（白屏）、成员访问不存在（点了没反应）。
+ * 所有判定跑在掩码后的源码上（注释/字符串/模板串/正则挖空成等长空格），避免字符串内容被误读成代码造成假警报。
+ *   A 语法门　B/C 具名与默认导入对导出　D 对象字面量/静态类成员存在性　E 未声明名字调用　F eval/new Function/document.write/条件赋值
  * 用法：node --experimental-vm-modules dev/deep-check.mjs
  */
 
@@ -315,9 +300,8 @@ jsFiles.forEach((file) => {
     const seen = new Set();
     while ((m = IMPORT_CLAUSE_RE.exec(src))) {
         const clause = m[1].trim();
-        // codeView 保留了字符串内容，所以跨行 import 的说明符也能直接取到。
-        // （早先这里是回到 raw 源码按行找 from "..."，但 m.index 落在被消费的换行上，
-        //   slice 出来是空串 → 具名校验实际只覆盖了两条 import，等于没检查。）
+        // codeView 保留了字符串内容，跨行 import 的说明符可直接取 m[2]
+        // （早先回 raw 按行找 from，m.index 落在被消费的换行上 → 具名校验实际没覆盖，等于没检查）。
         const spec = m[2];
         if (!spec) continue;
         if (seen.has(m.index)) continue;
@@ -453,7 +437,6 @@ function harvestBindings(src) {
         const close = findClose(src, open, "(", ")");
         if (close !== -1) collectPattern(src.slice(open + 1, close), declared);
     }
-    // 类名
     const classRe = /(?:^|[^.\w$])class\s+([A-Za-z_$][\w$]*)/g;
     while ((m = classRe.exec(src))) declared.add(m[1]);
     // var/let/const 声明与解构
@@ -511,10 +494,8 @@ function harvestBindings(src) {
         declared.add(m[1]);
         collectPattern(src.slice(open + 1, close), declared);
     }
-    // catch (e)
     const catchRe = /catch\s*\(\s*([A-Za-z_$][\w$]*)/g;
     while ((m = catchRe.exec(src))) declared.add(m[1]);
-    // 具名导入
     const impRe = /import\s+(?:([A-Za-z_$][\w$]*)\s*,?\s*)?(?:\{([^}]*)\}|\*\s+as\s+([A-Za-z_$][\w$]*))?[^;\n]*from/g;
     while ((m = impRe.exec(src))) {
         if (m[1]) declared.add(m[1]);

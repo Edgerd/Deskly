@@ -1,21 +1,11 @@
 /**
  * dev/settings-fulltest.mjs — 全量设置项可用性与持久化回归
- *
- * 和 settings-harness.mjs 的分工：harness 测的是「设置中枢与日志本身的行为」，
- * 本脚本测的是「每一条具体设置项」—— 遍历 settings.list() 的每一项做六类断言：
- *   1 默认值合法（在 values 内 / 在 min..max 内）
- *   2 写入 -> 存储槽里的原始文本正确（这一条等价于「刷新后还在」，因为刷新读的就是这段文本）
- *   3 读回值 === 写入值
- *   4 非法值被拒绝或按声明钳制，不会静默写坏
- *   5 reset 后回到默认
- *   6 存储槽名与 owner 模块历史上直接读取的 localStorage 键逐字一致（无迁移即无回归）
- * 另加两项跨模块一致性检查：槽名不得被两个非 jsonPath 键共用；每个 pane 字段必须在
- * 插件的 registry.js 里存在对应面板（否则设置项做完了却没有任何界面能改它）。
- *
- * 之所以用迷你 DOM 替身而不是浏览器：本项目的设置 owner 模块（appearance/cursor/
- * wallpaper/controlcenter…）在 Node 下只需 createElement + addEventListener 就能求值，
- * 而浏览器里 `?v=Date.now()` 的模块缓存策略会让「刷新后是否真的持久化」难以断言。
- *
+ * （settings-harness.mjs 测中枢与日志本身的行为，本脚本测每一条具体设置项）。
+ * 遍历 settings.list() 逐项断言六类：默认值合法；写入→落盘原始文本正确（等价于「刷新后还在」）；
+ * 读回 === 写入；非法值拒绝/按声明钳制；reset 回默认；槽名与 owner 历史 localStorage 键逐字一致。
+ * 另查：槽名不被两个非 jsonPath 键共用；每个 pane 字段在 registry.js 里有已实现面板。
+ * 用迷你 DOM 替身而不用浏览器：owner 模块在 Node 下只需 createElement + addEventListener 就能求值，
+ * 且浏览器 `?v=Date.now()` 缓存策略会让「刷新后是否真持久化」难以断言。
  * 用法：`node dev/settings-fulltest.mjs`（全绿退出码 0）
  */
 
@@ -190,7 +180,6 @@ const LEGACY_SLOTS = {
     "appearance.sidebar.size": "appearance-sidebar-size",
     "appearance.wallpaper.tint": "appearance-wallpaper-tint",
     "appearance.scrollbars": "appearance-scrollbars",
-    "appearance.scroll.click": "appearance-scroll-click",
     "general.language": "webstartos_language",
     "general.nativeContextMenu": "native-context-menu",
     "dock.autohide": "dock-autohide",
@@ -568,5 +557,5 @@ if (failures.length) {
 }
 console.log("全量设置项断言通过 ✓");
 // 必须显式退出：display.js 的自动护眼定时器与 lock.js 的空闲锁屏计时器都是 setInterval，
-// 在浏览器里正常，在 Node 里会让事件循环永不结束（脚本会「跑完但不停」。
+// 在浏览器里正常，在 Node 里会让事件循环永不结束（脚本会「跑完但不停」）。
 process.exit(0);

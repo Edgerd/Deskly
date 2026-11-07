@@ -1,0 +1,21 @@
+{
+  "name": "deskly",
+  "private": true,
+  "type": "module",
+  "description": "macOS Sequoia-style browser new-tab extension. Pure static ES modules — no build step; this file exists only to aggregate the dev check scripts (GEN-04).",
+  "scripts": {
+    "check:static": "node dev/static-check.mjs",
+    "check:deep": "node --experimental-vm-modules dev/deep-check.mjs",
+    "check:store": "node --experimental-vm-modules dev/store-check.mjs",
+    "check:app-rules": "node dev/app-rules-check.mjs",
+    "check:calc": "node dev/calc-check.mjs && node dev/calc-convert-check.mjs && node dev/calc-programmer-check.mjs",
+    "check:osfs": "node dev/osfs-check.mjs",
+    "check:fs": "node dev/fs-check.mjs",
+    "check:genie": "node dev/genie-check.mjs",
+    "check:wm": "node dev/wm-check.mjs",
+    "check:desktop": "node dev/desktop-check.mjs",
+    "check:settings": "node dev/settings-harness.mjs && node dev/settings-fulltest.mjs",
+    "check:probes": "node dev/security-probe.mjs && node dev/lock-gate-probe.mjs",
+    "check": "node dev/static-check.mjs && node --experimental-vm-modules dev/deep-check.mjs && node --experimental-vm-modules dev/store-check.mjs && node dev/app-rules-check.mjs && node dev/osfs-check.mjs && node dev/fs-check.mjs && node dev/genie-check.mjs && node dev/wm-check.mjs && node dev/desktop-check.mjs && node dev/settings-harness.mjs && node dev/settings-fulltest.mjs && node dev/security-probe.mjs && node dev/lock-gate-probe.mjs && node dev/calc-check.mjs && node dev/calc-convert-check.mjs && node dev/calc-programmer-check.mjs"
+  }
+}

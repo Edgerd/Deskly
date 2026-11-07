@@ -1,12 +1,7 @@
 /**
- * dev/settings-harness.mjs — 设置中枢与日志系统的 Node 校验脚本
- *
- * 为什么不用浏览器跑：本项目以 MV3 扩展页形态交付，`chrome-extension://` 下的
- * localStorage / 视口 / Service Worker 行为与 http 页面不一致，且模块 URL 带
- * `?v=Date.now()`，浏览器里很难断言「刷新后是否真的持久化」。
- * settings.js 与 log.js 是纯逻辑模块（只碰 localStorage / addEventListener / CustomEvent），
- * 用最小替身就能在 Node 里做真断言，CI 与本地都零依赖。
- *
+ * dev/settings-harness.mjs — 设置中枢与日志系统的 Node 校验脚本。
+ * 不用浏览器跑：MV3 扩展页下 localStorage/视口/Service Worker 行为与 http 页面不一致，且模块 URL 带
+ * `?v=Date.now()`，浏览器里很难断言「刷新后是否真的持久化」；settings.js/log.js 是纯逻辑，最小替身即可覆盖。
  * 用法：`node dev/settings-harness.mjs`（全绿退出码 0，任何失败退出码 1）
  */
 

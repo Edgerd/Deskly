@@ -1,20 +1,10 @@
 /**
- * package-plugin.mjs — 把 mods/<id>/ 导出成可安装的插件 ZIP
- *
- * 用法：
- *   node dev/package-plugin.mjs office        # 产物 dist/office-<version>.zip
- *   node dev/package-plugin.mjs               # 导出全部内置插件
- *
- * 内置插件的**唯一真源就是 `mods/<id>/`**（扩展加载时整目录一起打进去），
- * 这个脚本只是把同一个目录再导出成一份 ZIP，供他人安装或跨机分发用 ——
- * 不存在第二份源码，也就不会出现「改了 mods/ 却拿旧 ZIP 去装」的分裂。
- *
- * 为什么自带打包脚本而不用 Compress-Archive：PowerShell 打出的条目分隔符历史上是 `\`，
- * 而安装器与 `sw.js` 都按 `mods/<id>/<file>` 的 `/` 路径命中，包内条目名必须是 POSIX 斜杠。
- * JSZip 与运行时用的是同一份库（assets/vendor/jszip.min.js），一致性最好。
- *
- * 体积红线：App Store 安装器有 10MB 解包上限（src/javascripts/app-store.js:MAX_TOTAL_BYTES），
- * 超限直接拒绝安装，所以打包后立刻按同一条规则校验并打印。
+ * package-plugin.mjs — 把 mods/<id>/ 导出成可安装的插件 ZIP。
+ * 用法：node dev/package-plugin.mjs [office]（缺省导出全部；产物 dist/<id>-<version>.zip）
+ * 唯一真源就是 mods/<id>/（扩展加载时整目录打进去），本脚本只是再导出一份 ZIP，不存在第二份源码。
+ * 自带打包而不用 Compress-Archive：PowerShell 打出的条目分隔符是 `\`，而安装器与 sw.js 按 `/` 路径命中，
+ * 包内条目名必须是 POSIX 斜杠；JSZip 与运行时同一份库（assets/vendor/jszip.min.js）。
+ * 体积红线：安装器有 10MB 解包上限（store-api.js:MAX_TOTAL_BYTES），打包后按同一条规则校验并打印。
  */
 
 import { createRequire } from "node:module";
@@ -30,7 +20,6 @@ const SRC_ROOT = join(REPO_ROOT, "mods");
 const DIST_DIR = join(REPO_ROOT, "dist");
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 
-/** 递归收集目录内的文件（跳过隐藏文件与 node_modules） */
 function walk(dir, base = "") {
     const out = [];
     for (const name of readdirSync(dir)) {
@@ -45,15 +34,10 @@ function walk(dir, base = "") {
 
 /**
  * 打包前的完整性校验：清单声明的文件与代码里的相对依赖必须都在包里/仓库里。
- *
- * 这一关存在的理由：插件运行时只拿到 ZIP 里那些文件，少打一个 CSS 或一个
- * `import("./codecs/x.js")` 目标，表现为「窗口开出来了但空白/无样式」，
- * 装完还不一定看得出错在哪，所以在构建期就断掉。
- *
- * 两类引用分别校验：
- * - `./x.js` 与 `useStyle(import.meta.url, "x.css")`、CSS `@import` → 必须落在插件目录内；
+ * 运行时只拿到 ZIP 里那些文件，少打一个 CSS 或 `import("./codecs/x.js")` 目标就表现为
+ * 「窗口开出来了但空白/无样式」，装完还看不出错在哪，所以在构建期就断掉。
+ * - `./x.js`、`useStyle(import.meta.url, "x.css")`、CSS `@import` → 必须落在插件目录内；
  * - `../../src/javascripts/x.js`（宿主模块）→ 按运行时 `mods/<id>/` 深度解析后必须在仓库里存在。
- *
  * @param {string} id 插件 id
  * @param {Array<{full: string, rel: string}>} files 已收集的文件
  * @param {object} manifest 清单
@@ -96,8 +80,9 @@ function verifyPlugin(id, files, manifest) {
         }
         for (const spec of specs) {
             if (spec.startsWith("../../")) {
-                // 宿主依赖：按运行时位置 mods/<id>/ 解析（与源码位置同深度），越过站根即非法
-                const resolved = posix.normalize(posix.join("mods", id, spec));
+                // 宿主依赖：按文件自身的运行时位置解析（codecs/ 这类子目录要带上 ownDir，
+                // 否则 ../../../src 会被误判成越界），越过站根即非法
+                const resolved = posix.normalize(posix.join("mods", id, ownDir, spec));
                 if (resolved.startsWith("..")) { miss(`宿主依赖 ${spec} 越过站点根之外`, f.rel); continue; }
                 if (!existsSync(join(REPO_ROOT, resolved))) miss(`宿主依赖 ${spec}`, f.rel);
                 continue;

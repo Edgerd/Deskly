@@ -1,17 +1,8 @@
 /**
- * dev/static-check.mjs — 跨模块静态一致性检查（磁盘即权威）
- *
- * 为什么需要它：本项目无构建步骤、无打包器，浏览器又是唯一的运行时，
- * 而浏览器实测在这里有两个已知坑 —— 模块 URL 带 `?v=Date.now()` 会绕过缓存但也让
- * 「刷新后是否持久」难以断言，扩展页在 http 下视口还会读成 0×0。
- * 所以能在磁盘上查出来的错，就该在这里查出来，而不是等肉眼在浏览器里撞：
- *   1 import 说明符指向的文件不存在（插件重写最常见的静默失效）
- *   2 import 说明符或 <script src> 上挂了 `?v=`（会把内核模块求值两次）
- *   3 JS/HTML 里引用的 assets 资源路径实际不存在（404）
- *   4 四个语言包键位不齐，或 data-i18n 指向不存在的键
- *   5 插件面板的 paneId / 自带语言包与 registry.js 对不上，或四语键位不齐
- *   6 manifest.json 声明的资源在插件目录里不存在
- *
+ * dev/static-check.mjs — 跨模块静态一致性检查（磁盘即权威）。
+ * 本项目无构建步骤、浏览器是唯一运行时，而浏览器实测有两个已知坑（`?v=Date.now()` 绕缓存、扩展页视口 0×0），
+ * 能在磁盘上查出来的错就在这里查：import 目标不存在、import 说明符带 `?v=`（会把内核模块求值两次）、
+ * assets 资源 404、四语言包键位与 data-i18n、插件面板 paneId/自带语言包对 registry.js、manifest 声明的资源存在性。
  * 用法：`node dev/static-check.mjs`（有问题退出码 1 并逐条列出）
  */
 
@@ -22,7 +13,6 @@ import { pathToFileURL } from "node:url";
 const ROOT = resolvePath(import.meta.url.replace(/^file:\/\/\/?/, ""), "..", "..");
 const REPO = process.cwd().replace(/\\/g, "/");
 
-/** 递归收集源码文件（跳过 vendor 与打包产物）。 */
 function walk(dir, out = []) {
     let items = [];
     try { items = readdirSync(dir); } catch { return out; }
@@ -48,7 +38,6 @@ const IMG_SRC_RE = /<img[^>]+src\s*=\s*["']([^"']+)["']/g;
 const I18N_ATTR_RE = /data-i18n\s*=\s*["']([^"']+)["']/g;
 const ASSET_FN_RE = /(?:assetPath|assetIcon|glyph|modFile|modUrl)\s*\(\s*["']([^"']+)["']\s*(?:,\s*["']([^"']+)["'])?\s*\)/g;
 
-/** 把说明符解析成磁盘路径；bare/URL 说明符跳过。 */
 function resolveSpecifier(spec, fromFile) {
     if (!spec.startsWith(".")) return null;
     return resolvePath(dirname(fromFile), spec.split("?")[0]);
@@ -74,7 +63,6 @@ info.push(`解析 ${importCount} 处 import 说明符`);
 
 // ── 3 资源路径存在性 ─────────────────────────────────────────────────────
 let assetRefs = 0;
-/** 站内根相对路径（./assets/…、./mods/…）以仓库根为基准判定。 */
 function checkSiteRootPath(rawPath, from) {
     if (!rawPath || rawPath.startsWith("data:") || /^https?:/.test(rawPath) || rawPath.startsWith("blob:")) return;
     // 模板串里的占位名（./assets/apps/<name>.html、`.../${x}`）不是真实路径，跳过
@@ -122,7 +110,6 @@ files.forEach((file) => {
 info.push(`校验 ${assetRefs} 处资源引用`);
 
 // ── 4 语言包键位对齐 + data-i18n 覆盖 ────────────────────────────────────
-/** 把嵌套语言包压成点分键列表。 */
 function flatKeys(obj, prefix = "", out = []) {
     Object.entries(obj || {}).forEach(([k, v]) => {
         const key = prefix ? `${prefix}.${k}` : k;
@@ -449,19 +436,14 @@ info.push(`权限名 ${PERMISSION_NAMES.length} 条、内置插件 permissions �
 
 // ── 8 设置界面文案（苹果风格，无 AI 味）───────────────────────────────────
 /**
- * 规则（0.2.90 起）：设置面板的文案是给用户看的，不是给工程师看的。
+ * 规则：设置面板的文案是给用户看的，不是给工程师看的。
  *  A. 提示行（hint）默认不该存在；确实要留的必须是一句、≤18 字、且不出现实现词
  *     （系统 / 令牌 / 像素 / 静态检查 / 设置中枢 / 面板 / 卡片 / 归档 / 广播 / 事件 / 槽 / schema / console / json / IndexedDB / 插件）。
  *     这类句子写的是「不写就会误解的后果」，不是「这东西怎么工作」。
  *  B. 标题（label）≤12 字、不以句读结尾、不带引号堆叠 —— 开关的标题写被打开的东西本身。
- *  扫描范围：内核的两份定义（settings-definitions.js / surface.js）+ 全部面板模块 + registry。
- */
-/**
- * 扫描范围：内核里所有会 `settings.define` 的模块（面板的行标题/提示很多直接取自定义，
- * 只扫 settings-definitions.js 会漏掉 controlcenter / display / lock 这些自注册模块）
- * + 系统设置插件的 registry 与全部面板模块。
- * 排除 api-grants.js：它的 {label, hint} 是**授权弹窗正文**，要写清楚「谁要做什么」，
- * 不适用设置行的短句口径。
+ * 扫描范围：内核里所有会 `settings.define` 的模块（只扫 settings-definitions.js 会漏掉 controlcenter /
+ *  display / lock 这些自注册模块）+ 系统设置插件的 registry 与全部面板模块。
+ *  排除 api-grants.js：它的 {label, hint} 是授权弹窗正文，要写清楚「谁要做什么」，不适用短句口径。
  */
 const copyFiles = walk(resolvePath(REPO, "src", "javascripts")).filter((f) => f.endsWith(".js")
     && !f.endsWith("api-grants.js"))
@@ -562,6 +544,208 @@ files.filter((f) => f.endsWith(".js")).forEach((file) => {
 });
 bannedHits.forEach((hit) => problems.push(hit));
 info.push(`术语守卫：禁用词命中 ${bannedHits.length} 处（${BANNED_TERMS.map(([bad]) => bad).join("/")}）`);
+
+// ── 9 动态拼 i18n 键（redlines 的机器兜底）────────────────────────────────
+/**
+ * 规则：t("a." + x) / t(`a.${x}`) 这类动态拼键逃过四语键集比对与「无兜底才拦」规则，
+ * 是漏键高发形态，一律标记。有边界的拼键（前缀包装器、七种标签色查表）在代码行尾
+ * 加 `i18n-dynamic-ok` 豁免并写清边界。
+ * 扫描范围：src/javascripts + mods。并发重写中的目录暂不入扫（结束后应逐个去掉排除
+ * 再全量过一遍）：mods/office、mods/finder、mods/spotlight、app-registry.js。
+ */
+const DYN_KEY_CONCAT = /\bt\(\s*["'][^"']*["']\s*\+/;
+const DYN_KEY_TEMPLATE = /\bt\(\s*`[^`]*\$\{/;
+/** 并发重写排除（文件级）：这些路径正被其它任务线改写，规则暂不覆盖。 */
+const DYN_KEY_SKIP = /mods[\/\\]office|mods[\/\\]finder|mods[\/\\]spotlight|app-registry\.js$/;
+let dynKeySites = 0;
+files.filter((f) => f.endsWith(".js") && !DYN_KEY_SKIP.test(posix(f))).forEach((file) => {
+    const rel = posix(relative(REPO, file));
+    readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) return;
+        if (!DYN_KEY_CONCAT.test(line) && !DYN_KEY_TEMPLATE.test(line)) return;
+        dynKeySites += 1;
+        if (line.includes("i18n-dynamic-ok")) return;
+        problems.push(`${rel}:${index + 1}：动态拼 i18n 键（漏键高发形态），改为静态键表或在行尾加 i18n-dynamic-ok 豁免 → ${trimmed.slice(0, 90)}`);
+    });
+});
+info.push(`动态拼键扫描：命中 ${dynKeySites} 处`);
+
+// ── 10 运行时资源文件名 ASCII ─────────────────────────────────────────────
+/**
+ * 规则：assets/ 与 mods/ 下被运行时引用的资源文件名只允许 ASCII。
+ * SW 回源链是百分号编码的（sw.js decodeName 注释），非 ASCII 名在 ZIP 插件与
+ * 磁盘插件两条安装路径上行为不一致——这条过去只靠口头约束（CON-06）。
+ */
+let nonAsciiAssets = 0;
+/** 全文件 walker（walk() 只收代码扩展名，图片/字体等资源收不到）。 */
+function walkAll(dir, out = []) {
+    let items = [];
+    try { items = readdirSync(dir); } catch { return out; }
+    items.forEach((name) => {
+        if (["node_modules", "dist", ".git", "vendor", "新建文件夹"].includes(name)) return;
+        const full = join(dir, name);
+        const st = statSync(full);
+        if (st.isDirectory()) walkAll(full, out);
+        else out.push(full);
+    });
+    return out;
+}
+["assets", "mods"].forEach((top) => {
+    walkAll(resolvePath(REPO, top)).forEach((file) => {
+        const rel = posix(relative(REPO, file));
+        const segs = rel.split("/");
+        if (segs.some((seg) => /[^\x00-\x7F]/.test(seg))) {
+            nonAsciiAssets += 1;
+            problems.push(`${rel}：资源路径含非 ASCII 字符（SW 百分号编码链路风险点），改名为 ASCII`);
+        }
+    });
+});
+info.push(`资源名 ASCII 扫描：${nonAsciiAssets} 处违规`);
+
+// ── 11 scss → css 漂移 ────────────────────────────────────────────────────
+/**
+ * 规则：assets/stylesheets 下同名的 .scss 不得比 .css 新。
+ * 编译器与编译命令未入库（GEN-02），改 scss 忘重编译时浏览器加载的是旧 css，
+ * 表现为「改了不生效」，diff 也看不出来。
+ */
+let scssDrift = 0;
+walkAll(resolvePath(REPO, "assets", "stylesheets")).filter((f) => f.endsWith(".scss")).forEach((scss) => {
+    const css = scss.replace(/\.scss$/, ".css");
+    if (!existsSync(css)) return; // 无同名产物（如只被其它 scss import 的 partial）不参与
+    if (statSync(scss).mtimeMs > statSync(css).mtimeMs) {
+        scssDrift += 1;
+        problems.push(`${posix(relative(REPO, scss))}：scss 新于同名 css 产物，需重新编译（漂移会让「改了不生效」）`);
+    }
+});
+info.push(`scss→css 漂移：${scssDrift} 对`);
+
+// ── 12 文档版本与 version.js 对齐（CON-02 回归门禁）────────────────────────
+/**
+ * 规则：devdocs 自述「以 version.js 的 VERSION 常量为准」，所以每次发版后
+ * 页脚 data-version、README 适用版本、API 示例与 changelog 首段必须同步。
+ * 人工每版对一次迟早漏（CON-02 就是这么漂移的），这里当成机器门禁。
+ */
+const versionText = readFileSync(join(REPO, "src/javascripts/version.js"), "utf8");
+const VERSION = (versionText.match(/const VERSION\s*=\s*["']([^"']+)["']/) || [])[1] || "";
+if (!VERSION) {
+    problems.push("src/javascripts/version.js：找不到 VERSION 常量，文档版本门禁无法判定");
+} else {
+    let docPages = 0;
+    walk(resolvePath(REPO, "devdocs")).filter((f) => f.endsWith(".html")).forEach((file) => {
+        const matches = [...readFileSync(file, "utf8").matchAll(/data-version="([^"]*)"/g)];
+        if (!matches.length) return; // 片段模板（templates/index.html）不是成页
+        docPages += 1;
+        matches.forEach((m) => {
+            if (m[1] !== VERSION) problems.push(`${posix(relative(REPO, file))}：data-version="${m[1]}" 与 version.js 的 ${VERSION} 不一致`);
+        });
+    });
+    const readme = resolvePath(REPO, "devdocs", "README.md");
+    const readmeVer = existsSync(readme) && (readFileSync(readme, "utf8").match(/适用版本：([0-9]+\.[0-9]+\.[0-9]+)/) || [])[1];
+    if (!readmeVer) problems.push("devdocs/README.md：找不到「适用版本：X.Y.Z」声明");
+    else if (readmeVer !== VERSION) problems.push(`devdocs/README.md：适用版本 ${readmeVer} 与 version.js 的 ${VERSION} 不一致`);
+    const changelog = resolvePath(REPO, "devdocs", "reference", "changelog.html");
+    const changelogVer = existsSync(changelog) && (readFileSync(changelog, "utf8").match(/<h2>v([0-9]+\.[0-9]+\.[0-9]+)/) || [])[1];
+    if (!changelogVer) problems.push("devdocs/reference/changelog.html：找不到版本摘要条目");
+    else if (changelogVer !== VERSION) problems.push(`devdocs/reference/changelog.html：最新条目 v${changelogVer} 与 version.js 的 ${VERSION} 不一致`);
+    const deskly = resolvePath(REPO, "devdocs", "api", "deskly.html");
+    const desklyLine = existsSync(deskly) ? readFileSync(deskly, "utf8").split("\n").find((l) => l.includes("meta.version")) || "" : "";
+    const desklyVer = (desklyLine.match(/"([0-9]+\.[0-9]+\.[0-9]+)"/) || [])[1];
+    if (!desklyVer) problems.push("devdocs/api/deskly.html：meta.version 示例缺 X.Y.Z 版本串");
+    else if (desklyVer !== VERSION) problems.push(`devdocs/api/deskly.html：meta.version 示例 ${desklyVer} 与 version.js 的 ${VERSION} 不一致`);
+    info.push(`文档版本对齐：${docPages} 页 data-version + README / changelog / deskly 示例均对照 ${VERSION}`);
+}
+
+// ── 12b 会随代码增长的计数：文档写死就必须与代码事实源一致 ───────────────
+/**
+ * 「13 个内置插件」漂成 14 个的教训：枚举型数字不进代码就必然再漂。
+ * 规则：数字必须等于事实源（BUILTIN_IDS / src/javascripts/*.js / PERMISSION_NAMES），
+ * 要么干脆不写数字、只指向事实源。这里只拦「写死了但对不上」的情况。
+ */
+const pluginManagerText = readFileSync(join(REPO, "src/javascripts/plugin-manager.js"), "utf8");
+const builtinBlock = (pluginManagerText.match(/const BUILTIN_IDS = \[([\s\S]*?)\];/) || [])[1] || "";
+const BUILTIN_COUNT = (builtinBlock.match(/"[^"]+"/g) || []).length;
+const TOP_MODULE_COUNT = readdirSync(join(REPO, "src/javascripts")).filter((f) => f.endsWith(".js")).length;
+const grantsText = readFileSync(join(REPO, "src/javascripts/api-grants.js"), "utf8");
+const permissionBlock = (grantsText.match(/const PERMISSION_NAMES = \[([\s\S]*?)\];/) || [])[1] || "";
+const PERMISSION_COUNT = (permissionBlock.match(/"[^"]+"/g) || []).length;
+const countDocs = [...new Set([
+    ...walk(resolvePath(REPO, "devdocs")).filter((f) => f.endsWith(".html") || f.endsWith(".md")),
+    resolvePath(REPO, "devdocs", "README.md"),
+])];
+const countRules = [
+    { re: /(\d+)\s*个内置(?:插件|mod)/g, actual: BUILTIN_COUNT, what: "内置插件数", hint: "不要写死，指向 plugin-manager.js 的 BUILTIN_IDS" },
+    { re: /BUILTIN_IDS\s*(?:共|有)?\s*(\d+)\s*个/g, actual: BUILTIN_COUNT, what: "内置插件数", hint: "同上" },
+    { re: /(\d+)\s*个顶层模块/g, actual: TOP_MODULE_COUNT, what: "顶层模块数", hint: "以 src/javascripts/*.js 实测为准" },
+    { re: /(\d+)\s*条权限名/g, actual: PERMISSION_COUNT, what: "权限条数", hint: "以 api-grants.js 的 PERMISSION_NAMES 为准" },
+];
+let countClaims = 0;
+countDocs.forEach((file) => {
+    const text = readFileSync(file, "utf8");
+    countRules.forEach((rule) => {
+        [...text.matchAll(rule.re)].forEach((m) => {
+            countClaims += 1;
+            if (Number(m[1]) !== rule.actual) problems.push(`${posix(relative(REPO, file))}：写着 ${m[1]}（${rule.what}），代码事实源是 ${rule.actual}——${rule.hint}`);
+        });
+    });
+});
+info.push(`计数门禁：内置插件 ${BUILTIN_COUNT} / 顶层模块 ${TOP_MODULE_COUNT} / 权限名 ${PERMISSION_COUNT}；文档中写死的 ${countClaims} 处计数已比对`);
+
+// ── 13 首帧门控（FOUC）：样式/内容就绪前不得显示 ──────────────────────────
+/**
+ * 两类中间态都在真机上被看到过：
+ * 1) 应用窗口插入 DOM 后先按无样式块级流画一帧（没亚克力、元素乱堆），CSS 到了才正常；
+ * 2) 系统设置切面板先清空宿主，await import 期间露出空白面板区。
+ * 这里守住三条结构不变量；亚克力与观感本身仍需真机确认：
+ * - 开窗兜底不得短于冷加载（否则插件入口脚本求值前就会显示骨架）；
+ * - 旧式 App 注入 app-css 后必须等 sheet 就绪再 revealOpen；
+ * - 设置面板的宿主清空与挂载新节点必须在同一个同步任务里，且晚于 await import。
+ */
+const lifecycleText = readFileSync(join(REPO, "src/javascripts/wm/lifecycle.js"), "utf8");
+const fallbackMs = Number((lifecycleText.match(/const OPEN_REVEAL_FALLBACK_MS\s*=\s*(\d+)/) || [])[1]);
+if (!Number.isFinite(fallbackMs)) {
+    problems.push("wm/lifecycle.js：找不到 OPEN_REVEAL_FALLBACK_MS，首帧门控失守");
+} else if (fallbackMs < 1000) {
+    problems.push(`wm/lifecycle.js：开窗兜底 ${fallbackMs}ms 太短，冷加载会在插件初始化前显示骨架（应 ≥1000ms）`);
+}
+
+const windowJsText = readFileSync(join(REPO, "src/javascripts/window.js"), "utf8");
+const styleWaitAt = windowJsText.indexOf("whenStyleReady(link)");
+const legacyRevealAt = windowJsText.indexOf("wm.revealOpen(newWin)");
+if (styleWaitAt < 0) {
+    problems.push("window.js：旧式 App 路径没有等待 app-css 就绪（会把无样式首帧画出来）");
+} else if (legacyRevealAt < styleWaitAt) {
+    problems.push("window.js：旧式 App 在 app-css 就绪前就 revealOpen，首帧是无样式布局");
+}
+
+const settingsAppText = readFileSync(join(settingsDir, "app.js"), "utf8");
+const selStart = settingsAppText.indexOf("async function selectPane");
+const selEnd = settingsAppText.indexOf("\nfunction ", selStart + 1);
+const selBody = selStart >= 0 ? settingsAppText.slice(selStart, selEnd > 0 ? selEnd : undefined) : "";
+if (!selBody) {
+    problems.push("system-settings/app.js：找不到 selectPane，面板切换时序无法校验");
+} else {
+    const importAt = selBody.indexOf("await import(");
+    const clearAt = selBody.indexOf('shell.host.textContent = ""');
+    const appendAt = selBody.indexOf("shell.host.append(node)");
+    if (importAt < 0 || clearAt < 0 || appendAt < 0) {
+        problems.push("system-settings/app.js：selectPane 结构变了，面板切换时序校验失效（需同步更新本检查）");
+    } else {
+        if (!selBody.includes("releasePane(true)")) {
+            problems.push("system-settings/app.js：切面板没有保留旧面板画面（缺少 releasePane(true)），await import 期间会露出空白");
+        }
+        if (clearAt < importAt) {
+            problems.push("system-settings/app.js：await import 之前就清空了面板宿主 → 会先闪一帧空白");
+        }
+        if (appendAt < clearAt) {
+            problems.push("system-settings/app.js：先挂载新面板再清空宿主，新内容会被自己清掉");
+        }
+        if (/\bawait\b/.test(selBody.slice(clearAt, appendAt))) {
+            problems.push("system-settings/app.js：清空宿主与挂载新面板之间有 await → 中间存在绘制机会");
+        }
+    }
+}
+info.push("首帧门控：开窗兜底 ≥1000ms、旧式 App 等 app-css、设置面板同步交换 ✓");
 
 // ── 输出 ─────────────────────────────────────────────────────────────────
 info.forEach((i) => console.log(`  · ${i}`));

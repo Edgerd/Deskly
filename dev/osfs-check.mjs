@@ -1,14 +1,7 @@
 /**
- * dev/osfs-check.mjs — 存储内核 osfs.js 的磁盘级回归检查
- *
- * 为什么用替身而不是开浏览器：本仓库没有构建也没有测试框架，权威校验一律走磁盘
- * （`static-check.mjs:4`–`:7` 同一个理由），而浏览器实测在这里另有两个已知坑
- * （`?v=Date.now()` 绕过缓存造成的假 404、扩展页视口读成 0×0）。
- * 于是这里用 IndexedDB 替身 + 假 FileSystemDirectoryHandle 把 osfs 的两条后端跑通：
- *   一 路径与作用域纯函数（越界与 `..` 处理，出错就是数据丢失）
- *   二 virtual 后端（骨架目录、按层列举、目录行、递归删除、旧行双读、门面翻译）
- *   三 disk 后端（挂载、铺写、二进制落盘、权限过期不静默回落、取消挂载不删磁盘）
- *
+ * dev/osfs-check.mjs — 存储内核 osfs.js 的磁盘级回归检查（IndexedDB 替身 + 假 FileSystemDirectoryHandle）。
+ * 不开浏览器：权威校验一律走磁盘，且浏览器实测有 `?v=Date.now()` 假 404、扩展页视口 0×0 两个已知坑。
+ * 覆盖：一 路径/作用域纯函数　二 virtual 后端　三 disk 后端（挂载、铺写、权限过期不静默回落、取消挂载不删磁盘）。
  * 用法：`node dev/osfs-check.mjs`（有问题退出码 1 并逐条列出）
  */
 

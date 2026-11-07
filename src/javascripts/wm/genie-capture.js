@@ -261,6 +261,37 @@ export async function snapshotFor(el, rect) {
   return stale ? stale.snap : null;
 }
 
+/** 元素当前是否真的“画得出来”：不可见/透明/零尺寸时任何截图都会得到空白。 */
+function renderable(el) {
+  if (!el || !el.isConnected) return false;
+  if (typeof getComputedStyle === "function") {
+    const cs = getComputedStyle(el);
+    if (cs.visibility === "hidden" || cs.display === "none") return false;
+    if (parseFloat(cs.opacity) === 0) return false;
+  }
+  const r = el.getBoundingClientRect();
+  return r.width >= 8 && r.height >= 8;
+}
+
+/**
+ * 台前调度停靠缩略图专用取图：允许吃旧缓存（缩略图只要求「最后一次可见时的画面」），
+ * 没有缓存时当场补拍 —— 原生截图优先，拿不到（无权限或被别的窗盖住）就退回 snapdom
+ * 把窗口 DOM 直接画成 canvas，不受层级遮挡影响。
+ * 调用时机必须在窗口仍然可见时（wm-shelved 的 visibility:hidden 会拍出空白）。
+ * @param {HTMLElement} el 窗口根元素
+ * @param {{x:number,y:number,w:number,h:number}} rect 当前窗口矩形
+ * @returns {Promise<HTMLCanvasElement|null>}
+ */
+export async function ensureThumbnail(el, rect) {
+  const any = cached(el, rect);
+  if (any) return any.snap;
+  if (!renderable(el)) return null;
+  const native = await nativeCapture(el, rect);
+  if (native) return remember(el, rect, native).snap;
+  const snap = await startDomCapture(el, rect);
+  return snap || null;
+}
+
 /** 还原动画只认「最小化时拍下的那一块」，不因缓存年龄而重拍。 */
 export function cachedSnapshot(el, rect) {
   const record = cached(el, rect);

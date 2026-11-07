@@ -20,6 +20,9 @@ import * as wm from "./window-manager.js";
 // 红绿灯组件：注册自定义元素（副作用）+ 供下方按动作事件绑定窗口逻辑。
 import "./ui/trafficLights.js";
 
+/** 旧式装载的在途应用名：fetch 窗口期内的重复打开请求直接短路（BUG-11）。 */
+const legacyOpening = new Set();
+
 // 门面转调：既有调用方的 import 说明符不变，实现只有 window-manager 一份。
 // 用 `export { x as y } from` 的形式而不是 const 别名 —— zCounter 这类
 // 值绑定要跟着窗口操作实时变化，const 拷贝会在第一次置顶后失真。
@@ -127,9 +130,8 @@ export async function create(file, name, light = null, centered = false) {
     return;
   }
 
-  // 冷加载：若该应用已注册为插件，则走插件管理器按需加载。
-  // 统一走 openApp（按名称解析 appId）：多应用插件的子应用名（如「文稿」）
-  // 也在这里命中，交给 load() 会被当成插件 id 而落到该套件的首个应用。
+  // 冷加载：已注册为插件的统一走 openApp（按名称解析 appId）——多应用插件的子应用名
+  // （如「文稿」）交给 load() 会被当成插件 id 而落到该套件的首个应用。
   if (plugin) {
     import("./plugin-manager.js").then(({ openApp }) => {
       openApp(name, { light, centered });
@@ -160,31 +162,38 @@ export async function create(file, name, light = null, centered = false) {
     }
   }
 
-  fetch(`${file}?v=${Date.now()}`)
-    .then((response) => {
-      if (response.status !== 200) {
-        // 走到这里说明它既不是插件也没有旧式模板：报真实原因，不要再谎称「仍在开发中」。
-        createAlert(
-          FINDER_ICON,
-          i18n.t("app.loadErrorTitle", "加载 App 时遇到错误"),
-          i18n.t("app.loadErrorText", "未找到该应用的界面模板")
-            + `<br/>${i18n.t("app.pathLabel", "请求路径")}: ${escapeHtml(file)}`
-            + `<br/>${i18n.t("app.httpStatusLabel", "服务器返回状态码")}: ${Number(response.status) || 0}`,
-          i18n.t("common.ok", "好"),
-          "close",
-        );
-        // 加载失败时重置 dock 图标状态，避免残留运行指示器
-        if (light) light.classList.remove("on");
-        if (window.appStatus && name) window.appStatus[name] = false;
-        return;
-      }
-      response.text().then((content) => {
-        // 注入前记下已有窗口，注入后取「本次新增」的那个，
-        // 不能按「最后一个 .window」取（页面里存在并非窗口的 .window 元素）。
-        // 选择器必须是 body > .window，与 window-manager.isWindowElement /
-        // setFocusedWindow 同一个判据：按类名全量遍历会把顶栏菜单里的
-        // <p class="window"> 也算进「已有集合」，差集一旦取到伪窗口，
-        // 这里就会给它绑上窗口逻辑并写 id，真窗口反而没人管。
+  // 「查重 → fetch → 注入」不是原子的：慢盘下两次快速调用都通过查重，注入两扇同 id
+  // 窗口（BUG-11）。per-name 在途标记把第二次调用直接短路到「已存在则置顶」的语义上。
+  if (legacyOpening.has(name)) {
+    const win = findAppWindow(name, "");
+    if (win) wm.bringToFront(win, name);
+    return;
+  }
+  legacyOpening.add(name);
+  try {
+    const response = await fetch(`${file}?v=${Date.now()}`);
+    if (response.status !== 200) {
+      // 走到这里说明它既不是插件也没有旧式模板：报真实原因，不要再谎称「仍在开发中」。
+      createAlert(
+        FINDER_ICON,
+        i18n.t("app.loadErrorTitle", "加载 App 时遇到错误"),
+        i18n.t("app.loadErrorText", "未找到该应用的界面模板")
+          + `<br/>${i18n.t("app.pathLabel", "请求路径")}: ${escapeHtml(file)}`
+          + `<br/>${i18n.t("app.httpStatusLabel", "服务器返回状态码")}: ${Number(response.status) || 0}`,
+        i18n.t("common.ok", "好"),
+        "close",
+      );
+      // 加载失败时重置 dock 图标状态，避免残留运行指示器
+      if (light) light.classList.remove("on");
+      if (window.appStatus && name) window.appStatus[name] = false;
+      return;
+    }
+    try {
+      const content = await response.text();
+        // 注入前记下已有窗口，注入后取「本次新增」的那个（不能按「最后一个 .window」取，
+        // 页面里存在非窗口的 .window 元素）。选择器必须是 body > .window，与
+        // window-manager.isWindowElement 同一判据：否则顶栏菜单里的 <p class="window">
+        // 会混进差集被绑上窗口逻辑并写 id，真窗口反而没人管。
         const before = new Set(document.querySelectorAll("body > .window"));
         document.body.insertAdjacentHTML("beforeend", content);
         const added = Array.from(document.querySelectorAll("body > .window"))
@@ -213,20 +222,36 @@ export async function create(file, name, light = null, centered = false) {
         document.querySelector("head").appendChild(link);
         // 注入完成后再绑窗口逻辑：双 rAF（≈下一帧）先试一次，再以 300ms / 450ms
         // 两次兜底重试；manage() 幂等，多次调用不会重复挂监听。
-        // 放在这一支里而不是 create() 末尾：原来它无条件排在 fetch 之后，
-        // 于是 404（assets/apps/ 已清空，这条分支今天必然 404）也要白跑三遍
-        // 全量 body > .window 扫描，顺手把已经开着的其它窗口再 manage 一次。
+        // 放在这一支里而不是 create() 末尾：404 分支（assets/apps/ 已清空）不必
+        // 白跑三遍全量 body > .window 扫描。
         const bindLater = () => resetWindowListeners(name, light);
         requestAnimationFrame(() => requestAnimationFrame(bindLater));
         setTimeout(bindLater, 300);
         setTimeout(bindLater, 450);
-        // 样式表与脚本都挂上了，可以显示并播放入场。
+        // 样式表是运行时注入的：<link> 挂上 DOM 不等于样式已进入渲染管线。
+        // 旧实现在 append 后立刻 revealOpen，慢盘下会先按无样式块级流画一帧
+        // （「打开瞬间没毛玻璃、排版错乱」）。等 sheet 可用（或超时）再显示；
+        // 等待期间窗口仍是 .wm-preparing（visibility:hidden），不参与绘制。
+        try {
+          const { whenStyleReady } = await import("./plugin-manager.js");
+          await whenStyleReady(link);
+        } catch (err) {
+          console.warn("[window] 等待旧式 App 样式表就绪失败，按当前样式显示：", err);
+        }
+        // 样式已就绪，可以一次性显示并播放入场。
         wm.revealOpen(newWin);
-      });
-    })
-    .catch((error) => {
-      console.error("Error opening app:", error);
-    });
+    } catch (injectErr) {
+      // text() 读取失败或注入回调抛错都要复位 dock 指示灯与 appStatus：
+      // 否则残留「有小圆点没界面」，要等下次窗口对账才自愈（BUG-11）
+      if (light) light.classList.remove("on");
+      if (window.appStatus && name) window.appStatus[name] = false;
+      throw injectErr;
+    }
+  } catch (error) {
+    console.error("Error opening app:", error);
+  } finally {
+    legacyOpening.delete(name);
+  }
 }
 
 /**

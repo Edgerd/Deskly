@@ -1,21 +1,23 @@
 /**
- * window-manager.js — Deskly 窗口管理核心（macOS 操作语义）
+ * window-manager.js — Deskly 窗口管理门面（编排 + 对外导出聚合）
  *
- * 这一层是窗口机制的唯一实现：几何、焦点、拖动、缩放、缩放态/全屏、最小化、
- * 关闭、平铺与吸附。src/javascripts/window.js 退化为「旧式 App 装载 + 兼容门面」，
- * 不再自带第二套窗口逻辑。
+ * 窗口机制的实现已按职责拆进 wm/ 子模块（本文件只做状态操作、声明解析与对外导出）：
+ *   wm/stack.js        焦点栈、层级分带 commitStack（NW-4）、stateOf、focus/blur 事件
+ *   wm/relations.js    母窗 / 子窗 / sheet / 模态（NW-1）
+ *   wm/interactions.js 拖动 / 八向缩放 / 边带 / 吸附预览（NW-2 / NW-3 / NW-6）
+ *   wm/lifecycle.js    manage / release / close / 最小化还原 / 打开入场（NW-9）
+ *   wm/events.js       window:* 事件总线（NW-8）
+ *   wm/frame.js        几何原语（原有）
+ * src/javascripts/window.js 退化为「旧式 App 装载 + 兼容门面」，不再自带第二套窗口逻辑。
  *
  * 与 macOS 的对齐点（都是有意为之，改动前先读这段）：
  * 1. 拖动只认标题栏（[data-titlebar]，没有标题栏元素的窗口退回顶部灯区带）。
- *    旧实现允许从窗口内任意非控件处拖动，看起来自由，实际让用户一碰到内容就把窗口拖走。
- * 2. 缩放命中八向边/角（macOS 的边框命中区），对侧边为锚点；⌥ 锁宽高比。
- *    旧实现只有一个右下角 .resizer，插件窗口根本没有左/上边可缩。
- * 3. 绿键 = 缩放（填充菜单栏与程序坞之间的可视区），⌥点击 = 全屏，
- *    悬停 ~0.4s 弹「窗口排列」菜单（macOS 15 的入口），右键保留同一张菜单。
+ * 2. 缩放命中八向边/角（macOS 的边框命中区），对侧边为锚点；⌥ 或 aspectRatio 声明锁宽高比。
+ * 3. 绿键 = 全屏（macOS 15 口径），⌥点击 = 缩放（填充可视区），
+ *    悬停 ~0.9s 弹「窗口排列」菜单（本项目有意偏差，防误触），右键保留同一张菜单。
  * 4. 拖动推到屏幕边缘即平铺（左/右半、四角 ¼、顶部=缩放），带预览框。
- * 5. 缩放态/平铺态下开始拖动或缩放即脱离该状态，回到用户框架 —— 与
- *    macOS 拖动一个已缩放的窗口会「脱开」的行为一致。
- * 6. 焦点是显式的：.is-active + 红绿灯灰化由焦点栈驱动，不再靠 z-index 数字猜。
+ * 5. 缩放态/平铺态下开始拖动或缩放即脱离该状态，回到用户框架。
+ * 6. 焦点是显式的：.is-active + 红绿灯灰化由焦点栈驱动。
  *
  * 硬约束：
  * - 动画一律走 left/top/width/height，绝不给 .window 加 transform / filter /
@@ -25,30 +27,55 @@
  * - 内核模块的 import 说明符不带 ?v=（带查询串会被当作第二个模块重复求值）。
  */
 
-import { Z } from "./zindex.js";
 import { i18n } from "./i18n.js";
-import { updateMenu } from "./finderbar.js";
+import { isActivated } from "./api-grants.js";
 import { createContextMenu } from "./ui/contextMenu.js";
 import {
-  getTrafficLights, mountTrafficLights, setTrafficLightsActive, setTrafficLightsEnabled, ACTION_EVENT,
+  getTrafficLights, mountTrafficLights, setTrafficLightsEnabled, ACTION_EVENT,
 } from "./ui/trafficLights.js";
 import {
-  visibleFrame, frameOf, applyFrame, limitsOf, clampFrame, clampDrag, edgeAt, resizeFrame,
-  tileFrame, zoomFrame, displayFrame, snapZoneAt, WM_ANIM_MS,
+  visibleFrame, frameOf, applyFrame, clampDrag,
+  tileFrame, zoomFrame, displayFrame,
 } from "./wm/frame.js";
-// 门面（window.js）以旧名 getDesktopRect 再导出它，这里必须把它透出到模块边界。
-export { visibleFrame };
+import {
+  records, stack, commitStack, isWindowElement, isMinimized, resolveWindow,
+  focusWindow, getTopWindow, getVisibleWindows, updateActiveAppMenu, syncState, detachStates, stateOf,
+  setLevel as stackSetLevel, bindLifecycleHooks,
+} from "./wm/stack.js";
+import { ensureEdgeBands, bindWindowOps } from "./wm/interactions.js";
+import {
+  manage, release, close, setMinimized, restore,
+  prepareOpen, cancelOpenAnimation, revealOpen,
+  bindOps,
+} from "./wm/lifecycle.js";
+import { setWindowDetailProvider, emitWindowEvent } from "./wm/events.js";
+import { enterSplit, exitSplit, inSplit, splitState, cycleSpaces, relayoutSplit } from "./wm/spaces.js";
+import * as overview from "./wm/overview.js";
+import { ZOOM_HOVER_EVENT } from "./ui/trafficLights.js";
+
+// ── 门面再导出：导出名与旧窗口管理器逐一对齐，旧调用零破坏 ──
+export { visibleFrame } from "./wm/frame.js";
 // 平铺分区表也一起透出：顶栏菜单与绿键排列菜单共用同一份键名，不在两处各写一遍。
 export { TILE_REGIONS } from "./wm/frame.js";
+export {
+  WINDOW_Z_MIN, WINDOW_Z_MAX, zCounter,
+  getWindows, isWindowElement, getVisibleWindows, getTopWindow, isMinimized, resolveWindow,
+  setFocusedWindow, focusWindow, bringToFront, bringAllWindowsToFront, updateActiveAppMenu,
+  stateOf, syncState, detachStates,
+} from "./wm/stack.js";
+export {
+  manage, release, close, setMinimized, restore, toggleMinimize,
+  prepareOpen, cancelOpenAnimation, revealOpen,
+} from "./wm/lifecycle.js";
+export { attach, detach, parentOf, childrenOf } from "./wm/relations.js";
+export { WINDOW_EVENTS, emitWindowEvent } from "./wm/events.js";
+export { applyDragConstraints, inDragZone } from "./wm/interactions.js";
+export { enterSplit, exitSplit, inSplit, splitState } from "./wm/spaces.js";
+export { isOverviewOpen, toggle as toggleOverview } from "./wm/overview.js";
 
-/** 层级区间：窗口段 [WINDOW_MIN, WINDOW_MAX]，Dock 固定 9500，所以窗口永不越界。 */
-export const WINDOW_Z_MIN = Z.WINDOW_MIN;
-export const WINDOW_Z_MAX = Z.WINDOW_MAX;
+/** 层叠居中时每个后续同尺寸窗口错开的位移（macOS 的 cascade 节奏）。 */
+const CASCADE_STEP = 24;
 
-/** 无标题栏元素时，窗口顶部可拖动的带高（= --traffic-titlebar 的 JS 侧对齐值）。 */
-const TITLE_BAND = 38;
-/** 没有标题栏元素、但灯区被顶得更低时，拖动带的上限。 */
-const TITLE_BAND_MAX = 56;
 /**
  * 绿键悬停多久弹出窗口排列菜单。
  * macOS 自己约 0.5s，这里取 900ms：本项目的红绿灯离正文与拖动区都比分家系统近，
@@ -56,154 +83,125 @@ const TITLE_BAND_MAX = 56;
  * 悬停菜单是「锦上添花」，右键那一份不受这个时长影响。
  */
 const HOVER_MENU_DELAY = 900;
-/**
- * 缩放期间的边界余量（原来散在 startResize 里是四个裸数字）。
- * 语义各不相同，分开命名而不是合成一个：
- * - RESIZE_KEEP_GRABBABLE：左右两侧拉到底时，窗口仍要留在屏内这么多 px，否则点不到它；
- * - RESIZE_KEEP_TITLE：顶边下界用的高度 —— 标题栏至少留这么多 px 在屏内才还抓得住；
- * - RESIZE_MAX_OVERFLOW：允许比视口更宽的富余量（macOS 容许窗口拉出屏幕两侧）。
- */
-const RESIZE_KEEP_GRABBABLE = 40;
-const RESIZE_KEEP_TITLE = 24;
-const RESIZE_MAX_OVERFLOW = 80;
-/** 层叠居中时每个后续同尺寸窗口错开的位移（macOS 的 cascade 节奏）。 */
-const CASCADE_STEP = 24;
+
+// ── 应用侧声明：data-window="size:900x640 min:620x440 resizable centered" ──
 
 /**
- * 状态切换动画时长只有一个权威值：wm/frame.js 的 WM_ANIM_MS，
- * 它由 applyFrame 在挂 / 摘 .wm-animating 时自己用，样式表那边是同名的 0.3s。
- * 这里不再留第二份常数 —— 旧 ANIM_MS = 300 全文件无人引用，且与 frame.js 实际
- * 使用的 320 还不一致，读起来像「改了它就能改动画时长」，其实改了没用。
+ * data-window 声明键的统一规范化（WAPI-07）。
+ * 旧解析器把键小写化后与 camelCase 白名单比对，`minWidth:600` 落入「未识别字段」
+ * 被静默忽略。现在三处写法都接受：camelCase（minWidth）、kebab（min-width）、
+ * 全小写（minwidth）——先去掉连字符再小写化查这张表，落回规范的 camelCase 键。
  */
-
-/** 关闭动画兜底：动画事件没来（禁用动画 / 元素已 detach）也要收尾。 */
-const CLOSE_FALLBACK_MS = 300;
+const DECL_KEYS = {
+  width: "width", height: "height",
+  minwidth: "minWidth", minheight: "minHeight", maxwidth: "maxWidth", maxheight: "maxHeight",
+  resizable: "resizable", minimizable: "minimizable", maximizable: "maximizable",
+  centered: "centered", draggable: "draggable", fixed: "fixed", modal: "modal",
+  multiwindow: "multiWindow",
+  role: "role", parent: "parent", level: "level",
+  dragaxis: "dragAxis", dragbounds: "dragBounds",
+  resizeaxis: "resizeAxis", aspectratio: "aspectRatio",
+  snap: "snap", titlebar: "titlebar", trafficlights: "trafficLights",
+};
+const DECL_NUMERIC = new Set(["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight"]);
+const DECL_FLAGS = new Set(["resizable", "minimizable", "maximizable", "centered", "draggable", "fixed", "modal", "multiWindow"]);
+const DECL_STRINGS = new Set(["role", "parent", "level", "dragAxis", "resizeAxis", "snap", "titlebar", "trafficLights"]);
 
 /**
- * 开窗入场：先隐藏到几何稳定，再显示并从下方 6px 处上浮。
- * 只动 top 与 opacity，绝不使用 transform / filter —— 带 backdrop-filter 的窗口
- * 一旦被提升为 3D 合成层，亚克力会退化成色块（见 ui.css / windowframe.css 的禁忌）。
- * 时长与 ui.css 的 window-fade-in 对齐，位移只是给纯淡入补一点方向感。
- *
- * OPEN_REVEAL_FALLBACK_MS 是「最迟多久必须开始显示」：插件入口脚本可能还在下载
- * （慢盘 / 首次冷加载），不能让窗口一直藏着等脚本。到点后先按当前已稳定的几何显示，
- * 脚本到位后再填充内容即可；正常路径仍由脚本 load 事件提前触发。
+ * 解析宽高比声明："16:9" → 16/9，"1.777" / 1.777 → 1.777。
+ * @returns {number} 非法时返回 0
  */
-const OPEN_REVEAL_FALLBACK_MS = 250;
-const OPEN_ANIM_MS = 160;
-const OPEN_RISE = 6;
-/** 显示前要求连续这么多帧几何不变；最多等 12 帧（约 200ms）避免插件迟迟不收敛。 */
-const OPEN_SETTLE_FRAMES = 2;
-const OPEN_SETTLE_MAX_FRAMES = 12;
-
-/** 交互类型 */
-const IDLE = null;
-const DRAG = "drag";
-const RESIZE = "resize";
-
-/** 窗口记录表：元素 -> 控制器状态。WeakMap 让被移除的窗口自动回收。 */
-const records = new WeakMap();
-/** 焦点栈：下标 0 最底、末尾最前。层级由栈序推导，不再无上限自增。 */
-const stack = [];
-/** 上一次分配给窗口的 z-index（仅用于对外读数与上限告警）。 */
-export let zCounter = WINDOW_Z_MIN - 1;
-
-/** 当前被托管的窗口（栈序，底 → 顶）。 */
-export function getWindows() {
-  return stack.filter((el) => el.isConnected);
+function parseAspect(value) {
+  if (typeof value === "number") return value > 0 ? value : 0;
+  const s = String(value || "").trim();
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
+  if (m) {
+    const a = parseFloat(m[1]);
+    const b = parseFloat(m[2]);
+    return a > 0 && b > 0 ? a / b : 0;
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
-
-/**
- * 是不是一个真窗口：带 .window 类，且不在菜单栏 / 菜单 / 程序坞 / 桌面图标层里。
- * 顶栏菜单里历史上出现过 <p class="window">，按类名全量遍历会给它挂红绿灯、
- * 绑拖动，污染成「伪窗口」并让 getElementById 命中错对象。
- * @param {Element} el
- * @returns {boolean}
- */
-export function isWindowElement(el) {
-  if (!el || !el.classList || !el.classList.contains("window")) return false;
-  if (el.closest(".finderbar, .menu, .dockcontainer, .desktop, .launchpad")) return false;
-  return true;
-}
-
-/**
- * 当前可见窗口（排除关闭中、最小化、被藏掉的），按层级从高到低。
- * @returns {HTMLElement[]}
- */
-export function getVisibleWindows() {
-  return stack
-    .filter((el) => el.isConnected && !el.classList.contains("closing") && !isMinimized(el) && el.style.display !== "none")
-    .reverse();
-}
-
-/** 最靠上的可见窗口（顶栏菜单与快捷键的作用对象）。 */
-export function getTopWindow() {
-  return getVisibleWindows()[0];
-}
-
-/** 最小化判定：类名 / 标记位 / dock 动画留下的 display:none 三处都可能表达它。 */
-export function isMinimized(el) {
-  // 判空是必需的：本函数被 dock / 菜单 / winctl 当公开读数用，
-  // 传入一个已释放或查不到的元素时，读 el.classList 就是一记 TypeError。
-  if (!el || !el.classList) return false;
-  return !!(el._minimized || el.classList.contains("minimized") || el.style.display === "none");
-}
-
-// ─────────────────────────────────────────────────────────────
-// 应用侧声明：data-window="size:900x640 min:620x440 resizable centered"
-// ─────────────────────────────────────────────────────────────
 
 /**
  * 解析窗口根元素上的 data-window 声明。
  *
  * 为什么开这条通道：尺寸与可缩放性是「这个应用长什么样」的一部分，归属应用自己，
- * 不该只能写在被内核读取的 manifest.json 里（第三方 ZIP 的 manifest 与它的 HTML
- * 分两处维护时，改尺寸要动两个文件）。现在三处都能声明，优先级：
+ * 不该只能写在被内核读取的 manifest.json 里。三处都能声明，优先级：
  *   data-window（应用自己的界面）> manifest.window（内核装载时传入）> 应用 CSS 自然尺寸
  * min/max 直接落进内联样式，于是 frame.limitsOf 读到的就是声明值，缩放边界与
  * 应用样式表里的 min-width 用同一套机制，不需要第二份账。
  *
  * @param {HTMLElement} el 窗口根元素
- * @returns {object} 只包含声明到的字段
+ * @returns {object} 只包含声明到的字段（键名一律为规范 camelCase）
  */
 export function readDeclaration(el) {
   const raw = el.getAttribute("data-window");
   if (!raw) return {};
   const conf = {};
   raw.split(/[;\s]+/).filter(Boolean).forEach((token) => {
-    const [rawKey, rawVal] = token.split(":");
-    const key = String(rawKey || "").trim().toLowerCase();
+    // 只按第一个冒号切：aspectRatio:16:9 这类值本身带冒号
+    const colon = token.indexOf(":");
+    const rawKey = colon < 0 ? token : token.slice(0, colon);
+    const rawVal = colon < 0 ? undefined : token.slice(colon + 1);
+    const keyNorm = String(rawKey || "").trim().toLowerCase().replace(/-/g, "");
     const val = rawVal === undefined ? true : String(rawVal).trim();
-    if (!key) return;
-    if (key === "size" || key === "min" || key === "max") {
+    if (!keyNorm) return;
+    // size:900x640 / min:620x440 / max:1200x800 简写
+    if (keyNorm === "size" || keyNorm === "min" || keyNorm === "max") {
       const m = String(val).toLowerCase().match(/^(\d+)\s*x\s*(\d+)$/);
       if (!m) {
-        console.warn(`[wm] data-window ${key} 需要 WxH 形式，已忽略：${val}`);
+        console.warn(`[wm] data-window ${keyNorm} 需要 WxH 形式，已忽略：${val}`);
         return;
       }
-      if (key === "size") { conf.width = Number(m[1]); conf.height = Number(m[2]); }
-      else if (key === "min") { conf.minWidth = Number(m[1]); conf.minHeight = Number(m[2]); }
+      if (keyNorm === "size") { conf.width = Number(m[1]); conf.height = Number(m[2]); }
+      else if (keyNorm === "min") { conf.minWidth = Number(m[1]); conf.minHeight = Number(m[2]); }
       else { conf.maxWidth = Number(m[1]); conf.maxHeight = Number(m[2]); }
       return;
     }
-    const numeric = ["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight"];
-    if (numeric.includes(key)) {
-      const n = parseFloat(val);
-      if (Number.isFinite(n)) conf[key] = n;
+    const key = DECL_KEYS[keyNorm];
+    if (!key) {
+      console.warn(`[wm] data-window 未识别的字段，已忽略：${token}`);
       return;
     }
-    const flags = ["resizable", "minimizable", "maximizable", "centered", "draggable"];
-    if (flags.includes(key)) {
+    if (DECL_NUMERIC.has(key)) {
+      const n = parseFloat(val);
+      if (Number.isFinite(n)) conf[key] = n;
+      else console.warn(`[wm] data-window ${key} 需要数字，已忽略：${val}`);
+      return;
+    }
+    if (DECL_FLAGS.has(key)) {
       conf[key] = val === true || String(val).toLowerCase() === "true";
       return;
     }
-    console.warn(`[wm] data-window 未识别的字段，已忽略：${token}`);
+    if (key === "aspectRatio") {
+      const aspect = parseAspect(val);
+      if (aspect > 0) conf.aspectRatio = String(val);
+      else console.warn(`[wm] data-window aspectRatio 需要 W:H 或数值，已忽略：${val}`);
+      return;
+    }
+    if (key === "dragBounds") {
+      // "visible" 或 "x,y,w,h" 硬区域（数据属性里不能带空格，用逗号分隔）
+      if (String(val).toLowerCase() === "visible") { conf.dragBounds = "visible"; return; }
+      const nums = String(val).split(",").map((p) => parseFloat(p));
+      if (nums.length === 4 && nums.every(Number.isFinite)) {
+        conf.dragBounds = { x: nums[0], y: nums[1], w: nums[2], h: nums[3] };
+      } else {
+        console.warn(`[wm] data-window dragBounds 需要 visible 或 x,y,w,h，已忽略：${val}`);
+      }
+      return;
+    }
+    if (DECL_STRINGS.has(key)) {
+      conf[key] = String(val);
+      return;
+    }
   });
   return conf;
 }
 
 /**
- * 落实窗口声明（尺寸 / 边界 / 能力开关 / 居中），并同步红绿灯禁用态。
+ * 落实窗口声明（尺寸 / 边界 / 能力开关 / 居中 / NW-1~NW-6 新键），并同步红绿灯禁用态。
  * 应用侧 data-window 覆盖内核侧 manifest.window：应用是尺寸的权威。
  * @param {HTMLElement} el 窗口根元素
  * @param {object} [kernelConf] manifest.window（或 app.window 合并结果）
@@ -222,13 +220,46 @@ export function applyConfig(el, kernelConf = {}) {
   if (Number.isFinite(conf.maxWidth)) el.style.maxWidth = `${conf.maxWidth}px`;
   if (Number.isFinite(conf.maxHeight)) el.style.maxHeight = `${conf.maxHeight}px`;
 
-  setResizable(el, conf.resizable !== false);
+  // NW-3：resizeAxis:"none" ≡ resizable:false，同时给时取更严者
+  const resizable = conf.resizable !== false && conf.resizeAxis !== "none";
+  setResizable(el, resizable);
+
+  // NW-5：trafficLights 三态。"none" 属敏感能力（有困住用户的风险），
+  // 未授权 window:chrome 的插件声明了也按 "all" 落地，而不是静默放行。
+  let lightsMode = conf.trafficLights === "none" || conf.trafficLights === "close-only" ? conf.trafficLights : "all";
+  if (lightsMode === "none") {
+    const pid = el.dataset.pluginId;
+    if (pid && !isActivated(pid, "window:chrome")) {
+      console.warn(`[wm] ${pid} 未授权 window:chrome，trafficLights:"none" 已按 "all" 落地`);
+      lightsMode = "all";
+    }
+  }
+  el._wmLightsMode = lightsMode;
   setTrafficLightsEnabled(el, {
-    minimize: conf.minimizable !== false,
-    zoom: conf.maximizable !== false && conf.resizable !== false,
+    close: lightsMode !== "none",
+    minimize: conf.minimizable !== false && lightsMode === "all",
+    zoom: conf.maximizable !== false && resizable && lightsMode === "all",
   });
-  el.dataset.wmDraggable = conf.draggable === false ? "false" : "true";
-  if (conf.centered && !el._wmPlaced) center(el);
+  const host = getTrafficLights(el);
+  if (host) host.toggleAttribute("hidden", lightsMode === "none");
+
+  // NW-2：fixed = 不可拖 + 不吸附 + 视口重排不回拉 + configure 不居中
+  const fixed = conf.fixed === true;
+  el._wmFixed = fixed;
+  el.dataset.wmDraggable = (conf.draggable === false || fixed) ? "false" : "true";
+  // NW-6：吸附三态；fixed 隐含 "none"
+  el._wmSnap = fixed ? "none" : (["tile", "edges", "none"].includes(conf.snap) ? conf.snap : "tile");
+
+  // NW-3：常驻宽高比与缩放轴
+  el._wmAspect = parseAspect(conf.aspectRatio);
+  if (el._wmAspect && (Number.isFinite(conf.maxWidth) || Number.isFinite(conf.maxHeight))) {
+    console.warn("[wm] aspectRatio 与 max 尺寸同声明：min/max 为硬边界，比例在边界内才成立");
+  }
+  ensureEdgeBands(el);
+
+  // WAPI-01：居中标记统一落在元素上（旧实现写在 rec 上、读在 el 上，
+  // 于是托管窗口每次 configure() 都被拽回中央）。fixed 窗不自动居中。
+  if (conf.centered && !el._wmPlaced && !fixed) center(el);
   el._wmConfig = conf;
   return conf;
 }
@@ -261,218 +292,45 @@ export function configure(target, conf = {}) {
   return true;
 }
 
-/** 把配置对象写回 data-window 字面量（configure 的持久化形态）。 */
+/**
+ * 把配置对象写回 data-window 字面量（configure 的持久化形态）。
+ * WAPI-08：逐字段写（单独 configure({width}) 也落盘，不再要求宽高成对），
+ * 新增键与声明通道同名。
+ */
 function serializeDecl(conf) {
   const parts = [];
-  if (Number.isFinite(conf.width) && Number.isFinite(conf.height)) parts.push(`size:${Math.round(conf.width)}x${Math.round(conf.height)}`);
-  if (Number.isFinite(conf.minWidth) && Number.isFinite(conf.minHeight)) parts.push(`min:${Math.round(conf.minWidth)}x${Math.round(conf.minHeight)}`);
-  if (Number.isFinite(conf.maxWidth) && Number.isFinite(conf.maxHeight)) parts.push(`max:${Math.round(conf.maxWidth)}x${Math.round(conf.maxHeight)}`);
-  ["resizable", "minimizable", "maximizable", "centered", "draggable"].forEach((k) => {
-    if (k in conf) parts.push(`${k}:${conf[k] ? "true" : "false"}`);
+  ["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight"].forEach((k) => {
+    if (Number.isFinite(conf[k])) parts.push(`${k}:${Math.round(conf[k])}`);
   });
+  ["resizable", "minimizable", "maximizable", "centered", "draggable", "fixed", "modal", "multiWindow"].forEach((k) => {
+    if (typeof conf[k] === "boolean") parts.push(`${k}:${conf[k] ? "true" : "false"}`);
+  });
+  ["role", "parent", "level", "dragAxis", "resizeAxis", "snap", "titlebar", "trafficLights"].forEach((k) => {
+    if (typeof conf[k] === "string" && conf[k]) parts.push(`${k}:${conf[k]}`);
+  });
+  if (conf.aspectRatio) parts.push(`aspectRatio:${conf.aspectRatio}`);
+  if (conf.dragBounds && typeof conf.dragBounds === "object") {
+    parts.push(`dragBounds:${conf.dragBounds.x},${conf.dragBounds.y},${conf.dragBounds.w},${conf.dragBounds.h}`);
+  }
   return parts.join(" ");
 }
 
-/** 按元素 / id / 显示名解析窗口（显示名可能被 CSS 选择器转义，先走 getElementById）。 */
-function resolveWindow(target) {
-  if (!target) return null;
-  if (typeof target === "string") {
-    const byId = document.getElementById(target);
-    if (isWindowElement(byId)) return byId;
-    return Array.from(document.querySelectorAll("body > .window"))
-      .find((w) => w.dataset.appName === target || w.id === target) || null;
-  }
-  return isWindowElement(target) ? target : null;
+// ── 能力位（WAPI-02）：熄灯只是表象，操作本身也要被拦 ──
+
+function capsOf(el) {
+  return el._wmConfig || {};
 }
 
-// ─────────────────────────────────────────────────────────────
-// 焦点与层级
-// ─────────────────────────────────────────────────────────────
+/** 绿键系操作（缩放 / 平铺）的能力判据：maximizable 或 resizable 关了就真不做。 */
+function canZoomOrTile(el) {
+  const conf = capsOf(el);
+  return conf.maximizable !== false && conf.resizable !== false && conf.resizeAxis !== "none";
+}
+
+// ── 窗口操作（对外 API） ──
 
 /**
- * 按焦点栈重排 z-index：栈序即层级序，值恒在 [WINDOW_MIN, WINDOW_MAX] 内。
- * 旧实现是「每次置顶 +1，逼近上限再全量重排」，窗口数远达不到上限时数字无意义，
- * 而 bringAllWindowsToFront 这类连点会白白跑一次重排。
- */
-function commitStack() {
-  let z = WINDOW_Z_MIN - 1;
-  stack.forEach((el) => {
-    z += 1;
-    el.style.zIndex = String(z);
-  });
-  // 极端情况（同屏窗口多到溢出区间）时整体回拉到下限起，保持相对顺序不变
-  if (z > WINDOW_Z_MAX) {
-    z = WINDOW_Z_MIN - 1;
-    stack.forEach((el) => {
-      z += 1;
-      el.style.zIndex = String(z);
-    });
-  }
-  zCounter = z;
-}
-
-function pushStack(el) {
-  const i = stack.indexOf(el);
-  if (i >= 0) stack.splice(i, 1);
-  stack.push(el);
-}
-
-/**
- * 标记活跃窗口：红绿灯灰化 + .is-active（样式表据此区分阴影强度）。
- * @param {HTMLElement|null} win
- */
-export function setFocusedWindow(win) {
-  document.querySelectorAll("body > .window").forEach((w) => {
-    if (!isWindowElement(w)) return;
-    const active = w === win;
-    w.classList.toggle("is-active", active);
-    setTrafficLightsActive(w, active);
-  });
-}
-
-/**
- * 置顶并取焦点。
- * @param {HTMLElement} el 窗口
- * @param {string} [menuName] 顶栏菜单要切到的应用名（默认用窗口自己的名字）
- * @returns {void}
- */
-export function focusWindow(el, menuName) {
-  if (!el || !el.isConnected) return;
-  const rec = manage(el);
-  if (!rec) return;
-  if (isMinimized(el)) restore(el);
-  pushStack(el);
-  commitStack();
-  const name = menuName || rec.name || el.id;
-  if (name) updateMenu(name);
-  setFocusedWindow(el);
-}
-
-/** 兼容旧调用姿势：bringToFront(win, name)。 */
-export function bringToFront(el, name) {
-  focusWindow(el, name);
-}
-
-/** 顶栏「前置全部窗口」：按栈序自底向上置顶一遍，等价于 macOS 的窗口轮转。 */
-export function bringAllWindowsToFront() {
-  const visible = getVisibleWindows().slice().reverse();
-  visible.forEach((el) => focusWindow(el));
-}
-
-/**
- * 逐维写回几何： undefined / 空串 表示「这个维度不动」，还原快照时靠它跳过缺项。
- * 兼容旧签名 setWindowPosition(win, left, top, width, height, zIndex)，值原样落内联样式。
- * @param {HTMLElement} el 窗口
- * @param {{x?:number|string,y?:number|string,w?:number|string,h?:number|string,z?:number|string}} g
- */
-export function setGeometry(el, g) {
-  if (!el || !g) return;
-  const put = (prop, val) => {
-    if (val === undefined || val === "" || val === null) return;
-    el.style[prop] = typeof val === "number" ? `${val}px` : String(val);
-  };
-  put("left", g.x);
-  put("top", g.y);
-  put("width", g.w);
-  put("height", g.h);
-  if (g.z !== undefined && g.z !== "" && g.z !== null) {
-    el.style.zIndex = String(g.z);
-    zCounter = Math.max(zCounter, parseInt(g.z, 10) || 0);
-  }
-  const rec = records.get(el);
-  if (rec && !rec.mode) rec.normal = frameOf(el);
-}
-
-/**
- * 记录窗口当前几何（供会话快照一类的调用方存盘）。
- * @param {HTMLElement} el
- * @returns {{left:string,top:string,width:string,height:string,zIndex:string}}
- */
-export function snapshotGeometry(el) {
-  const cs = window.getComputedStyle(el);
-  const pick = (prop) => el.style[prop] || cs[prop];
-  return {
-    left: pick("left"),
-    top: pick("top"),
-    width: pick("width"),
-    height: pick("height"),
-    zIndex: pick("zIndex"),
-  };
-}
-
-/**
- * 按当前可见窗口自动切换顶栏菜单；没有可见窗口时回到「访达」。
- * @returns {void}
- */
-export function updateActiveAppMenu() {
-  const top = getTopWindow();
-  if (!top) {
-    updateMenu("访达");
-    setFocusedWindow(null);
-    return;
-  }
-  const rec = records.get(top);
-  const name = (rec && rec.name) || top.id;
-  if (name) updateMenu(name);
-  setFocusedWindow(top);
-}
-
-// ─────────────────────────────────────────────────────────────
-// 状态写入：把内部状态同步到 DOM 属性（样式与外部读取都看 DOM，不看私有字段）
-// ─────────────────────────────────────────────────────────────
-
-function syncState(el, rec) {
-  el.classList.toggle("wm-zoomed", !!rec.zoomed);
-  el.classList.toggle("wm-fullscreen", !!rec.fullscreen);
-  el.classList.toggle("wm-tiled", !!rec.tiled);
-  el.dataset.wmState = rec.fullscreen ? "fullscreen" : rec.zoomed ? "zoom" : rec.tiled ? `tile-${rec.tiled}` : "normal";
-  document.documentElement.classList.toggle("deskly-fullscreen", stack.some((w) => records.get(w) && records.get(w).fullscreen));
-}
-
-/** 用户手动改了几何（拖动 / 缩放 / center / frame setter）即宣告托管状态结束。 */
-function detachStates(rec, keepNormal) {
-  const el = rec.el;
-  if (rec.fullscreen) {
-    // 全屏必须一并脱开：detachStates 的两个调用点（center 与 el.winctl.frame setter）
-    // 都是「用户明确把窗口摆成普通尺寸」，漏掉这一位会留下三重错乱 ——
-    // 几何已是普通尺寸、rec.fullscreen 仍为 true、.wm-fullscreen 与
-    // <html>.deskly-fullscreen 都不摘（菜单栏与程序坞持续收起），
-    // 而下一次 resize 一看 rec.fullscreen 就 applyFrame(displayFrame())
-    // 把窗口弹回全屏。
-    rec.fullscreen = false;
-  }
-  if (rec.zoomed || rec.tiled) {
-    if (!keepNormal) rec.normal = frameOf(el);
-    rec.zoomed = false;
-    rec.tiled = null;
-  }
-  syncState(el, rec);
-}
-
-// ─────────────────────────────────────────────────────────────
-// 窗口操作（对外 API）
-// ─────────────────────────────────────────────────────────────
-
-/** 当前状态快照（插件与顶栏菜单据此决定菜单项文案与禁用态）。 */
-export function stateOf(target) {
-  const el = resolveWindow(target);
-  if (!el) return null;
-  const rec = records.get(el);
-  return {
-    el,
-    frame: frameOf(el),
-    normal: rec && rec.normal ? { ...rec.normal } : frameOf(el),
-    minimized: isMinimized(el),
-    zoomed: !!(rec && rec.zoomed),
-    fullscreen: !!(rec && rec.fullscreen),
-    tiled: (rec && rec.tiled) || null,
-    resizable: !el.classList.contains("no-resize"),
-    active: el.classList.contains("is-active"),
-  };
-}
-
-/**
- * 缩放（macOS 绿键的默认动作）：在「用户框架」与「填充可视区」之间切换。
+ * 缩放（macOS ⌥点绿键的动作）：在「用户框架」与「填充可视区」之间切换。
  * @param {HTMLElement|string} target
  * @param {{animate?: boolean, on?: boolean}} [opts] on 显式指定目标态
  * @returns {boolean} 切换后的状态
@@ -480,16 +338,16 @@ export function stateOf(target) {
 export function setZoom(target, opts = {}) {
   const el = resolveWindow(target);
   if (!el) return false;
+  if (inSplit(el)) exitSplit(el);   // 分屏中缩放 = 先移回桌面（macOS：窗口离开分屏空间）
   const rec = manage(el);
   const animate = opts.animate !== false;
   const want = typeof opts.on === "boolean" ? opts.on : !rec.zoomed && !rec.tiled;
   if (rec.fullscreen) {
     // 全屏窗口上点绿键只退出全屏（macOS 全屏态根本没有可用的绿键）。
-    // 不提前 return 的话，退出后 want 仍为 true，会顺手再缩放到可视区 ——
-    // 用户看到的是一次点击跳两格。
     exitFullscreen(el, { animate });
     return false;
   }
+  if (want && !canZoomOrTile(el)) return false;   // WAPI-02：能力位真拦截
   if (!want) {
     if (!rec.zoomed && !rec.tiled) return false;
     const back = rec.normal || frameOf(el);
@@ -497,6 +355,7 @@ export function setZoom(target, opts = {}) {
     rec.tiled = null;
     applyFrame(el, back, { animate });
     syncState(el, rec);
+    emitWindowEvent("zoom", el);
     return false;
   }
   if (!rec.normal) rec.normal = frameOf(el);
@@ -505,6 +364,7 @@ export function setZoom(target, opts = {}) {
   applyFrame(el, zoomFrame(el), { animate });
   syncState(el, rec);
   focusWindow(el);
+  emitWindowEvent("zoom", el);
   return true;
 }
 
@@ -525,6 +385,9 @@ export function setFullscreen(target, opts = {}) {
   const rec = manage(el);
   const want = typeof opts.on === "boolean" ? opts.on : !rec.fullscreen;
   if (want) {
+    // WAPI-02：maximizable:false 的窗口连 ⌃⌘F 与菜单命令也进不了全屏
+    if (capsOf(el).maximizable === false) return false;
+    if (inSplit(el)) exitSplit(el);  // 分屏成员进全屏 = 离开分屏空间
     if (!rec.normal) rec.normal = frameOf(el);
     rec.fullscreen = true;
     rec.zoomed = false;
@@ -544,9 +407,10 @@ function exitFullscreen(el, opts = {}) {
   rec.fullscreen = false;
   applyFrame(el, rec.normal || frameOf(el), { animate: opts.animate !== false });
   syncState(el, rec);
+  emitWindowEvent("fullscreen", el);
 }
 
-/** 兼容旧名：⌃⌘F 与绿键 ⌥ 点击 = 全屏切换。 */
+/** 兼容旧名：⌃⌘F 与绿键单击 = 全屏切换。 */
 export function toggleFullscreen(el, animate = true) {
   return setFullscreen(el, { animate });
 }
@@ -560,20 +424,21 @@ export function toggleFullscreen(el, animate = true) {
 export function tile(target, region) {
   const el = resolveWindow(target);
   if (!el) return false;
+  if (!canZoomOrTile(el)) return false;   // WAPI-02：能力位真拦截
+  if (inSplit(el)) exitSplit(el);         // 分屏成员平铺 = 先移回桌面
   const rec = manage(el);
   const f = tileFrame(region, { el });
   if (!f) return false;
   if (rec.fullscreen) exitFullscreen(el, { animate: false });
-  // 只在「既不平铺也不缩放」时记用户框：已在这两种状态里就该保住最初那份普通框，
-  // 连续平铺左→右再 untile 才能回到用户自己的位置，而不是回到上一个半屏。
-  // （旧条件里还有一个 !rec._tileAnchor —— 那个字段全仓从未被赋值过，恒为真，
-  // 是纯粹的死条件，已删。）
+  // 只在「既不平铺也不缩放」时记用户框：保住最初那份普通框，
+  // 连续平铺左→右再 untile 才能回到用户位置，而不是上一个半屏。
   if (!rec.tiled && !rec.zoomed) rec.normal = frameOf(el);
   rec.zoomed = false;
   rec.tiled = region;
   applyFrame(el, f, { animate: true });
   syncState(el, rec);
   focusWindow(el);
+  emitWindowEvent("tile", el);
   return true;
 }
 
@@ -588,12 +453,14 @@ export function untile(target) {
   if (rec.fullscreen) exitFullscreen(el, { animate: false });
   applyFrame(el, rec.normal, { animate: true });
   syncState(el, rec);
+  emitWindowEvent("tile", el);
   return true;
 }
 
 /**
  * 居中放置：限制在可视桌面区内，尺寸超出时贴边而不是推到负坐标。
  * 第二个及以后的同尺寸窗口按 macOS 的层叠（cascade）错开，而不是精确压在同一处。
+ * WAPI-01：完成标记统一写 el._wmPlaced（applyConfig 读的是这里）。
  * @param {HTMLElement} el 窗口
  * @param {{animate?: boolean, cascade?: boolean}} [opts]
  */
@@ -615,13 +482,11 @@ export function center(el, opts = {}) {
     }
     const clamped = clampDrag(x, y, { w, h });
     applyFrame(el, { x: clamped.x, y: clamped.y, w, h }, { animate });
+    el._wmPlaced = true;
     const rec = records.get(el);
     if (rec) {
       rec.normal = frameOf(el);
-      rec._wmPlaced = true;
       detachStates(rec, true);
-    } else {
-      el._wmPlaced = true;
     }
   };
   set();
@@ -653,609 +518,220 @@ export function setResizable(el, resizable) {
 }
 
 /**
- * 最小化到程序坞（ genie 语义：吸入该应用的 Dock 图标）。
- * @param {HTMLElement} el
- * @param {boolean} [minimize=true] false 即还原
- * @returns {void}
+ * 逐维写回几何： undefined / 空串 表示「这个维度不动」，还原快照时靠它跳过缺项。
+ * 兼容旧签名 setWindowPosition(win, left, top, width, height, zIndex)，值原样落内联样式。
+ * WAPI-06：z 参数不入焦点栈、下一次 commitStack 即被覆盖，语义是虚假的 ——
+ * 保留兼容但首次调用时 warn 一次，调用方应改用 focusWindow / setLevel。
+ * @param {HTMLElement} el 窗口
+ * @param {{x?:number|string,y?:number|string,w?:number|string,h?:number|string,z?:number|string}} g
  */
-export function setMinimized(el, minimize = true) {
-  if (!el) return;
-  const rec = manage(el);
-  const name = (rec && rec.name) || el.id;
-  const dock = window.__dock;
-  if (minimize) {
-    el._minimized = true;
-    import("./wm/genie-capture.js")
-      .then((m) => m.cancelWarmWindow(el))
-      .catch(() => {});
-    if (dock && dock.minimizeToDock) dock.minimizeToDock(el, name);
-    else el.classList.add("minimized");
-    const i = stack.indexOf(el);
-    if (i >= 0) stack.splice(i, 1);
-    commitStack();
-    updateActiveAppMenu();
-  } else {
-    restore(el);
-  }
-}
-
-/** 还原（从程序坞吐出）。 */
-export function restore(el) {
-  // setMinimized 有这道判空，还原路径此前没有：传 null 时下面直接读 el.id 就抛。
-  if (!el) return;
-  const rec = records.get(el);
-  const name = (rec && rec.name) || el.id;
-  const dock = window.__dock;
-  clearTimeout(el._hideTimer);
-  el._hideTimer = null;
-  el._minimized = false;
-  el.style.display = "";
-  el.classList.remove("minimized");
-  if (dock && dock.restoreFromDock) dock.restoreFromDock(el, name);
-  else focusWindow(el, name);
-  if (!stack.includes(el)) pushStack(el);
-  commitStack();
-  updateActiveAppMenu();
-}
-
-/** 兼容旧名。 */
-export function toggleMinimize(el) {
-  setMinimized(el, !isMinimized(el));
-}
-
-/**
- * 关闭窗口：淡出结束后摘除 DOM 并释放应用资源。
- * 幂等：红灯 / 强制退出 / 菜单命令可能叠着调用，第二次直接忽略。
- * @param {HTMLElement} el
- * @returns {void}
- */
-export function close(el) {
-  if (!el || !el.isConnected) return;
-  // 没被接管过的窗口（插件自己注入、或注入后还没走到 resetWindowListeners）
-  // 先接管再关：否则这里会静默 return，用户看到的就是「点了红灯没反应」。
-  const rec = manage(el);
-  if (!rec || rec.closing) return;
-  rec.closing = true;
-  // 关闭优先于入场：提前按停上浮并摘掉隐藏态，淡出动画才能正常跑。
-  cancelOpenAnimation(el);
-  import("./wm/genie-capture.js")
-    .then((m) => m.cancelWarmWindow(el))
-    .catch(() => {});
-  if (el._wmRevealAnim) {
-    el._wmRevealAnim.cancel();
-    el._wmRevealAnim = null;
-  }
-  let done = false;
-  const name = rec.name || el.id;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    el.removeEventListener("animationend", onAnimEnd);
-    clearTimeout(fallback);
-    release(el);
-    el.remove();
-    commitStack();
-    releaseResources(el, name, rec);
-    updateActiveAppMenu();
-    if (window.__dock && typeof window.__dock.syncRunningApps === "function") {
-      window.__dock.syncRunningApps();
-    }
+let zParamWarned = false;
+export function setGeometry(el, g) {
+  if (!el || !g) return;
+  const put = (prop, val) => {
+    if (val === undefined || val === "" || val === null) return;
+    el.style[prop] = typeof val === "number" ? `${val}px` : String(val);
   };
-  const onAnimEnd = (e) => { if (e.target === el) finish(); };
-  el.classList.add("closing");
-  el.addEventListener("animationend", onAnimEnd);
-  const fallback = setTimeout(finish, CLOSE_FALLBACK_MS);
+  put("left", g.x);
+  put("top", g.y);
+  put("width", g.w);
+  put("height", g.h);
+  if (g.z !== undefined && g.z !== "" && g.z !== null) {
+    if (!zParamWarned) {
+      zParamWarned = true;
+      console.warn("[wm] setGeometry 的 z 参数不改变焦点栈（会被 commitStack 覆盖），请改用 focusWindow / setLevel");
+    }
+    el.style.zIndex = String(g.z);
+  }
+  const rec = records.get(el);
+  if (rec && !rec.mode) rec.normal = frameOf(el);
 }
 
 /**
- * 关闭后的资源释放：插件走 plugin-manager.unloadApp（按存活窗口引用计数），
- * 旧式 App 移除其脚本与样式表。
+ * 记录窗口当前几何（供会话快照一类的调用方存盘）。
+ * WAPI-11：全仓零调用的死接口，下线前先发一次 deprecate warn 观察一个版本。
  */
-function releaseResources(el, name, rec) {
-  const pid = el.dataset.pluginId;
-  if (pid) {
-    const appId = el.dataset.appId || pid;
-    import("./plugin-manager.js").then(({ unloadApp }) => {
-      try { unloadApp(pid, appId); } catch (err) { console.warn("[wm] 卸载插件失败:", pid, err); }
-    }).catch((err) => console.warn("[wm] 插件管理器不可用:", err));
-  } else {
-    const s = document.querySelector(`script[app="${name}"]`);
-    if (s) s.remove();
-    const link = document.querySelector(`link[app-css="${name}"]`);
-    if (link) link.remove();
+let snapshotWarned = false;
+export function snapshotGeometry(el) {
+  if (!snapshotWarned) {
+    snapshotWarned = true;
+    console.warn("[wm] snapshotGeometry 已废弃，将在下一版本移除（请改用 stateOf(el).frame）");
   }
-  if (rec.light) rec.light.classList.remove("on");
-  if (window.appStatus && name) window.appStatus[name] = false;
+  const cs = window.getComputedStyle(el);
+  const pick = (prop) => el.style[prop] || cs[prop];
+  return {
+    left: pick("left"),
+    top: pick("top"),
+    width: pick("width"),
+    height: pick("height"),
+    zIndex: pick("zIndex"),
+  };
 }
 
-// ─────────────────────────────────────────────────────────────
-// 交互：拖动 / 八向缩放
-// ─────────────────────────────────────────────────────────────
+// ── NW-4 / NW-5 / NW-9 的内核侧入口（Deskly.windows 经 os-api 再包权限） ──
 
-/** 命中即不视为标题栏空白的控件清单（沿用旧内核里踩过的坑：shadow 宿主、系统设置外壳类）。 */
-const INTERACTIVE = ".wintools, .resizer, input, textarea, select, button, swift-input, swift-switch, a, label, .finder-no-drag, [contenteditable=\"true\"], .ss-switch, .ss-segmented, .ss-dropdown, .ss-menu, .ss-cards, .ss-swatches, .ss-radio, .ss-btn, .ss-input, .ss-slider, .ss-search, .ss-table";
+/** 设置层级（normal / floating / panel；modal 仅模态子窗自动获得）。 */
+export function setLevel(el, level) {
+  const target = resolveWindow(el);
+  return target ? stackSetLevel(target, level) : false;
+}
 
-/** 缩放键位 -> CSS 光标名（样式表负责落到 .window 与其子树）。 */
-const EDGE_CURSOR = {
-  n: "ns", s: "ns", e: "ew", w: "ew",
-  nw: "nwse", se: "nwse", ne: "nesw", sw: "nesw",
+/** NW-5：红绿灯动作自定义回调。回调返回 false 即拦截默认动作。 */
+export function setWindowActions(el, handlers = {}) {
+  const rec = records.get(el);
+  if (!rec) return false;
+  rec.actions = { ...(rec.actions || {}), ...handlers };
+  return true;
+}
+
+/** NW-9：可取消关闭的 handler 登记（null 即摘除）。 */
+export function setWindowOnClose(el, handler) {
+  const rec = records.get(el);
+  if (!rec) return false;
+  rec.onClose = typeof handler === "function" ? handler : null;
+  return true;
+}
+
+/**
+ * NW-7 多窗口的实例 id 分配：首个窗口用基名（Dock 对账与收藏都以它为准），
+ * 基名被占时才追加 #2、#3… 实例后缀。
+ * @param {string} base 应用窗口基名（manifest.windowName || 显示名）
+ * @returns {string}
+ */
+export function nextWindowId(base) {
+  // 判占用的同时核对回读 id：测试替身/异常元素不算占用（浏览器里 getElementById
+  // 命中即同 id，此检查与浏览器语义等价，只多一层防御）。
+  const taken = (id) => {
+    const hit = document.getElementById(id);
+    return !!hit && hit.id === id;
+  };
+  if (!taken(base)) return base;
+  let n = 2;
+  while (taken(`${base}#${n}`)) n += 1;
+  return `${base}#${n}`;
+}
+
+// ── 绿键「窗口排列」菜单与红绿灯接管 ──
+
+/**
+ * 菜单平铺示意图标（受控 SVG 常量，TL-04；currentColor 跟随菜单文字色）。
+ * 一律 16px viewBox，左列 16px 图标列由 contextMenu 的 .menu-icon 承担。
+ */
+const MENU_ICON = {
+  fill: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor"/><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" opacity=".5"/></svg>',
+  center: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="5" y="4" width="6" height="8" rx="1" fill="currentColor"/></svg>',
+  left: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="2.5" y="2.5" width="5.5" height="11" rx="1" fill="currentColor"/></svg>',
+  right: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="8" y="2.5" width="5.5" height="11" rx="1" fill="currentColor"/></svg>',
+  top: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="2.5" y="2.5" width="11" height="5" rx="1" fill="currentColor"/></svg>',
+  bottom: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="2.5" y="8.5" width="11" height="5" rx="1" fill="currentColor"/></svg>',
+  leftTop: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="2.5" y="2.5" width="5.5" height="5" rx="1" fill="currentColor"/></svg>',
+  rightTop: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="8" y="2.5" width="5.5" height="5" rx="1" fill="currentColor"/></svg>',
+  leftBottom: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="2.5" y="8.5" width="5.5" height="5" rx="1" fill="currentColor"/></svg>',
+  rightBottom: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor" opacity=".45"/><rect x="8" y="8.5" width="5.5" height="5" rx="1" fill="currentColor"/></svg>',
+  fullscreen: '<svg viewBox="0 0 16 16"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" fill="none" stroke="currentColor" stroke-linecap="round"/></svg>',
+  splitLeft: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor"/><rect x="2.5" y="2.5" width="5" height="11" rx="1" fill="currentColor" opacity=".6"/></svg>',
+  splitRight: '<svg viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="13" height="13" rx="2" fill="none" stroke="currentColor"/><rect x="8.5" y="2.5" width="5" height="11" rx="1" fill="currentColor" opacity=".6"/></svg>',
+  arrangeLR: '<svg viewBox="0 0 16 16"><rect x="1" y="3" width="6.5" height="10" rx="1" fill="currentColor" opacity=".85"/><rect x="8.5" y="3" width="6.5" height="10" rx="1" fill="currentColor" opacity=".45"/></svg>',
+  arrangeRL: '<svg viewBox="0 0 16 16"><rect x="1" y="3" width="6.5" height="10" rx="1" fill="currentColor" opacity=".45"/><rect x="8.5" y="3" width="6.5" height="10" rx="1" fill="currentColor" opacity=".85"/></svg>',
+  quads: '<svg viewBox="0 0 16 16"><rect x="1" y="2" width="6.5" height="5.5" rx="1" fill="currentColor" opacity=".85"/><rect x="8.5" y="2" width="6.5" height="5.5" rx="1" fill="currentColor" opacity=".45"/><rect x="1" y="8.5" width="6.5" height="5.5" rx="1" fill="currentColor" opacity=".45"/><rect x="8.5" y="8.5" width="6.5" height="5.5" rx="1" fill="currentColor" opacity=".85"/></svg>',
 };
 
-/**
- * 指针是不是压在「真正在用的滚动条」上。
- * 右/下边的缩放带和滚动条是同一批像素（macOS 的边框在内容之外，这里没法照抄）：
- * 只要祖先可滚就放行缩放，会把访达列表、记事本正文的滚动条整个吃掉；
- * 反过来只要祖先可滚就拒绝缩放，又会让窗口左右两边根本缩不动
- * —— 判据必须是「指针落在该元素的滚动条槽里」，而不是「这里有滚动容器」。
- * @param {Element} target 按下命中的元素
- * @param {HTMLElement} el 窗口根
- * @param {"x"|"y"} axis 缩放方向涉及的滚动轴
- * @param {number} cx 指针视口横坐标
- * @param {number} cy 指针视口纵坐标
- * @returns {boolean}
- */
-function overScrollbar(target, el, axis, cx, cy) {
-  const GUTTER = 16;   //  macOS 悬浮滚动条 +  classic 滚动条的宽度上限
-  let n = target;
-  while (n && n !== el) {
-    const cs = window.getComputedStyle(n);
-    const o = axis === "y" ? cs.overflowY : cs.overflowX;
-    if (o === "auto" || o === "scroll") {
-      const overflow = axis === "y"
-        ? n.scrollHeight > n.clientHeight + 1
-        : n.scrollWidth > n.clientWidth + 1;
-      if (overflow) {
-        const r = n.getBoundingClientRect();
-        // 垂直滚动条占元素右缘，水平滚动条占下缘
-        if (axis === "y" ? cx >= r.right - GUTTER : cy >= r.bottom - GUTTER) return true;
-      }
-    }
-    n = n.parentElement;
+/** NW-5：onAction 自定义回调；返回 false 即拦截默认动作。抛错视为不拦。 */
+function runAction(rec, name, detail) {
+  const fn = rec.actions && rec.actions[name];
+  if (typeof fn !== "function") return undefined;
+  try { return fn(detail); } catch (err) {
+    console.warn(`[wm] onAction.${name} 抛错，按不拦截处理:`, err);
+    return undefined;
   }
-  return false;
 }
 
 /**
- * 缩放带要让位的控件（比拖动排除表窄得多，这是有意的）。
- *
- * 缩放命中区只有边框那 6px，而 macOS 的边框在内容之外、这里没法照抄，
- * 只能做取舍：按下落在窗口最外圈 6px 时，边框赢过内容。
- * 用宽表（含 button / a / label）的后果实测就是「左右两边根本缩不动」——
- * Safari 网页内容、访达列表项正好铺到窗口边缘，缩放全部被当成点内容吃掉。
- * 留下让位的只有：真的需要按下才能输入/编辑的控件、红绿灯、插件自带的老手柄。
+ * 绿键的「窗口排列」菜单（macOS 15 三段式：移动与调整大小 / 填充与排列 / 全屏幕）。
+ * 全屏幕是二级菜单（整个屏幕 / 屏幕左侧 / 屏幕右侧）；⌥ 按住时出多窗口排列项（TL-09）。
+ * 分屏中的窗口只给「将窗口移到桌面」（macOS 分屏态绿键菜单语义，FS-04）。
  */
-const RESIZE_EXCLUDES = ".wintools, input, textarea, select, swift-input, swift-switch, [contenteditable=\"true\"], .ss-switch, .ss-slider, .ss-search, .ss-input, .resizer";
-
-/** 缩放带能不能接管这次按下。 */
-function resizeBlocked(target, el, edge, cx, cy) {
-  // 插件自带的老式右下角手柄：它自己就是缩放控件，不能让自己的排除表把它挡掉
-  if (target.closest && target.closest(".resizer")) return false;
-  if (target.closest && target.closest(RESIZE_EXCLUDES)) return true;
-  if (/[ns]/.test(edge) && overScrollbar(target, el, "y", cx, cy)) return true;
-  if (/[ew]/.test(edge) && overScrollbar(target, el, "x", cx, cy)) return true;
-  return false;
-}
-
-/**
- * 该点是否落在「真的在滚」的纵向滚动容器里。
- * 顶部带兜底要把这个手势还给内容，否则列表/正文就拖不动了。
- */
-function insideScroller(target, el) {
-  let n = target;
-  while (n && n !== el) {
-    const cs = window.getComputedStyle(n);
-    if (cs.overflowY === "auto" || cs.overflowY === "scroll") {
-      if (n.scrollHeight > n.clientHeight + 1) return true;
-    }
-    n = n.parentElement;
-  }
-  return false;
-}
-
-/**
- * 拖动区判定：标题栏优先；标题栏没认领、或窗口根本没有标题栏时，
- * 退回「顶部灯区带」；声明 draggable:false 的窗口完全不可拖。
- * @param {object} rec 窗口记录
- * @param {PointerEvent} e
- * @returns {boolean}
- */
-function inDragZone(rec, e) {
-  const el = rec.el;
-  if (el.dataset.wmDraggable === "false") return false;
-  if (e.target.closest && e.target.closest(INTERACTIVE)) return false;
-  // 一个窗口可以有多条标题栏（App Store 的 .as-titlebar + .as-toolbar 都算），
-  // 只认 querySelector 的第一个会让第二条拖不动。
-  const bars = el.querySelectorAll("[data-titlebar]");
-  for (const bar of bars) {
-    if (bar.contains(e.target)) return true;
-  }
-  // 走到这里有两种情况：窗口没有标题栏元素，或标题栏被应用自己的样式做成了
-  // 不可交互的装饰条（pointer-events:none —— 系统设置的 .ss-titlebar、
-  // App Store 的 .as-titlebar 都是这么写的，于是整扇窗口一点都拖不动）。
-  // macOS 的观感里窗口顶部那一条本来就是标题栏，所以按顶部带兜底；
-  // 真正在滚的容器把 gesture 还给内容，避免「想滚列表却把窗口拖走」。
-  const f = frameOf(el);
-  if (e.clientY - f.y > bandOf(el)) return false;
-  return !insideScroller(e.target, el);
-}
-
-/** 顶部可拖带高：无标题栏元素的窗口用，跟着红绿灯的实际位置走。 */
-function bandOf(el) {
-  const lights = getTrafficLights(el);
-  if (!lights) return TITLE_BAND;
-  const f = frameOf(el);
-  const r = lights.getBoundingClientRect();
-  if (!r.height) return TITLE_BAND;
-  // frame 用的是 y（不是 top）：写成 f.top 会得到 NaN，整个顶部带判定静默失效
-  return Math.max(TITLE_BAND, Math.min(TITLE_BAND_MAX, r.bottom - f.y + 8));
-}
-
-/** 平铺预览层（游离元素，拖动期间才挂在 body 上）。 */
-let preview = null;
-function showPreview(frame, z) {
-  if (!preview) {
-    preview = document.createElement("div");
-    preview.id = "deskly-tile-preview";
-    preview.setAttribute("aria-hidden", "true");
-  }
-  if (!preview.isConnected) document.body.appendChild(preview);
-  preview.style.zIndex = String(Math.max(WINDOW_Z_MIN - 1, z - 1));
-  preview.style.left = `${Math.round(frame.x)}px`;
-  preview.style.top = `${Math.round(frame.y)}px`;
-  preview.style.width = `${Math.round(frame.w)}px`;
-  preview.style.height = `${Math.round(frame.h)}px`;
-}
-function hidePreview() {
-  if (preview && preview.isConnected) preview.remove();
-}
-
-/**
- * 缩放边带：窗口根上的 8 个透明 div（四边 + 四角）。
- *
- * 为什么不用「捕获阶段按坐标算命中区」那一套：Safari 的网页内容是 <iframe>，
- * 指针落在 iframe 上时，事件进的是 iframe 自己的文档，宿主页面连 pointerdown
- * 都收不到 —— 纯坐标判定的结果是 Safari 的左右两边永远缩不动（实测就是这样）。
- * 边带是宿主页面的元素，压在 iframe 之上，按下必定命中。
- *
- * 代价是边带会盖住贴边的内容（最典型是右侧滚动条），所以 hover 时做一次
- * 「底下到底是什么」的判定：滚动条槽、输入框、红绿灯在场就把这条边带让回去
- * （pointer-events:none），其余情况边框优先 —— 与 macOS 的观感一致。
- * @param {HTMLElement} el 窗口根
- */
-function ensureEdgeBands(el) {
-  if (el.querySelector(":scope > .wm-edge")) return;
-  ["n", "s", "w", "e", "nw", "ne", "sw", "se"].forEach((key) => {
-    const band = document.createElement("div");
-    band.className = `wm-edge wm-edge-${key}`;
-    band.dataset.wmEdge = key;
-    band.setAttribute("aria-hidden", "true");
-    el.appendChild(band);
-  });
-}
-
-/**
- * 边带此刻该不该让位。用 elementFromPoint 取「边带底下是什么」：
- * 临时给窗口挂 .wm-peeking（样式表把所有边带 pointer-events 关掉）再取，取完摘掉。
- * @param {HTMLElement} el 窗口根
- * @param {string} edge 边带键
- * @param {number} cx 指针横坐标
- * @param {number} cy 指针纵坐标
- * @returns {boolean} true = 让位给内容
- */
-function bandShouldYield(el, edge, cx, cy) {
-  el.classList.add("wm-peeking");
-  const under = document.elementFromPoint(cx, cy);
-  el.classList.remove("wm-peeking");
-  if (!under || under === el || !el.contains(under)) return false;
-  return resizeBlocked(under, el, edge, cx, cy);
-}
-
-/**
- * hover 时的让位刷新。
- * 只在「进了哪条边带」变化时做一次 elementFromPoint 判定，不逐像素算：
- * 边带只有 5px 宽，进出各一次足够，逐帧探测会每帧多一次强制布局。
- * @param {object} rec 窗口记录
- * @param {number} cx 指针横坐标
- * @param {number} cy 指针纵坐标
- */
-function syncBandYield(rec, cx, cy) {
-  const el = rec.el;
-  const edge = edgeAt(frameOf(el), cx, cy);
-  if (edge === rec.hoverEdge) return;
-  rec.hoverEdge = edge;
-  el.querySelectorAll(":scope > .wm-edge").forEach((band) => {
-    const key = band.dataset.wmEdge;
-    band.classList.toggle("blocked", !!edge && edge === key && bandShouldYield(el, key, cx, cy));
-  });
-}
-
-/**
- * 交互遮罩：拖动 / 缩放期间铺一层透明 div 盖住整页。
- * 没有它，指针一进内容里的 <iframe>（Safari 的整个网页面就是 iframe），
- * 事件就被那个文档吃掉，窗口拖到一半「断线」再也跟不上手。
- * 层级取「所有窗口之上、Dock 之下」（Z.MENU_FLOAT_MAX），期间的光标由它统一表达。
- */
-let shield = null;
-function installShield(cursorName) {
-  if (!shield) {
-    shield = document.createElement("div");
-    shield.id = "deskly-interaction-shield";
-    shield.setAttribute("aria-hidden", "true");
-  }
-  shield.style.cursor = cursorName ? `${cursorName}-resize` : "";
-  if (!shield.isConnected) document.body.appendChild(shield);
-  return shield;
-}
-function removeShield() {
-  if (shield && shield.isConnected) shield.remove();
-}
-
-/** 交互期间挂在 <html> 上的类：拖拽锁文字选中；缩放期间光标走遮罩的 inline cursor。 */
-function beginInteraction(kind, cursorName) {
-  const root = document.documentElement;
-  root.classList.remove("deskly-dragging", "deskly-resizing");
-  root.classList.add(kind === DRAG ? "deskly-dragging" : "deskly-resizing");
-  installShield(cursorName);
-}
-
-function endInteraction(rec) {
-  const root = document.documentElement;
-  rec.mode = null;
-  rec.grab = null;
-  rec.snap = null;
-  rec.hoverEdge = null;
-  hidePreview();
-  removeShield();
-  root.classList.remove("deskly-dragging", "deskly-resizing");
-}
-
-/**
- * 拖动/缩放结束后刷新快照。拖动只改位置，旧快照仍可复用；这里主要处理
- * 尺寸变化与吸附动画：原生截图可用时立即换新，不可用时重新排一次空闲预热。
- */
-function refreshGenieAfterGeometry(el, delay = 0, sizeChanged = false) {
-  const run = () => {
-    if (!el.isConnected) return;
-    import("./wm/genie-capture.js")
-      .then((m) => (sizeChanged ? m.geometryChanged(el) : m.refreshWindow(el)))
-      .catch(() => {});
-  };
-  if (delay > 0) setTimeout(run, delay);
-  else requestAnimationFrame(run);
-}
-
-/**
- * 统一的按下入口：边带 → 缩放，标题栏 → 拖动，其余只置顶取焦点。
- * 缩放不再靠坐标猜（那正是 iframe 场景下失效的根因）：命中窗口自己的边带元素即算。
- * 放在捕获阶段，是为了让边框压过内容自己绑的按下处理。
- * @param {object} rec
- */
-function bindInteractions(rec) {
-  const el = rec.el;
-
-  el.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || !el.isConnected || isMinimized(el)) return;
-    // 入场动画期间用户先按下了窗口：立即落到最终位置，避免位移和拖动抢同一个 top。
-    if (el._wmOpenAnim || el._wmOpenPending) cancelOpenAnimation(el);
-    const band = e.target.closest ? e.target.closest(".wm-edge") : null;
-    if (band && band.parentElement === el) {
-      startResize(rec, band.dataset.wmEdge, e);
-      return;
-    }
-    // 老插件自带的右下角 .resizer：继续当东南手柄用
-    if (e.target.closest && e.target.closest(".resizer")) {
-      startResize(rec, "se", e);
-      return;
-    }
-    if (inDragZone(rec, e)) {
-      // 双击标题栏 = 缩放（macOS 默认行为）。
-      // 这里自己数两次按下，而不是绑 dblclick：拖动起手会 preventDefault()，
-      // 兼容鼠标事件被整段抑制，dblclick 根本不会再派发（实测 dblclick 一次都不进）。
-      const now = performance.now();
-      const last = rec.lastTitleTap;
-      const isDouble = !!last && now - last.t < 400
-        && Math.abs(e.clientX - last.x) < 8 && Math.abs(e.clientY - last.y) < 8;
-      rec.lastTitleTap = isDouble ? null : { t: now, x: e.clientX, y: e.clientY };
-      if (isDouble) {
-        focusWindow(el);
-        if (!el.classList.contains("no-resize")) setZoom(el);
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-      startDrag(rec, e);
-      return;
-    }
-    // 点到内容也算「用了这个窗口」：置顶 + 活跃（红绿灯随之上色）
-    focusWindow(el);
-  }, true);
-
-  // hover：只在「进了哪条边带」变化时做一次让位判定（见 syncBandYield），不逐像素算
-  el.addEventListener("pointermove", (e) => {
-    if (rec.mode) return;
-    syncBandYield(rec, e.clientX, e.clientY);
-  });
-  el.addEventListener("pointerleave", () => {
-    if (rec.mode) return;
-    rec.hoverEdge = null;
-    el.querySelectorAll(":scope > .wm-edge.blocked").forEach((b) => b.classList.remove("blocked"));
-  });
-}
-
-/**
- * 拖动窗口。
- * 从缩放态 / 平铺态起手时先脱开（macOS：拖一个已缩放的窗口，它会缩回用户框架并跟住指针），
- * 脱开后指针仍落在标题栏内同一相对位置，不会出现「一按就跳走」。
- */
-function startDrag(rec, e) {
-  const el = rec.el;
-  if (rec.fullscreen) return;      // macOS：全屏窗口没有可拖的标题栏
-  focusWindow(el);
-
-  const before = frameOf(el);
-  rec.grab = { dx: e.clientX - before.x, dy: e.clientY - before.y };
-  rec.mode = DRAG;
-  rec.moved = false;
-  rec.start = { x: e.clientX, y: e.clientY };
-  // 缩放态 / 平铺态先记着，等「真的开始移动」那一刻才脱开 ——
-  // 在按下就还原的话，双击标题栏的第一击会把窗口缩回去，第二击又放大回去，
-  // 用户看到的是「双击没反应」（macOS 只在拖动时脱开，单击不动它）。
-  rec.pending = (rec.zoomed || rec.tiled) ? { normal: rec.normal || before } : null;
-  beginInteraction(DRAG, "");
-  e.preventDefault();
-  e.stopPropagation();
-
-  const move = (ev) => {
-    if (rec.mode !== DRAG || !el.isConnected) return finish();
-    if (!rec.moved && Math.abs(ev.clientX - rec.start.x) < 3 && Math.abs(ev.clientY - rec.start.y) < 3) return;
-    rec.moved = true;
-    if (rec.pending) {
-      const normal = rec.pending.normal;
-      rec.zoomed = false;
-      rec.tiled = null;
-      syncState(el, rec);
-      // 脱开后让指针落在标题栏内同一相对位置，窗口不会「跳」到别处
-      const rel = before.w > 0 ? (ev.clientX - before.x) / before.w : 0.5;
-      rec.grab = {
-        dx: Math.min(Math.max(normal.w * 0.12, normal.w * rel), normal.w - 20),
-        dy: Math.min(ev.clientY - before.y, 20),
-      };
-      const pos = clampDrag(ev.clientX - rec.grab.dx, ev.clientY - rec.grab.dy, { w: normal.w, h: normal.h });
-      applyFrame(el, clampFrame({ x: pos.x, y: pos.y, w: normal.w, h: normal.h }, limitsOf(el)));
-      rec.pending = null;
-    }
-    const f = frameOf(el);
-    const next = clampDrag(ev.clientX - rec.grab.dx, ev.clientY - rec.grab.dy, { w: f.w, h: f.h });
-    applyFrame(el, { x: next.x, y: next.y, w: f.w, h: f.h });
-    const zone = snapZoneAt(ev.clientX, ev.clientY);
-    if (zone) showPreview(zone.frame, parseInt(el.style.zIndex, 10) || WINDOW_Z_MIN);
-    else hidePreview();
-    rec.snap = zone;
-  };
-  function finish() {
-    document.removeEventListener("pointermove", move);
-    document.removeEventListener("pointerup", finish);
-    document.removeEventListener("pointercancel", finish);
-    window.removeEventListener("blur", finish);
-    if (rec.mode !== DRAG) return;
-    hidePreview();
-    const snapped = !!rec.snap;
-    const changed = rec.moved || snapped;
-    if (rec.snap) {
-      if (rec.snap.region === "zoom") setZoom(el, { on: true });
-      else tile(el, rec.snap.region);
-    } else if (rec.moved) {
-      rec.normal = frameOf(el);
-    }
-    rec.pending = null;
-    rec.moved = false;
-    endInteraction(rec);
-    if (changed) refreshGenieAfterGeometry(el, snapped ? WM_ANIM_MS : 0, snapped);
-  }
-  // 监听挂在 document：拖动途中指针会跑到遮罩上、别的窗口上、甚至浏览器外面，
-  // 挂在窗口自己身上会漏事件（旧实现的 mousemove 就是这么断线的）。
-  document.addEventListener("pointermove", move);
-  document.addEventListener("pointerup", finish);
-  document.addEventListener("pointercancel", finish);
-  // 在浏览器窗口外松开鼠标收不到 pointerup，不兜底就会留一只永远跟手的窗口
-  window.addEventListener("blur", finish);
-}
-
-/**
- * 沿某条边 / 角缩放：对侧边为锚点（macOS 行为），⌥ 锁宽高比，
- * 尺寸边界取窗口自己的 min / max（含 data-window 声明与插件 CSS）。
- */
-function startResize(rec, edge, e) {
-  const el = rec.el;
-  // 全屏窗口没有可缩的边框 —— 与 startDrag 同一道守卫。
-  // .wm-edge 已被样式表 pointer-events:none 挡掉（windowframe.css），
-  // 但插件自带的老式 .resizer 仍可达，不挡就会在「全屏」状态下被拉成普通尺寸，
-  // 而 rec.fullscreen 仍挂着 —— 正是 detachStates 那条漏掉全屏的同源错乱。
-  if (rec.fullscreen) return;
-  focusWindow(el);
-  // 手动缩放即接管框架：缩放态 / 平铺态直接结束，当前框成为新的用户框
-  if (rec.zoomed || rec.tiled) {
-    rec.zoomed = false;
-    rec.tiled = null;
-    syncState(el, rec);
-  }
-  const base = frameOf(el);
-  const limits = limitsOf(el);
-  const vf = visibleFrame();
-  // 抓取偏移：按下点通常落在边带中间（离真边框 2~3px），不记这个偏移的话，
-  // 一按下边缘就会瞬移到指针处，窗口会「跳」掉那两三像素。
-  const anchor = {
-    x: edge.includes("w") ? base.x : edge.includes("e") ? base.x + base.w : e.clientX,
-    y: edge.includes("n") ? base.y : edge.includes("s") ? base.y + base.h : e.clientY,
-  };
-  const off = { x: e.clientX - anchor.x, y: e.clientY - anchor.y };
-  rec.mode = RESIZE;
-  beginInteraction(RESIZE, EDGE_CURSOR[edge]);
-  e.preventDefault();
-  e.stopPropagation();
-
-  let changed = false;
-  const move = (ev) => {
-    if (rec.mode !== RESIZE || !el.isConnected) return finish();
-    changed = true;
-    const to = { x: ev.clientX - off.x, y: ev.clientY - off.y };
-    const next = resizeFrame(base, edge, to, limits, { keepAspect: ev.altKey });
-    // 左右下三边允许越出可视区（macOS 允许），但顶边不许钻进菜单栏底下，
-    // 并且始终留 40px 在屏内，否则窗口再也点不到。
-    next.x = Math.max(-next.w + RESIZE_KEEP_GRABBABLE, Math.min(next.x, window.innerWidth - RESIZE_KEEP_GRABBABLE));
-    next.y = Math.max(vf.top, Math.min(next.y, window.innerHeight - RESIZE_KEEP_TITLE));
-    next.w = Math.min(next.w, window.innerWidth + RESIZE_MAX_OVERFLOW);
-    next.h = Math.min(next.h, window.innerHeight - next.y);
-    applyFrame(el, next);
-  };
-  function finish() {
-    document.removeEventListener("pointermove", move);
-    document.removeEventListener("pointerup", finish);
-    document.removeEventListener("pointercancel", finish);
-    window.removeEventListener("blur", finish);
-    if (rec.mode !== RESIZE) return;
-    rec.normal = frameOf(el);
-    endInteraction(rec);
-    if (changed) refreshGenieAfterGeometry(el, 0, true);
-  }
-  document.addEventListener("pointermove", move);
-  document.addEventListener("pointerup", finish);
-  document.addEventListener("pointercancel", finish);
-  window.addEventListener("blur", finish);
-}
-
-/** 绿键的「窗口排列」菜单（macOS 悬停 / 右键同一张）。 */
 function windowMenuItems(rec) {
   const el = rec.el;
   const st = stateOf(el);
-  return [
-    { type: "header", label: i18n.t("window.arrangeHeader", "窗口排列") },
+  if (st.fullscreen === false && inSplit(el)) {
+    return [
+      { type: "header", label: i18n.t("window.fsGroup", "全屏幕") },
+      {
+        label: i18n.t("window.splitToDesktop", "将窗口移到桌面"),
+        icon: MENU_ICON.center,
+        action: () => exitSplit(el),
+      },
+    ];
+  }
+  const splitOn = !!splitState();
+  const fullscreenSub = [
     {
-      label: st.fullscreen ? i18n.t("window.exitFullscreen", "退出全屏") : i18n.t("window.enterFullscreen", "进入全屏"),
+      label: st.fullscreen ? i18n.t("window.exitFullscreen", "退出全屏") : i18n.t("window.fsEntire", "整个屏幕"),
+      icon: MENU_ICON.fullscreen,
       action: () => setFullscreen(el),
     },
     {
-      label: st.zoomed ? i18n.t("window.unzoom", "还原大小") : i18n.t("window.zoomFill", "缩放填充"),
-      action: () => setZoom(el),
+      label: i18n.t("window.fsLeft", "屏幕左侧"),
+      icon: MENU_ICON.splitLeft,
+      disabled: splitOn,
+      action: () => enterSplit(el, "left"),
     },
+    {
+      label: i18n.t("window.fsRight", "屏幕右侧"),
+      icon: MENU_ICON.splitRight,
+      disabled: splitOn,
+      action: () => enterSplit(el, "right"),
+    },
+  ];
+  return [
+    { type: "header", label: i18n.t("window.moveResize", "移动与调整大小") },
+    { label: st.zoomed ? i18n.t("window.unzoom", "还原大小") : i18n.t("window.fill", "填充"), icon: MENU_ICON.fill, action: () => setZoom(el) },
+    { label: i18n.t("window.center", "居中"), icon: MENU_ICON.center, action: () => center(el) },
     { type: "separator" },
-    { label: i18n.t("window.tileLeft", "平铺到左侧"), action: () => tile(el, "left") },
-    { label: i18n.t("window.tileRight", "平铺到右侧"), action: () => tile(el, "right") },
-    { label: i18n.t("window.tileTop", "平铺到上方"), action: () => tile(el, "top") },
-    { label: i18n.t("window.tileBottom", "平铺到下方"), action: () => tile(el, "bottom") },
+    { label: i18n.t("window.tileLeft", "平铺到左侧"), icon: MENU_ICON.left, action: () => tile(el, "left") },
+    { label: i18n.t("window.tileRight", "平铺到右侧"), icon: MENU_ICON.right, action: () => tile(el, "right") },
+    { label: i18n.t("window.tileTop", "平铺到上方"), icon: MENU_ICON.top, action: () => tile(el, "top") },
+    { label: i18n.t("window.tileBottom", "平铺到下方"), icon: MENU_ICON.bottom, action: () => tile(el, "bottom") },
+    { label: i18n.t("window.tileLeftTop", "左上角"), icon: MENU_ICON.leftTop, action: () => tile(el, "leftTop") },
+    { label: i18n.t("window.tileRightTop", "右上角"), icon: MENU_ICON.rightTop, action: () => tile(el, "rightTop") },
+    { label: i18n.t("window.tileLeftBottom", "左下角"), icon: MENU_ICON.leftBottom, action: () => tile(el, "leftBottom") },
+    { label: i18n.t("window.tileRightBottom", "右下角"), icon: MENU_ICON.rightBottom, action: () => tile(el, "rightBottom") },
+    { type: "header", label: i18n.t("window.fillArrange", "填充与排列"), altOnly: true },
+    { label: i18n.t("window.arrangeLR", "左侧与右侧"), icon: MENU_ICON.arrangeLR, altOnly: true, action: () => arrangePair(el, "left") },
+    { label: i18n.t("window.arrangeRL", "右侧与左侧"), icon: MENU_ICON.arrangeRL, altOnly: true, action: () => arrangePair(el, "right") },
+    { label: i18n.t("window.arrangeQuads", "四等分"), icon: MENU_ICON.quads, altOnly: true, action: () => arrangeQuads(el) },
     { type: "separator" },
-    { label: i18n.t("window.tileLeftTop", "左上角"), action: () => tile(el, "leftTop") },
-    { label: i18n.t("window.tileRightTop", "右上角"), action: () => tile(el, "rightTop") },
-    { label: i18n.t("window.tileLeftBottom", "左下角"), action: () => tile(el, "leftBottom") },
-    { label: i18n.t("window.tileRightBottom", "右下角"), action: () => tile(el, "rightBottom") },
-    { type: "separator" },
-    { label: i18n.t("window.center", "居中"), action: () => center(el) },
+    {
+      label: i18n.t("window.fsGroup", "全屏幕"),
+      icon: MENU_ICON.fullscreen,
+      hasSubmenu: true,
+      action: (x, y) => createContextMenu(x, y, fullscreenSub),
+    },
     {
       label: i18n.t("window.untile", "还原平铺前大小"),
       disabled: !(st.tiled || st.zoomed),
       action: () => untile(el),
     },
   ];
+}
+
+/**
+ * 「填充与排列」多窗口布局（TL-10）：取窗口栈次顶层参与排列。
+ * 左侧与右侧 = 活跃窗口占指定半屏，次顶层可见窗口占另一半。
+ */
+function arrangePair(el, side) {
+  const other = getVisibleWindows().find((w) => w !== el && w !== undefined);
+  tile(el, side);
+  if (other) tile(other, side === "left" ? "right" : "left");
+}
+
+/** 四等分：最近四扇可见窗口各占一角。 */
+function arrangeQuads(el) {
+  const wins = getVisibleWindows();
+  const ordered = [el, ...wins.filter((w) => w !== el)].slice(0, 4);
+  const regions = ["leftTop", "rightTop", "leftBottom", "rightBottom"];
+  ordered.forEach((w, i) => tile(w, regions[i]));
 }
 
 /**
@@ -1271,55 +747,108 @@ function showWindowMenu(rec, x, y) {
   rec.menu = null;
   const menu = createContextMenu(x, y, windowMenuItems(rec));
   rec.menu = menu;
-  // 悬停菜单要「移开就收」：离开灯区与菜单本体时关掉，模拟 macOS 的浮出面板
-  const close = () => {
+  // 悬停菜单要「移开就收」：离开灯区与菜单本体时关掉，模拟 macOS 的浮出面板（TL-06 收起 300ms）
+  const closeMenu = () => {
     if (rec.menu !== menu) return;
     rec.menu = null;
     if (menu.isConnected) menu.remove();
-    document.removeEventListener("click", close);
+    document.removeEventListener("click", closeMenu);
+    document.removeEventListener("keydown", onAlt, true);
+    document.removeEventListener("keyup", onAlt, true);
   };
-  menu.addEventListener("mouseleave", () => setTimeout(close, 160));
-  setTimeout(() => document.addEventListener("click", close, { once: true }), 0);
+  // TL-09：菜单打开期间按住 Option 出「填充与排列」多窗口项（实时切换，不重开菜单）
+  const onAlt = (e) => {
+    if (e.key !== "Alt") return;
+    if (!menu.isConnected) { closeMenu(); return; }
+    menu.classList.toggle("alt-down", e.type === "keydown");
+  };
+  document.addEventListener("keydown", onAlt, true);
+  document.addEventListener("keyup", onAlt, true);
+  menu.addEventListener("mouseleave", () => setTimeout(closeMenu, 300));
+  setTimeout(() => document.addEventListener("click", closeMenu, { once: true }), 0);
 }
 
 function bindTitleBarControls(rec) {
   const el = rec.el;
+  const conf = capsOf(el);
+  // NW-5：titlebar:"hidden" = 不挂标题栏元素、红绿灯退 overlay 悬浮、顶部带拖动保留
+  if (conf.titlebar === "hidden") {
+    el.querySelectorAll("[data-titlebar]").forEach((bar) => { bar.hidden = true; });
+    mountTrafficLights(el, { placement: "overlay" });
+  }
   let lights = getTrafficLights(el);
   if (!lights) lights = mountTrafficLights(el);
+  // trafficLights:"none" 时整组隐藏（保留菜单栏与 Dock 右键的关闭入口，防困住用户）
+  if (lights) lights.toggleAttribute("hidden", el._wmLightsMode === "none");
 
   // 组件形态：一颗监听接管三颗灯 + 悬停/右键排列菜单
   if (lights && !rec._lightsBound) {
     rec._lightsBound = true;
     el.addEventListener(ACTION_EVENT, (e) => {
       const detail = e.detail || {};
-      if (detail.action === "close") close(el);
-      else if (detail.action === "minimize") setMinimized(el, !isMinimized(el));
-      else if (detail.action === "zoom") {
-        if (detail.altKey || detail.metaKey) setFullscreen(el);
-        else setZoom(el);
+      if (detail.action === "close") {
+        if (runAction(rec, "close", detail) === false) return;
+        close(el);
+      } else if (detail.action === "minimize") {
+        if (runAction(rec, "minimize", detail) === false) return;
+        setMinimized(el, !isMinimized(el));
+      } else if (detail.action === "zoom") {
+        if (runAction(rec, "zoom", detail) === false) return;
+        // 长按已弹菜单：这一次 click 只是手指抬起，不执行默认的全屏
+        if (rec.zoomPressMenu) { rec.zoomPressMenu = false; return; }
+        // 分屏中点绿键 = 将窗口移到桌面（FS-04：本侧回用户框，对侧升独占全屏）
+        if (inSplit(el) && !records.get(el)?.fullscreen) { exitSplit(el); return; }
+        // macOS 15 口径：单击绿键 = 全屏，⌥/⌘ 单击 = 缩放（TL-03 / FS-01）
+        if (detail.altKey || detail.metaKey) setZoom(el);
+        else setFullscreen(el);
       } else if (detail.action === "arrange") {
         showWindowMenu(rec, detail.clientX, detail.clientY);
       }
     });
-    // 悬停绿键 = macOS 15 的窗口排列入口。禁用位（对话框 / no-zoom）不弹。
-    lights.addEventListener("pointerenter", () => {
-      import("./wm/genie-capture.js")
-        .then((m) => m.refreshWindow(el))
-        .catch(() => {});
-      const zoomOff = lights.hasAttribute("no-zoom") || lights.getAttribute("variant") === "dialog"
-        || lights.classList.contains("inactive");
-      if (zoomOff) return;
-      clearTimeout(rec.hoverTimer);
-      rec.hoverTimer = setTimeout(() => {
-        if (rec.mode || rec.menu) return;
+    // TL-02：悬停弹菜单的热区只有绿键（组件对 zoom dot 单独上报 ZOOM_HOVER_EVENT）。
+    // TL-16：菜单锚定绿键正下方（组件上报绿键 rect）。
+    el.addEventListener(ZOOM_HOVER_EVENT, (e) => {
+      const hovering = !!(e.detail && e.detail.hovering);
+      if (hovering) {
+        import("./wm/genie-capture.js")
+          .then((m) => m.refreshWindow(el))
+          .catch(() => {});
+        const zoomOff = lights.hasAttribute("no-zoom") || lights.getAttribute("variant") === "dialog"
+          || lights.classList.contains("inactive");
+        if (zoomOff) return;
+        clearTimeout(rec.hoverTimer);
+        rec.hoverTimer = setTimeout(() => {
+          if (rec.mode || rec.menu) return;
+          const r = (e.detail && e.detail.rect) || lights.getBoundingClientRect();
+          showWindowMenu(rec, r.left, r.bottom + 6);
+        }, HOVER_MENU_DELAY);
+      } else {
+        clearTimeout(rec.hoverTimer);
+        rec.hoverTimer = null;
+      }
+    });
+    // TL-16：长按绿键 ≥500ms 视同悬停，直接弹出窗口菜单；随后的 click 被吞掉，
+    // 不会顺带把窗口送进全屏（macOS 的长按菜单就是「只看菜单、不执行默认动作」）。
+    lights.addEventListener("pointerdown", (e) => {
+      const dot = e.target && e.target.classList && e.target.classList.contains("green");
+      if (!dot) return;
+      if (lights.hasAttribute("no-zoom") || lights.getAttribute("variant") === "dialog"
+        || lights.classList.contains("inactive")) return;
+      clearTimeout(rec.pressTimer);
+      rec.pressTimer = setTimeout(() => {
+        rec.pressTimer = null;
+        rec.zoomPressMenu = true;
         const r = lights.getBoundingClientRect();
         showWindowMenu(rec, r.left, r.bottom + 6);
-      }, HOVER_MENU_DELAY);
+      }, 500);
     });
-    lights.addEventListener("pointerleave", () => {
-      clearTimeout(rec.hoverTimer);
-      rec.hoverTimer = null;
-    });
+    const cancelPress = () => {
+      clearTimeout(rec.pressTimer);
+      rec.pressTimer = null;
+    };
+    lights.addEventListener("pointerup", cancelPress);
+    lights.addEventListener("pointerleave", cancelPress);
+    lights.addEventListener("pointercancel", cancelPress);
   }
 
   // 旧标记形态（第三方 ZIP 手写 .red/.yellow/.green）继续可用
@@ -1341,7 +870,8 @@ function bindTitleBarControls(rec) {
   }
   if (green && !rec._zoomBound) {
     rec._zoomBound = true;
-    green.addEventListener("click", (e) => (e.altKey ? setFullscreen(el) : setZoom(el)));
+    // macOS 15 口径：单击 = 全屏，⌥ 单击 = 缩放（TL-03 / FS-01）
+    green.addEventListener("click", (e) => (e.altKey ? setZoom(el) : setFullscreen(el)));
     green.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1349,226 +879,35 @@ function bindTitleBarControls(rec) {
     });
   }
 
-  // 双击标题栏缩放的判定已上移到按下入口（bindInteractions）：
+  // 双击标题栏缩放的判定已上移到按下入口（wm/interactions.js）：
   // 拖动起手的 preventDefault() 会抑制兼容鼠标事件，绑在这里的 dblclick 永远不触发。
 }
 
-// ─────────────────────────────────────────────────────────────
-// 开窗入场
-// ─────────────────────────────────────────────────────────────
+// ── 一次性全局装配 ──
 
 /**
- * 在窗口刚插入 DOM、尚未完成尺寸/居中时先藏起来。
- *
- * 调用点必须是「insertAdjacentHTML 之后、任何 await 之前」：浏览器在任务结束后
- * 就有一次绘制机会，默认 .window 的 680×570 与未居中位置会先被画出来，
- * 等 window-manager 算完真实几何再跳过去，就是用户看到的打开瞬间错位。
- * 这里加的类由 ui.css 定义为 visibility:hidden + animation:none，不改变布局。
- * @param {HTMLElement|null} el 新窗口根元素
- * @returns {void}
+ * 视口变化重排（init 与探针共用）：状态窗口跟着重算框架，普通窗口拉回可视区内。
+ * NW-2 / WAPI-13：fixed 窗不参与强制回拉（通知窗/固定面板的语义）。
+ * 必须合帧：拖浏览器边缘时 Chrome 连续派发 resize，回调里每扇窗口 frameOf() 紧跟
+ * applyFrame() 等于每帧每窗一次强制同步布局 —— 一个 rAF 里只重算一次。
  */
-export function prepareOpen(el) {
-  if (!el || !el.classList || el.classList.contains("closing")) return;
-  el._wmOpenPending = true;
-  el.classList.add("wm-preparing");
-  // 兜底：后面的装载步骤若抛错，窗口不能永久不可见。
-  clearTimeout(el._wmOpenFallback);
-  el._wmOpenFallback = setTimeout(() => revealOpen(el), OPEN_REVEAL_FALLBACK_MS);
-}
-
-/** 取消入场（用户提前操作 / 窗口被关闭时调用），立即恢复可见并停掉位移动画。 */
-export function cancelOpenAnimation(el) {
-  if (!el) return;
-  el._wmOpenPending = false;
-  el._wmOpenRevealing = false;
-  clearTimeout(el._wmOpenFallback);
-  el._wmOpenFallback = null;
-  if (el.classList) el.classList.remove("wm-preparing");
-  if (el._wmOpenAnim) {
-    el._wmOpenAnim.cancel();
-    el._wmOpenAnim = null;
-  }
-}
-
-/**
- * 显示新窗口并播放入场。
- *
- * 不能只等固定两帧：插件脚本求值期间主线程会被占住，`center()` 的二次校准
- * 与插件的 `Deskly.windows.configure` 都可能晚于脚本 load 才落到 DOM 上。
- * 这里逐帧读几何，连续 2 帧不变（最多等 12 帧）才显示；于是计算器这类
- * 「init 时按模式复述高度」的应用不会先以基础尺寸出现再跳一次。
- * 超时仍显示，保证任何情况下窗口都不会被永久藏住。
- * @param {HTMLElement|null} el 新窗口根元素
- * @returns {void}
- */
-export function revealOpen(el) {
-  if (!el || !el._wmOpenPending || el._wmOpenRevealing) return;
-  el._wmOpenRevealing = true;
-  let last = "";
-  let stable = 0;
-  let frames = 0;
-  const step = () => {
-    if (!el._wmOpenPending || !el.isConnected) {
-      el._wmOpenRevealing = false;
-      return;
-    }
+export function relayoutOnResize() {
+  stack.forEach((el) => {
+    const rec = records.get(el);
+    if (!rec || !el.isConnected) return;
+    if (el._wmFixed) return;   // NW-2：固定定位窗豁免强制回拉
     const f = frameOf(el);
-    const sig = `${Math.round(f.x)},${Math.round(f.y)},${Math.round(f.w)},${Math.round(f.h)}`;
-    stable = sig === last ? stable + 1 : 0;
-    last = sig;
-    frames += 1;
-    if (stable < OPEN_SETTLE_FRAMES && frames < OPEN_SETTLE_MAX_FRAMES) {
-      requestAnimationFrame(step);
-      return;
+    if (rec.fullscreen) applyFrame(el, displayFrame());
+    else if (rec.zoomed) applyFrame(el, zoomFrame(el));
+    else if (rec.tiled) applyFrame(el, tileFrame(rec.tiled, { el }));
+    else {
+      const pos = clampDrag(f.x, f.y, { w: f.w, h: f.h });
+      if (pos.x !== f.x || pos.y !== f.y) applyFrame(el, { ...f, ...pos });
+      rec.normal = frameOf(el);
     }
-    el._wmOpenPending = false;
-    el._wmOpenRevealing = false;
-    clearTimeout(el._wmOpenFallback);
-    el._wmOpenFallback = null;
-    el.classList.remove("wm-preparing");
-    playOpenMotion(el);
-    // 通知程序坞：窗口这一刻才真正可见，加载弹跳到这里停（见 dock.syncRunningApps）。
-    if (window.__dock && typeof window.__dock.syncRunningApps === "function") {
-      window.__dock.syncRunningApps();
-    }
-    import("./wm/genie-capture.js")
-      .then((m) => m.warmWindow(el))
-      .catch(() => {});
-  };
-  requestAnimationFrame(step);
+  });
 }
 
-/** 实际的位移：读完最终框架后从下方 10px 起笔，结束时落回内联样式里的最终值。 */
-function playOpenMotion(el) {
-  // 减少动态效果：站内开关与系统偏好任一开启都不加位移，只保留 CSS 的淡入
-  // （main.css 已把站内开关下的 .window animation 关掉）。
-  if (document.documentElement.dataset.reduceMotion === "on") return;
-  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  if (typeof el.animate !== "function") return;
-  const f = frameOf(el);
-  const anim = el.animate(
-    [{ top: `${f.y + OPEN_RISE}px` }, { top: `${f.y}px` }],
-    { duration: OPEN_ANIM_MS, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-  );
-  el._wmOpenAnim = anim;
-  anim.addEventListener("finish", () => {
-    if (el._wmOpenAnim === anim) el._wmOpenAnim = null;
-  }, { once: true });
-}
-
-// ─────────────────────────────────────────────────────────────
-// 接管与全局初始化
-// ─────────────────────────────────────────────────────────────
-
-/**
- * 接管一个窗口（幂等）。plugin-manager 注入界面后调用，等价于旧名 resetWindowListeners。
- * @param {HTMLElement} el 窗口根元素
- * @param {{name?: string, light?: HTMLElement|null, kernel?: object}} [opts]
- * @returns {object|null} 窗口记录
- */
-export function manage(el, opts = {}) {
-  if (!isWindowElement(el)) return null;
-  let rec = records.get(el);
-  if (rec) {
-    // 名字永远以窗口自己的 id 为准（本项目约定：窗口 id 就是应用显示名）。
-    // 旧实现允许调用方把 name 覆写进来，多窗口场景下会把别人的窗口写成
-    // 本次装载的应用名，顶栏菜单随之串台。
-    if (el.id) rec.name = el.id;
-    if (opts.light) rec.light = opts.light;
-    return rec;
-  }
-  rec = {
-    el,
-    name: el.id || opts.name || "",
-    light: opts.light || null,
-    normal: null,
-    zoomed: false,
-    fullscreen: false,
-    tiled: null,
-    mode: null,
-    grab: null,
-    snap: null,
-    closing: false,
-    hoverTimer: null,
-    menu: null,
-  };
-  records.set(el, rec);
-  if (opts.kernel) el._wmKernelConf = opts.kernel;
-  else if (el._wmKernelConf) opts.kernel = el._wmKernelConf;
-
-  applyConfig(el, opts.kernel || {});
-  ensureEdgeBands(el);
-  bindInteractions(rec);
-  bindTitleBarControls(rec);
-  installElementApi(el, rec);
-
-  if (!stack.includes(el)) pushStack(el);
-  commitStack();
-  syncState(el, rec);
-  if (typeof el.dataset.appName !== "string" && rec.name) el.dataset.appName = rec.name;
-  return rec;
-}
-
-/**
- * 释放一个窗口的托管：出栈、收掉悬停菜单、重算全屏态外壳类。
- * 调用方（关闭流程 / DOM 摘除观察器）之后自己再 commitStack，这里不动层级。
- */
-export function release(el) {
-  const i = stack.indexOf(el);
-  if (i >= 0) stack.splice(i, 1);
-  const rec = records.get(el);
-  if (rec) {
-    clearTimeout(rec.hoverTimer);
-    rec.hoverTimer = null;
-    if (rec.menu && rec.menu.isConnected) rec.menu.remove();
-    rec.menu = null;
-  }
-  document.documentElement.classList.toggle("deskly-fullscreen", stack.some((w) => {
-    const r = records.get(w);
-    return r && r.fullscreen;
-  }));
-}
-
-/**
- * 元素侧 API：`el.winctl.close()`。
- * 同时保留历史私有钩子（`el._closeWindow` 等）为同一批函数的别名 ——
- * 已发布的 ZIP 插件按这些名字调过窗口，删掉就是静默失效，留着也只是六行引用。
- */
-function installElementApi(el, rec) {
-  const ctl = {
-    get state() { return stateOf(el); },
-    close: () => close(el),
-    minimize: () => setMinimized(el, true),
-    restore: () => restore(el),
-    toggleMinimize: () => setMinimized(el, !isMinimized(el)),
-    zoom: (on) => setZoom(el, { on }),
-    toggleZoom: () => toggleZoom(el),
-    fullscreen: (on) => setFullscreen(el, { on }),
-    toggleFullscreen: () => toggleFullscreen(el),
-    tile: (region) => tile(el, region),
-    untile: () => untile(el),
-    center: (o) => center(el, o),
-    focus: () => focusWindow(el),
-    configure: (conf) => configure(el, conf),
-    resize: (on) => setResizable(el, on !== false),
-    get frame() { return frameOf(el); },
-    set frame(f) {
-      rec.normal = { ...f };
-      detachStates(rec, true);
-      applyFrame(el, clampFrame(f, limitsOf(el)), { animate: true });
-    },
-  };
-  Object.defineProperty(el, "winctl", { value: Object.freeze(ctl), configurable: true, enumerable: false });
-  el._closeWindow = ctl.close;
-  el._toggleMinimizeWindow = ctl.toggleMinimize;
-  el._toggleStretchWindow = ctl.toggleZoom;
-  el._toggleFullscreenWindow = ctl.toggleFullscreen;
-  el._tileWindow = ctl.tile;
-  el._untileWindow = ctl.untile;
-  el._showArrangeMenu = (x, y) => showWindowMenu(rec, x, y);
-}
-
-/** 一次性全局装配：DOM 摘除跟随、视口变化重算、快捷键。 */
 let initialized = false;
 export function init() {
   if (initialized) return;
@@ -1591,39 +930,63 @@ export function init() {
   });
   observer.observe(document.body, { childList: true });
 
-  // 视口变化：状态窗口跟着重算框架，普通窗口拉回可视区内。
-  // 必须合帧：拖浏览器边缘时 Chrome 是连续派发 resize 的，而回调里每扇窗口都要
-  // frameOf()（getBoundingClientRect 读）紧跟 applyFrame()（四个内联写）——
-  // 读写交织等于每帧每窗一次强制同步布局，N 扇窗口就是 N 次，这是拖窗口时
-  // 最直接的掉帧来源。一个 rAF 里只重算一次。
   let resizeQueued = false;
-  const relayoutOnResize = () => {
-    resizeQueued = false;
-    stack.forEach((el) => {
-      const rec = records.get(el);
-      if (!rec || !el.isConnected) return;
-      const f = frameOf(el);
-      if (rec.fullscreen) applyFrame(el, displayFrame());
-      else if (rec.zoomed) applyFrame(el, zoomFrame(el));
-      else if (rec.tiled) applyFrame(el, tileFrame(rec.tiled, { el }));
-      else {
-        const pos = clampDrag(f.x, f.y, { w: f.w, h: f.h });
-        if (pos.x !== f.x || pos.y !== f.y) applyFrame(el, { ...f, ...pos });
-        rec.normal = frameOf(el);
-      }
-    });
-    hidePreview();
-  };
   window.addEventListener("resize", () => {
     if (resizeQueued) return;
     resizeQueued = true;
-    requestAnimationFrame(relayoutOnResize);
+    requestAnimationFrame(() => { relayoutOnResize(); relayoutSplit(); });
   });
 
-  // ⌃⌘F：进入 / 退出全屏（与 macOS 一致）。
-  // ⌘W / ⌘M 刻意不绑：本项目是浏览器新标签页扩展，这两个是浏览器保留快捷键，
-  // 页面既收不到也拦不住 —— 真去绑会变成「关窗口的同时把标签页也关了」。
+  // 窗口调度快捷键族：
+  // - ⌃⌘F 全屏（macOS 一致，原有）；Esc 退出全屏 / 分屏移回桌面；
+  // - ⌃←/⌃→ 在全屏伪空间序列中轮换（FS-03）；
+  // - ⌃↑ 窗口总览（FS-06）；
+  // - ⌃⌥←/→/↑/↓ 半屏平铺、⌃⌥⏎ 填充、⌃⌥C 居中、⌃⌥R 还原（Fn-Control-* 的浏览器可落等价键，FS-10）。
+  // ⌘W / ⌘M 刻意不绑：本项目是浏览器新标签页扩展，这两个是浏览器保留快捷键。
   document.addEventListener("keydown", (e) => {
+    const root = document.documentElement;
+    if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      if (!root.classList.contains("deskly-fullscreen")) return;
+      // 菜单开着时 Esc 归菜单（contextMenu 自己监听 Esc）
+      if (document.querySelector("div.menu.contextmenu")) return;
+      const top = getTopWindow();
+      if (!top) return;
+      const rec = records.get(top);
+      if (rec && rec.fullscreen) { e.preventDefault(); setFullscreen(top, { on: false }); }
+      else if (inSplit(top)) { e.preventDefault(); exitSplit(top); }
+      return;
+    }
+    if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      if (!root.classList.contains("deskly-fullscreen")) return;
+      e.preventDefault();
+      cycleSpaces(e.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
+    if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === "ArrowUp") {
+      e.preventDefault();
+      overview.toggle();
+      return;
+    }
+    if (e.ctrlKey && e.altKey && !e.metaKey) {
+      const top = getTopWindow();
+      if (!top) return;
+      const k = e.key;
+      if (k === "ArrowLeft" || k === "ArrowRight" || k === "ArrowUp" || k === "ArrowDown") {
+        e.preventDefault();
+        tile(top, { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "top", ArrowDown: "bottom" }[k]);
+      } else if (k === "Enter") {
+        e.preventDefault();
+        setZoom(top, { on: true });
+      } else if ((k || "").toLowerCase() === "c") {
+        e.preventDefault();
+        center(top);
+      } else if ((k || "").toLowerCase() === "r") {
+        e.preventDefault();
+        untile(top);
+      }
+      return;
+    }
+    // ⌃⌘F：进入 / 退出全屏。能力位在 setFullscreen 里真拦截。
     if (!e.metaKey || !e.ctrlKey) return;
     if ((e.key || "").toLowerCase() !== "f") return;
     const top = getTopWindow();
@@ -1644,5 +1007,87 @@ export function init() {
     root.classList.toggle("deskly-dock-reveal", (vf.bottom > 0 && atBottom) || (vf.left > 0 && atLeft) || (vf.right > 0 && atRight));
   });
 }
+
+// ── 求值期接线：facade → 各内核层的注入与事件 detail 契约 ──
+
+bindLifecycleHooks({ manage, restore });
+bindOps({
+  applyConfig,
+  bindTitleBarControls,
+  setZoom,
+  setFullscreen,
+  tile,
+  untile,
+  center,
+  configure,
+  setResizable,
+  setLevel,
+  showArrangeMenu: showWindowMenu,
+});
+bindWindowOps({ setZoom, tile });
+
+setWindowDetailProvider((el) => ({
+  id: el.id || null,
+  appId: (el.dataset && el.dataset.appId) || null,
+  pluginId: (el.dataset && el.dataset.pluginId) || null,
+  frame: frameOf(el),
+  state: stateOf(el),
+}));
+
+// 内核侧只读引用（与 window.__dock 同一风格）：finderbar 的 FS-12/13 菜单文案
+// 需要同步读顶层窗口状态，动态 import 是异步的，菜单渲染等不起。
+window.__wmApi = Object.freeze({
+  getTopWindow,
+  stateOf,
+  getVisibleWindows,
+  // FS-03 补充：菜单栏「窗口」菜单要列出当前全屏空间里的窗口
+  spacesList: () => stack
+    .filter((w) => w.isConnected && records.get(w) && records.get(w).fullscreen)
+    .map((w) => ({ id: w.id, name: records.get(w).name || w.id, focused: w === getTopWindow() })),
+  focusWindowById: (id) => {
+    const w = document.getElementById(id);
+    if (w) focusWindow(w);
+  },
+});
+
+// ── 系统动作注册（聚焦搜索可检索的窗口调度命令） ──
+// 与键盘快捷键同一批执行体；已存在的 hideActiveApp / showAll 在聚焦侧保留，不重复定义。
+import { registerSystemAction } from "./system-actions.js";
+registerSystemAction({
+  id: "window.toggleFullscreen",
+  label: "进入/退出全屏幕",
+  sub: "窗口",
+  group: "window",
+  aliases: ["fullscreen", "full screen", "全屏", "全屏幕", "⌃⌘F"],
+  available: () => !!getTopWindow(),
+  run: () => { const top = getTopWindow(); if (top) setFullscreen(top); },
+});
+registerSystemAction({
+  id: "window.showOverview",
+  label: "窗口总览",
+  sub: "窗口",
+  group: "window",
+  aliases: ["overview", "mission control", "expose", "调度中心", "总览", "⌃↑"],
+  available: () => getVisibleWindows().length > 0,
+  run: () => overview.toggle(),
+});
+registerSystemAction({
+  id: "window.nextSpace",
+  label: "切换到下一个全屏空间",
+  sub: "窗口",
+  group: "window",
+  aliases: ["next space", "previous space", "空间轮换", "全屏切换", "⌃→", "⌃←"],
+  available: () => document.documentElement.classList.contains("deskly-fullscreen"),
+  run: () => cycleSpaces(1),
+});
+registerSystemAction({
+  id: "window.tileLeftRight",
+  label: "平铺到左侧/右侧",
+  sub: "窗口",
+  group: "window",
+  aliases: ["tile", "平铺", "分屏", "snap", "⌃⌥←", "⌃⌥→"],
+  available: () => !!getTopWindow(),
+  run: () => { const top = getTopWindow(); if (top) tile(top, "left"); },
+});
 
 init();

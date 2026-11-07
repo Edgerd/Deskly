@@ -37,10 +37,10 @@ let _viewYear = 0;
 let _viewMonth = 0;
 // 选中日期（默认今天），格式 {y, m, d}
 let _selected = null;
-// 面板 DOM 元素
 let _panelEl = null;
-// 是否已打开
 let _isOpen = false;
+/** 开/关序号：同帧 show→hide 时作废在途的 rAF 显示回调（BUG-13）。 */
+let _openSeq = 0;
 // 当前锚点元素（用于定位）
 let _anchorEl = null;
 // 语言变更重建监听（init 可能多次调用，用它做幂等，避免重复注册）
@@ -54,7 +54,6 @@ const _boundAnchors = new WeakSet();
 
 // 星期名称（短名），顺序固定从周日开始，渲染时会按周起始日旋转
 const WEEKDAY_SHORT = ["日", "一", "二", "三", "四", "五", "六"];
-// 月份全名
 const MONTH_FULL = [
     "一月", "二月", "三月", "四月", "五月", "六月",
     "七月", "八月", "九月", "十月", "十一月", "十二月",
@@ -87,24 +86,15 @@ const _dayTitle = (t) =>
         .replace("{d}", String(t.d));
 const _weekdayTitle = (w) => i18n.t("datetime.weekdayFormat", "星期{w}").replace("{w}", String(w));
 
-/**
- * 获取今天的日期信息 {y, m, d}
- */
 function _getToday() {
     const now = new Date();
     return { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
 }
 
-/**
- * 判断两个日期对象是否同一天
- */
 function _isSameDay(a, b) {
     return a && b && a.y === b.y && a.m === b.m && a.d === b.d;
 }
 
-/**
- * 返回指定年月的第一天是星期几（0-6）以及该月总天数
- */
 function _getMonthMeta(year, month) {
     const firstDay = new Date(year, month, 1).getDay();
     const totalDays = new Date(year, month + 1, 0).getDate();
@@ -222,7 +212,6 @@ function _ensurePanel() {
     }
     panel.appendChild(grid);
 
-    // 分隔线
     const sep = document.createElement("div");
     sep.className = "dtp-sep";
     panel.appendChild(sep);
@@ -240,15 +229,11 @@ function _ensurePanel() {
     _panelEl = panel;
 }
 
-/**
- * 渲染月份标题与日期网格
- */
 function _render() {
     _ensurePanel();
     const today = _getToday();
     if (!_selected) _selected = { ...today };
 
-    // 标题
     const titleEl = document.getElementById("dtp-title");
     if (titleEl) {
         titleEl.textContent = _monthTitle(_viewYear, _viewMonth);
@@ -258,7 +243,6 @@ function _render() {
     const start = weekStart();
     // 起始偏移：让该月第一天对齐正确的列
     const offset = ((firstDay - start) % 7 + 7) % 7;
-    // 上月天数
     const prevTotal = new Date(_viewYear, _viewMonth, 0).getDate();
 
     const gridEl = document.getElementById("dtp-grid");
@@ -352,10 +336,7 @@ function _positionTo(anchor) {
     _panelEl.style.top = `${top}px`;
 }
 
-/**
- * 打开日历面板
- * @param {HTMLElement} anchor  锚点元素，用于定位
- */
+/** @param {HTMLElement} anchor 锚点元素，用于定位 */
 export function openPopover(anchor) {
     _ensurePanel();
     if (_isOpen) return;
@@ -373,29 +354,26 @@ export function openPopover(anchor) {
     _updateFooter();
     _positionTo(anchor);
 
-    // 触发显示动画
+    // 触发显示动画（序号守卫：同帧 show→hide 时 rAF 不得把 open 加回，BUG-13）
+    const seq = ++_openSeq;
     requestAnimationFrame(() => {
+        if (seq !== _openSeq || !_panelEl) return;
         _panelEl.classList.add("open");
     });
     _isOpen = true;
     _attachGlobalClose();
 }
 
-/**
- * 关闭日历面板
- */
 export function closePopover() {
     if (!_isOpen || !_panelEl) return;
+    _openSeq += 1; // 作废在途的 rAF 回调
     _panelEl.classList.remove("open");
     _isOpen = false;
     _detachGlobalClose();
     // 动画结束后不隐藏 DOM（方便下次淡入），仅保留隐藏状态
 }
 
-/**
- * 切换面板显示
- * @param {HTMLElement} anchor 锚点元素
- */
+/** @param {HTMLElement} anchor 锚点元素 */
 export function togglePopover(anchor) {
     if (_isOpen) closePopover();
     else openPopover(anchor);

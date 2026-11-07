@@ -29,7 +29,7 @@ import { i18n } from "./i18n.js";
 import { Z } from "./zindex.js";
 import { dispatchMenuCommand } from "./ui/menuCommands.js";
 
-// ========== SVG 图标库（内联，避免外链依赖） ==========
+// ── SVG 图标库（内联，避免外链依赖） ──
 const SVG = {
   // 菜单栏控制中心图标（两排开关形状）
   controlcenter: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="9" height="5" rx="2.5"/><rect x="2" y="16" width="6" height="5" rx="2.5"/><circle cx="7" cy="5.5" r="1.5"/><rect x="13" y="3" width="9" height="5" rx="2.5"/><circle cx="17.5" cy="5.5" r="1.5"/><rect x="16" y="16" width="6" height="5" rx="2.5"/><circle cx="19" cy="18.5" r="1.5"/></svg>`,
@@ -90,9 +90,12 @@ const SVG = {
 
   // 隐私条右侧箭头（chevron-right，替代误用的控制中心主图标）
   chevronRight: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+
+  // 锁定屏幕（挂锁）
+  lock: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="4.5" y="10" width="15" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/></svg>`,
 };
 
-// ========== 默认状态（localStorage 存储键前缀） ==========
+// ── 默认状态（localStorage 存储键前缀） ──
 const STORAGE_KEY = "webstartos_controlcenter";
 /** 菜单栏图标显隐的存储槽（= 设置项 controlcenter.showInMenuBar 的推导槽名）。 */
 const MENU_BAR_SLOT = "controlcenter-showInMenuBar";
@@ -126,7 +129,7 @@ const DEFAULT_STATE = {
   },
 };
 
-// ========== 模块变量 ==========
+// ── 模块变量 ──
 let state = { ...DEFAULT_STATE };
 let panelEl = null;
 /** 当前二级详情视图（null = 主视图）；点 Wi-Fi/蓝牙等卡片进入，返回时清空。 */
@@ -137,7 +140,6 @@ let finderbarEl = null;
 // 菜单栏图标是否占位（由 controlcenter.showInMenuBar 驱动，默认显示）
 let menuBarIconVisible = true;
 
-// i18n 简写
 const t = (key, fallback) => i18n.t(key, fallback);
 
 /**
@@ -153,7 +155,7 @@ function escapeText(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => map[ch]);
 }
 
-// ========== 设置字段表（设置中枢注册定义的唯一来源） ==========
+// ── 设置字段表（设置中枢注册定义的唯一来源） ──
 /**
  * 控制中心卡片与开关的状态字段，一条一个开关；`path` 是值在
  * webstartos_controlcenter JSON 槽里的路径，`default` 逐项取自 DEFAULT_STATE，
@@ -210,7 +212,6 @@ const CARD_ACTION = {
 /** 开飞行模式后要一并断掉的无线连接与镜像字段（与 macOS 的联动一致）。 */
 const AIRPLANE_LINKED = ["wifi", "bluetooth", "airdrop", "mirroring"];
 
-/** 读点号路径当前值。 */
 function readPath(obj, path) {
   return path.split(".").reduce((acc, part) => (acc && typeof acc === "object" ? acc[part] : undefined), obj);
 }
@@ -259,7 +260,7 @@ function normalizeFieldValue(path, value) {
   return text;
 }
 
-// ========== 存储读写 ==========
+// ── 存储读写 ──
 /**
  * 本模块的日志出口：优先写运行记录（可按 kernel/controlcenter 检索），
  * log.js 尚未加载时退回 console —— 站内 console.* 已被 log.js 接管，
@@ -311,7 +312,7 @@ function saveState() {
   }
 }
 
-// ========== 状态广播（供外部监听） ==========
+// ── 状态广播（供外部监听） ──
 function notifyChange(key, value) {
   document.dispatchEvent(new CustomEvent("controlcenter-change", { detail: { key, value } }));
 }
@@ -359,7 +360,7 @@ function applyAirplaneInterlock(path, value) {
   }
 }
 
-// ========== 控制中心面板构建 ==========
+// ── 控制中心面板构建 ──
 function createPanel() {
   if (panelEl) return panelEl;
 
@@ -425,9 +426,9 @@ function renderPanel() {
       </div>
     </div>`;
 
-  // 第二行：Stage Manager / Screen Mirroring 小卡
+  // 第二行：Stage Manager / Screen Mirroring / 锁定屏幕 小卡（锁定走真功能，与菜单栏同一条链路）
   const stageRow = `
-    <div class="cc-grid" style="margin-top:8px">
+    <div class="cc-grid" style="margin-top:8px;grid-template-columns:1fr 1fr 1fr">
       <div class="cc-card cc-small-card" data-action="stage" role="button" tabindex="0"
            aria-label="${escapeText(t("controlcenter.stageManager", "台前调度"))}" aria-pressed="${stageOn ? "true" : "false"}">
         <div class="cc-small-icon ${stageOn ? "active" : ""}" aria-hidden="true">${SVG.stage}</div>
@@ -438,6 +439,11 @@ function renderPanel() {
         <div class="cc-small-icon" aria-hidden="true">${SVG.mirroring}</div>
         <div class="cc-small-title">${escapeText(t("controlcenter.screenMirroring", "屏幕镜像"))}</div>
         <div class="cc-small-sub">${escapeText(unavailable)}</div>
+      </div>
+      <div class="cc-card cc-small-card" data-action="lockscreen" role="button" tabindex="0"
+           aria-label="${escapeText(t("controlcenter.lockScreen", "锁定屏幕"))}">
+        <div class="cc-small-icon" aria-hidden="true">${SVG.lock}</div>
+        <div class="cc-small-title">${escapeText(t("controlcenter.lockScreen", "锁定屏幕"))}</div>
       </div>
     </div>`;
 
@@ -472,7 +478,6 @@ function renderPanel() {
     el.addEventListener("click", () => openDetail(el.getAttribute("data-action")));
   });
 
-  // 隐私条点击
   const privacyBar = panelEl.querySelector(".cc-privacy-bar");
   if (privacyBar) {
     privacyBar.addEventListener("click", () => openSettingsPane("privacy"));
@@ -486,6 +491,7 @@ function renderPanel() {
     el.addEventListener("click", () => {
       const action = el.getAttribute("data-action");
       if (action === "stage") handleCardAction(action);
+      else if (action === "lockscreen") lockFromControlCenter();
       else openDetail(action);
     });
   });
@@ -501,7 +507,7 @@ function renderPanel() {
   bindSliders();
 }
 
-// ========== 连通性行（左大蓝圆 + 右标题/副标题） ==========
+// ── 连通性行（左大蓝圆 + 右标题/副标题） ──
 /**
  * @param {string} action 动作/详情标识
  * @param {string} iconSvg 图标
@@ -524,7 +530,7 @@ function renderConnRow(action, iconSvg, active, title, sub, opts = {}) {
     </div>`;
 }
 
-// ========== 滑块渲染（macOS 15：小标题 + 左大圆 + 轨道 + 右小圆，无 head 标签行） ==========
+// ── 滑块渲染（macOS 15：小标题 + 左大圆 + 轨道 + 右小圆，无 head 标签行） ──
 function renderSlider(key, label, leftIconSvg, value, muted, rightBtnSvg) {
   const pct = Math.round(value * 100);
   const mutedClass = muted ? "cc-slider-icon-muted" : "";
@@ -546,7 +552,7 @@ function renderSlider(key, label, leftIconSvg, value, muted, rightBtnSvg) {
     </div>`;
 }
 
-// ========== 滑块拖拽（模块级单例委托） ==========
+// ── 滑块拖拽（模块级单例委托） ──
 // 原实现每次 renderPanel → bindSliders 都会为每个滑块重新绑定 window 级
 // mousemove/mouseup，旧监听从不移除 → 监听器与旧面板 DOM 引用无限累积泄漏。
 // 现改为全局唯一的拖拽状态 + window 监听各绑定一次，拖动中只更新 UI 与广播，
@@ -573,7 +579,7 @@ window.addEventListener("mouseup", () => {
     }
 });
 
-// ========== 滑块拖拽绑定 ==========
+// ── 滑块拖拽绑定 ──
 function bindSliders() {
   panelEl.querySelectorAll(".cc-slider-card").forEach((card) => {
     const key = card.getAttribute("data-slider");
@@ -635,12 +641,17 @@ function applySliderValue(key, ratio, persist = true) {
   if (!persist) {
     state[path] = value;
     if (key === "display") applyDisplayBrightness();
-    else if (value > 0.01 && state.volumeMuted) state.volumeMuted = false;
+    else if (value > 0.01 && state.volumeMuted) {
+      state.volumeMuted = false;
+      // 记下「拖动中已解静音」：松手时 state.volumeMuted 已是 false，
+      // 只按当前值判断就永远提交不到 sound.muted（旧版持久化分支从未执行）。
+      if (sliderDrag) sliderDrag.unmuted = true;
+    }
     notifyChange(path, value);
     return;
   }
   // 拖动结束时把音量从静音里救出来（与旧的直接改状态行为一致）
-  if (key === "volume" && value > 0.01 && state.volumeMuted) {
+  if (key === "volume" && value > 0.01 && (state.volumeMuted || (sliderDrag && sliderDrag.unmuted))) {
     commitToSettings("sound.muted", "volumeMuted", false);
   }
   commitToSettings(PATH_TO_KEY.get(path), path, value);
@@ -662,8 +673,11 @@ function applyDisplayBrightness() {
       // 统一层级表里的压暗层：曾经是 2147483646，把 contextMenu 的
       // 「全页最高 z-index + 1」一路顶到 INT_MAX，随后又被 zindex.js 封顶
       // 拉回 9499，右键菜单因此会被 Dock 盖住。
+      //
+      // 纯黑压层不需要 mix-blend-mode：multiply 对纯黑是数学恒等（任何色乘黑得黑），
+      // 而页面里一旦出现 mix-blend-mode 元素，Chromium 会让 backdrop-filter 采样失效，
+      // 设置窗口侧栏的毛玻璃会整块退化成平色 —— 所以这里只用普通 alpha 合成。
       zIndex: String(Z.BRIGHTNESS),
-      mixBlendMode: "multiply",
     });
     overlay.classList.add("os-overlay");
     document.body.appendChild(overlay);
@@ -672,7 +686,7 @@ function applyDisplayBrightness() {
   overlay.style.opacity = String(Math.max(0, 1 - b) * 0.55);
 }
 
-// ========== 卡片点击处理 ==========
+// ── 卡片点击处理 ──
 // 所有卡片开关都经设置中枢写入：中枢落盘后回调 setValue() 生效并广播，
 // 于是「控制中心」与「系统设置」面板共用一份状态，永远不会各写各的。
 function handleCardAction(action) {
@@ -681,16 +695,16 @@ function handleCardAction(action) {
   commitToSettings(PATH_TO_KEY.get(path), path, !readPath(state, path));
 }
 
-// ========== 台前调度实现（窗口层级模式切换示意） ==========
+// ── 台前调度：唯一改动点（FS-05）——开关落到 wm/stage-manager.js 的真实现 ──
+// 桌面图标淡出逻辑已迁入 stage-manager（按 desktop.stage.showDesktopItems 决定）。
+// 动态 import 只为把模块拉进依赖图，不做样式热补丁。
 function applyStageManager() {
-  const desktop = document.getElementById("desktop");
-  if (!desktop) return;
-  // 只切 class：样式在 assets/stylesheets/main/desktop.css（.desktop.stage-manager-on .item）。
-  // 此前这里还写了一个 --stage-enabled 自定义属性，全仓库没有任何消费者，属于只写不读的假状态。
-  desktop.classList.toggle("stage-manager-on", !!state.stage);
+  import("./wm/stage-manager.js")
+    .then((m) => m.setEnabled(!!state.stage))
+    .catch((err) => console.warn("[controlcenter] 台前调度模块不可用:", err));
 }
 
-// ========== 正在播放：只认真实在播的页面媒体 ==========
+// ── 正在播放：只认真实在播的页面媒体 ──
 /**
  * 找出页面里正在播放的 <audio>/<video>。
  * 只扫描主文档：插件在自己的 iframe 里，跨文档读取会被同源策略挡住；
@@ -732,7 +746,7 @@ function toggleMedia(media) {
   else media.pause();
 }
 
-// ========== 二级详情（无真实能力的模块给解释，有真实能力的给控件 + 设置入口） ==========
+// ── 二级详情（无真实能力的模块给解释，有真实能力的给控件 + 设置入口） ──
 /** 详情页文案：键 + 中文兜底。 */
 const DETAIL_TEXT = {
   wifi: ["controlcenter.detail.wifi", "浏览器只提供在线/离线状态，无法列出附近网络或输入密码。"],
@@ -744,7 +758,6 @@ const DETAIL_TEXT = {
   volume: ["controlcenter.detail.volume", "输出设备由系统决定；这里只能调整音量与静音。"],
 };
 
-/** 详情页标题。 */
 function detailTitle(kind) {
   const map = {
     wifi: ["controlcenter.wifi", "Wi-Fi"],
@@ -839,7 +852,22 @@ async function openSettingsPane(pane) {
   setTimeout(jump, 300);
 }
 
-// ========== 显示/隐藏 ==========
+// ── 显示/隐藏 ──
+/**
+ * 控制中心入口的「锁定屏幕」：先收起面板，再走与菜单栏完全相同的 lock.lockNow 链路。
+ * 动态导入而不是顶部 import：lock.js 反向经 ui/notification.js 依赖核心层，
+ * 静态说明符会把 controlcenter <-> lock 拉成循环（与 session.js 同款规避）。
+ */
+async function lockFromControlCenter() {
+  hide();
+  try {
+    const { lock } = await import("./lock.js");
+    lock?.lockNow?.("controlcenter");
+  } catch (err) {
+    logCC("warn", "锁屏模块不可用，控制中心锁定未执行：", err);
+  }
+}
+
 export function show() {
   if (!panelEl) createPanel();
   renderPanel();
@@ -864,7 +892,7 @@ export function toggle() {
   else show();
 }
 
-// ========== 菜单栏图标显隐（设置项 controlcenter.showInMenuBar） ==========
+// ── 菜单栏图标显隐（设置项 controlcenter.showInMenuBar） ──
 /** 当前是否应在菜单栏显示控制中心图标：优先问设置中枢，未接管时读推导槽。 */
 function readMenuBarIconFlag() {
   const api = globalThis.__settings;
@@ -904,7 +932,7 @@ export function setMenuBarIconVisible(on) {
   return menuBarIconVisible;
 }
 
-// ========== 菜单栏图标注入 ==========
+// ── 菜单栏图标注入 ──
 /**
  * 把控制中心图标挂进菜单栏右端。
  * 显隐由 controlcenter.showInMenuBar 决定：关闭时图标仍然创建（这样再打开时不必
@@ -941,7 +969,7 @@ export function mountToFinderbar(rightContainer, bar) {
   applyMenuBarIconVisibility();
 }
 
-// ========== 对外 API：读取状态 ==========
+// ── 对外 API：读取状态 ──
 export function getState() {
   return { ...state };
 }
@@ -986,7 +1014,7 @@ function currentValueOf(path) {
   return readPath(state, path);
 }
 
-// ========== 麦克风活动：包装 getUserMedia，统计活动音轨 ==========
+// ── 麦克风活动：包装 getUserMedia，统计活动音轨 ──
 /**
  * 浏览器不暴露全局麦克风是否在被使用，只能在自家调用点统计：
  * 包装 navigator.mediaDevices.getUserMedia，成功返回后按音轨数计数，
@@ -1031,7 +1059,7 @@ function installMicActivity() {
   }
 }
 
-// ========== 电池 API：读取系统真实电量，但本次不渲染电池卡片 ==========
+// ── 电池 API：读取系统真实电量，但本次不渲染电池卡片 ──
 async function initBattery() {
   try {
     if (typeof navigator?.getBattery !== "function") {
@@ -1061,7 +1089,7 @@ async function initBattery() {
   }
 }
 
-// ========== 本模块自持的设置定义 ==========
+// ── 本模块自持的设置定义 ──
 /**
  * 登记不属于「卡片开关字段表」的两项：菜单栏图标显隐、正在播放状态。
  * 约定见 settings-definitions.js 顶部第 3 条 —— owner 才是取值范围的权威，
@@ -1091,7 +1119,7 @@ function defineOwnSettings() {
   return true;
 }
 
-// ========== 初始化 ==========
+// ── 初始化 ──
 export function init() {
   loadState();
   applyDisplayBrightness();

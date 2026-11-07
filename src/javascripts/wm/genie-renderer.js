@@ -12,6 +12,16 @@ import { Z } from "../zindex.js";
 import { genieBands, genieParams, GENIE_FADE_PX } from "./genie-geometry.js";
 
 const DPR_MAX = 2;
+/** 多窗降级时的覆盖层采样上限：只降像素密度，材质与位移曲线完全不变，观感连续。 */
+const DPR_LOW = 1.25;
+/**
+ * 覆盖层采样上限。窗口超过 5 个时 GPU 与主线程都在抢资源，这里把分辨率降一档；
+ * 因为降级只影响清晰度、不影响材质透明度曲线，所以不会出现「突然不模糊」的跳变。
+ */
+function dprCap() {
+  const count = document.querySelectorAll(".window").length;
+  return count > 5 ? DPR_LOW : DPR_MAX;
+}
 
 const VERT = `#version 300 es
 precision highp float;
@@ -82,7 +92,7 @@ void main() {
 `;
 
 function overlayCanvas() {
-  const dpr = Math.min(window.devicePixelRatio || 1, DPR_MAX);
+  const dpr = Math.min(window.devicePixelRatio || 1, dprCap());
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(window.innerWidth * dpr));
   canvas.height = Math.max(1, Math.round(window.innerHeight * dpr));
@@ -94,6 +104,9 @@ function overlayCanvas() {
   style.height = "100vh";
   style.pointerEvents = "none";
   style.zIndex = String(Z.GENIE);
+  // 只改 opacity：compositor 层做，不触发重排/重绘；动画结束由 dispose 立刻撤掉。
+  style.opacity = "0";
+  style.willChange = "opacity";
   document.body.appendChild(canvas);
   return { canvas, dpr };
 }
@@ -268,6 +281,8 @@ function createCanvas2D(canvas, model, snap) {
 export function createGenieStage(model, snap) {
   let { canvas } = overlayCanvas();
   let backend = null;
+  // 上一次写进样式的覆盖层不透明度：交接结束后它恒为 1，重复写没有意义。
+  let lastOpacity = -1;
 
   const glCanvas = canvas;
   const glBackend = createWebGL(glCanvas, model, snap);
@@ -288,6 +303,14 @@ export function createGenieStage(model, snap) {
     kind: backend.kind,
     isLost: backend.isLost,
     draw: backend.draw,
+    setOpacity(value) {
+      const v = Math.max(0, Math.min(1, value));
+      // 交接结束后权重恒为 1：值没变就别再回写样式，省掉每帧一次无用的
+      // 样式解析/失效（60fps 下这是 600ms 里的一大半帧）。
+      if (v === lastOpacity) return;
+      lastOpacity = v;
+      canvas.style.opacity = String(v);
+    },
     dispose() {
       backend.dispose();
       canvas.remove();

@@ -4,10 +4,13 @@
  * 这里是全项目层级的唯一定义处：CSS 与 JS 都从这张表取值，
  * 避免出现「文档说 9500 是 Dock、代码里却写着 2147483646」这种互相覆盖的情况。
  *
- *   2050 - 9000  窗口（window.js 递增分配，到顶重排回收）
+ *   2050 - 9000  窗口（焦点栈序推导 + 层级分带：normal 2050-4499 / floating 4500-5999
+ *                / panel 6000-7499 / modal 7500-9000，见 wm/stack.js LEVEL_BANDS）
  *   ≤ 9499       普通浮层（顶栏下拉 .menu，CSS 默认 7000，点击时在此封顶内提升）
+ *   9490         台前调度停靠条（窗口区 9000 封顶之上、Dock 9500 之下）
  *   9500         Dock
  *   9510         Dock 文件夹堆栈（从 Dock 弹出，需盖过窗口与 Dock）
+ *   9585         窗口总览（⌃↑ 浮层，盖过窗口与 Dock，仍在启动台之下）
  *   9600         启动台（启动期间 Dock / 堆栈临时抬到 9601 / 9602，见 launchpad CSS）
  *   9601         启动台打开时的 Dock（Z.LAUNCHPAD_DOCK）
  *   9602         启动台打开时的 Dock 堆栈（Z.LAUNCHPAD_DOCK_STACK）
@@ -20,7 +23,8 @@
  *   9700         聚焦搜索面板（系统级检索浮层，盖过弹层与窗口，但仍在菜单栏之下）
  *   9999         菜单栏 / Dock 悬停提示（.tip 与菜单栏同档，见 dock.css）
  *   10000        显示亮度压暗层（盖过一切界面内容）
- *   10001        Night Shift 暖色层（= 压暗层 + 1，与压暗层叠加相乘）
+ *   10001        Night Shift 暖色层（= 压暗层 + 1，与压暗层普通 alpha 叠加，不用 blend-mode——
+ *                页面里任何 mix-blend-mode 都会令 Chromium 的 backdrop-filter 采样失效，见 display.js）
  *   10010        会话遮罩（锁屏 / 睡眠 / 关机，盖过压暗层与暖色层）
  */
 
@@ -34,11 +38,16 @@ export const Z = {
     // 最小化「神奇效果」覆盖层：要盖住窗口与普通浮层，但必须低于 Dock ——
     // 条带滑过坞线后从坞条底下没入，才是「吸进图标里」。
     GENIE: 9450,
+    // 台前调度停靠条（wm/stage-manager.js）：窗口区封顶之上、Dock 之下，
+    // 缩略图点击 = 舞台切换，不竞争窗口 z 序。
+    STAGE_SHELF: 9490,
     DOCK: 9500,
     // 拖拽中的图标影子与拖出时的噗散粒子：盖住 Dock 本身，但不能越过文件夹堆栈
     // 与右键菜单（拖拽期间它们要么已关闭、要么不应被影子遮住）。
     DOCK_DRAG: 9505,
     DOCK_STACK: 9510,
+    // ⌃↑ 窗口总览（wm/overview.js）：盖过窗口与 Dock，低于启动台（9600）。
+    OVERVIEW: 9585,
     LAUNCHPAD: 9600,
     // 启动台打开时（html.deskly-launchpad-open）程序坞与堆栈要越过启动台本身，
     // 但绝不能碰到 Z.MODAL(9610) 以上（启动台里点弹窗仍要浮得住）。
@@ -60,8 +69,9 @@ export const Z = {
     // Dock 悬停提示（.tip，dock.css）：与菜单栏同档（同为 9999），入表统一管理。
     DOCK_TIP: 9999,
     BRIGHTNESS: 10000,
-    // Night Shift 暖色层紧压压暗层之上（= BRIGHTNESS + 1）：两层都是 multiply，
-    // 先压暗再染暖，顺序反过来暖色会被黑层吃掉。
+    // Night Shift 暖色层紧压压暗层之上（= BRIGHTNESS + 1）：两层都是普通 alpha 合成，
+    // 先压暗再盖暖纱，顺序反过来暖纱会被黑层吃掉。两层都刻意不带 blend-mode ——
+    // 页面里任何 mix-blend-mode 元素都会令 Chromium 的 backdrop-filter 采样失效。
     NIGHT_SHIFT: 10001,
     SESSION: 10010,
 };

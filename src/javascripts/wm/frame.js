@@ -21,6 +21,8 @@ export const CORNER_BAND = 16;
 export const SNAP_TRIGGER = 14;
 /** 拖动后窗口至少留在屏幕内的可见宽度（px），保证还能被点回来。 */
 export const KEEP_VISIBLE = 120;
+/** 无标题栏窗口的标题栏安全带高（px）：sheet 子窗贴边与拖动兜底共用这一个估计值。 */
+export const TITLEBAR_SAFE_H = 38;
 
 /**
  * 状态切换动画时长（ms）：.wm-animating 摘类的唯一权威值。
@@ -37,8 +39,8 @@ export const WM_ANIM_MS = 320;
  * 自动隐藏收起态下 .dock 只改 opacity / visibility（dock.js 的亚克力禁忌：
  * 不许用 transform 滑动），布局盒还留在那儿，于是 visibleFrame 一直扣着一条
  * 约 --dock-size + 10px 宽的带：缩放态填不满、clampDrag 不许窗口进去，
- * 而那条带里的程序坞平时根本看不见 —— 用户感观就是「窗口拉不到底 /  maximizing
- * 之后屏幕底下留一条死带」，与 macOS「自动隐藏时窗口可占满」相反。
+ * 而那条带里的程序坞平时根本看不见 —— 用户感观就是「窗口拉不到底 / 缩放之后
+ * 屏幕底下留一条死带」，与 macOS「自动隐藏时窗口可占满」相反。
  *
  * 全屏态**必须**继续算「占位」：window-manager 的探边显隐是拿
  * vf.bottom / left / right > 0 当「这儿有个 Dock 值得探出来」的判据的，
@@ -240,6 +242,8 @@ export function edgeAt(f, cx, cy) {
  */
 export function resizeFrame(base, edge, to, limits, opts = {}) {
   const { keepAspect = false } = opts;
+  // 常驻宽高比（NW-3 aspectRatio 声明）：优先于「起始框架比例」，不再依赖 ⌥
+  const forcedAspect = Number.isFinite(opts.aspect) && opts.aspect > 0 ? opts.aspect : 0;
   const vf = visibleFrame();
   let left = base.x;
   let top = base.y;
@@ -258,8 +262,8 @@ export function resizeFrame(base, edge, to, limits, opts = {}) {
   let w = right - left;
   let h = bottom - top;
 
-  if (keepAspect && base.h > 0) {
-    const ratio = base.w / base.h;
+  if (keepAspect && (forcedAspect || base.h > 0)) {
+    const ratio = forcedAspect || base.w / base.h;
     const single = edge.length === 1;
     if (single) {
       // 单边缩放时另一维度按比例跟着变，锚定对侧

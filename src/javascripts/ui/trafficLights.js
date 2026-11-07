@@ -22,8 +22,8 @@
  * 把 margin-left 补到 --traffic-inset，应用不再需要写「减去自身 padding」的补偿；
  * 这正是手册窗口此前漂在标题栏上方、左内缩为 0 的根因。
  *
- * 动作以 ACTION_EVENT 冒泡给宿主所在窗口，由 window.js 统一接管；
- * 组件自身不碰窗口状态，避免与 window.js 形成第二套实现。
+ * 动作以 ACTION_EVENT 冒泡给宿主所在窗口，由 window-manager.js 统一接管（全仓唯一监听点）；
+ * 组件自身不碰窗口状态，避免与 window-manager 形成第二套实现。
  *
  * 约束：
  * - MV3 CSP 禁止内联脚本/内联事件，全部交互在 JS 里绑定；
@@ -34,6 +34,8 @@
 
 export const TAG = "deskly-traffic-lights";
 export const ACTION_EVENT = "deskly:window-action";
+/** 绿键专属悬停事件（TL-02）：菜单热区是绿键而不是整组红绿灯。detail 带绿键 rect（TL-16 锚定用）。 */
+export const ZOOM_HOVER_EVENT = "deskly:zoom-hover";
 
 // 三颗按钮的固定语义顺序：关闭 / 最小化 / 缩放
 const BUTTONS = Object.freeze([
@@ -43,15 +45,15 @@ const BUTTONS = Object.freeze([
 ]);
 
 /* 符号用 inline SVG + viewBox，尺寸随 --traffic-size 线性缩放。
-   旧实现是 ::before/::after 边框拼三角，绿三角写死 top/right:2.5px
-   （那是"12px 减掉 0.5px×2 边框后再居中"手算出来的），改直径就错位。
-   下面全是开发者写死的常量，且只按 BUTTONS 里固定的 glyph 键查表取用，
-   不接收任何外部/用户数据，故直接注入 shadow 是安全的。 */
+   TL-01：令牌引用带深色回退值 —— var() 无回退时声明在计算值失效，
+   stroke 回落 none、fill 回落 black（×/− 不可见、绿三角纯黑的根因）。 */
 const GLYPHS = Object.freeze({
-    close: '<path d="M4.15 4.15 7.85 7.85M7.85 4.15 4.15 7.85" stroke="var(--traffic-glyph-close)" stroke-width="1.2" stroke-linecap="round"/>',
-    minimize: '<path d="M3.9 6h4.2" stroke="var(--traffic-glyph-min)" stroke-width="1.2" stroke-linecap="round"/>',
-    zoom: '<path d="M4.6 7.4V4.6h2.8zM7.4 4.6v2.8H4.6z" fill="var(--traffic-glyph-zoom)"/>',
+    close: '<path d="M4.15 4.15 7.85 7.85M7.85 4.15 4.15 7.85" stroke="var(--traffic-glyph-close, #4d0000)" stroke-width="1.2" stroke-linecap="round"/>',
+    minimize: '<path d="M3.9 6h4.2" stroke="var(--traffic-glyph-min, #995700)" stroke-width="1.2" stroke-linecap="round"/>',
+    zoom: '<path d="M4.6 7.4V4.6h2.8zM7.4 4.6v2.8H4.6z" fill="var(--traffic-glyph-zoom, #006500)"/>',
 });
+/* FS-11：宿主窗口全屏时绿键符号换为「退出全屏」（双箭头向内） */
+const GLYPH_ZOOM_EXIT = '<path d="M7.4 4.6 5.6 2.8M4.6 7.4 2.8 5.6M7.4 4.6H4.6M7.4 4.6V7.4" stroke="var(--traffic-glyph-zoom, #006500)" stroke-width="1.1" stroke-linecap="round" fill="none" transform="translate(1.2 1.2)"/>';
 
 const SHADOW_CSS = `
 :host {
@@ -88,7 +90,8 @@ const SHADOW_CSS = `
   width: 100%;
   height: 100%;
   opacity: 0;
-  transition: opacity .15s ease;
+  /* TL-12：符号显隐近即时（macOS 约 0.1s 内），0.15s 有拖沓感 */
+  transition: opacity .1s ease;
   pointer-events: none;
 }
 /* macOS：悬停按钮组时三颗符号同时显形，而不是只显 hovered 那一颗 */
@@ -194,19 +197,24 @@ export function getTrafficLights(win) {
 }
 
 /**
- * 按能力开关熄灭个别按钮。刻意"只能收紧、不能放宽"：
+ * 按能力开关熄灭个别按钮（双向：false 熄、true 复亮）。
  * 用属性（no-minimize / no-zoom / no-close）表达外部能力，让组件内部的
  * _disabledFor 成为唯一判定处，这样 manifest 声明与标记上的 variant="dialog"
- * 自然求交，而不会出现"清单说可最小化"把对话框的禁用位又点亮的分叉。
+ * 自然求交。WAPI-09：applyConfig 每次都按最新配置重放，这里必须能放宽，
+ * 否则 minimizable 从 false 改回 true 灯不会复亮。
  * @param {HTMLElement} win
  * @param {{close?: boolean, minimize?: boolean, zoom?: boolean}} caps
  */
 export function setTrafficLightsEnabled(win, caps = {}) {
     const host = getTrafficLights(win);
     if (!host) return;
-    if (caps.close === false) host.setAttribute("no-close", "");
-    if (caps.minimize === false) host.setAttribute("no-minimize", "");
-    if (caps.zoom === false) host.setAttribute("no-zoom", "");
+    const apply = (attr, enabled) => {
+        if (enabled === false) host.setAttribute(attr, "");
+        else if (enabled === true) host.removeAttribute(attr);
+    };
+    apply("no-close", caps.close);
+    apply("no-minimize", caps.minimize);
+    apply("no-zoom", caps.zoom);
 }
 
 /**
@@ -256,6 +264,18 @@ export function defineTrafficLights() {
                             detail: { action: "arrange", clientX: e.clientX, clientY: e.clientY },
                         }));
                     });
+                    // TL-02：悬停弹菜单的热区是绿键本身，不是整组红绿灯。
+                    // composed 让 shadow 外的 window-manager 收得到；rect 供菜单锚定绿键下方（TL-16）。
+                    const hover = (hovering) => {
+                        if (this._disabledFor("zoom")) return;
+                        this.dispatchEvent(new CustomEvent(ZOOM_HOVER_EVENT, {
+                            bubbles: true,
+                            composed: true,
+                            detail: { hovering, rect: dot.getBoundingClientRect().toJSON ? dot.getBoundingClientRect().toJSON() : (() => { const r = dot.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; })() },
+                        }));
+                    };
+                    dot.addEventListener("pointerenter", () => hover(true));
+                    dot.addEventListener("pointerleave", () => hover(false));
                 }
                 // 键盘激活：Enter 与 Space（Space 需阻止页面滚动默认行为）
                 dot.addEventListener("keydown", (e) => {
@@ -275,12 +295,17 @@ export function defineTrafficLights() {
         }
 
         static get observedAttributes() {
-            return ["no-minimize", "no-zoom", "no-close", "variant", "disabled", "overlay", "placement"];
+            return ["no-minimize", "no-zoom", "no-close", "variant", "disabled", "overlay", "placement", "host-fullscreen"];
         }
 
-        attributeChangedCallback() {
+        attributeChangedCallback(name) {
             this._syncFromAttrs();
             this._syncPlacement();
+            // FS-11：宿主窗口全屏态换绿键符号为「退出全屏」
+            if (name === "host-fullscreen" && this._dots.zoom) {
+                const svg = this.hasAttribute("host-fullscreen") ? GLYPH_ZOOM_EXIT : GLYPHS.zoom;
+                this._dots.zoom.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true">' + svg + "</svg>";
+            }
         }
 
         /**

@@ -37,7 +37,81 @@ export const GENIE_BAND_SIZE = 2;
 /** 条带越过坞线后残余可见的距离（px）：这段里透明度线性归零。 */
 export const GENIE_FADE_PX = 26;
 
+/**
+ * 材质交接段占总时长的比例（15%，约 93ms / 60fps 下 5~6 帧）。
+ *
+ * 为什么不能直接 display:none 切到覆盖层：真实窗口的毛玻璃是 backdrop-filter
+ * 实时合成的，覆盖层画的却是一块烘焙快照（.window > .left 的模糊、内阴影、
+ * 圆角、文字明度全在像素里）。两者一硬切就是「材质被抠掉」。
+ *
+ * 为什么也不给 .window 写 opacity 做互补淡化：opacity < 1 的祖先会为
+ * backdrop-filter 建立新的 backdrop-root，`.left` 的采样范围被截到窗口内部，
+ * 毛玻璃当场退化 —— 正是要修的那个现象。
+ *
+ * 所以交接的做法是「几何冻结 + 只淡入覆盖层」：
+ *   交接段内 geomProgress 恒为 0，覆盖层画的就是真窗此刻的同一像素；
+ *   同时覆盖层不透明度按材质曲线从 0 连续升到 1，压住真窗；
+ *   交接结束时覆盖层已完全不透明且与真窗像素同一，再隐藏真窗看不出任何变化。
+ */
+export const GENIE_HANDOFF = 0.15;
+
+/** 交接段毫秒数：覆盖层淡入所需的时间，也是动作开始前的静止窗口。 */
+export const GENIE_HANDOFF_MS = Math.round(GENIE_MS * GENIE_HANDOFF);
+
+/**
+ * 材质缓动。交接段是「同一张图的交叉淡化」（几何冻结，见 geomProgress），
+ * 唯一的可见变化是渲染层之间的细微色差，所以用对称 S 曲线（两端斜率 0）
+ * 而不是位移那种强 ease-out：5~6 帧里每帧约 0.29，任何一帧都不会「换完」。
+ */
+export const MATERIAL_EASE = [0.45, 0, 0.55, 1];
+
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/** 三次贝塞尔单轴求值。 */
+function bezierAxis(t, c1, c2) {
+  const mt = 1 - t;
+  return 3 * mt * mt * t * c1 + 3 * mt * t * t * c2 + t * t * t;
+}
+
+/** 给定 x 反解参数 t 再求 y，与 CSS cubic-bezier 完全同源。 */
+function cubicBezier(x, curve) {
+  const [x1, y1, x2, y2] = curve;
+  const cx = (t) => bezierAxis(t, x1, x2);
+  const cy = (t) => bezierAxis(t, y1, y2);
+  let lo = 0;
+  let hi = 1;
+  let t = x;
+  for (let i = 0; i < 12; i += 1) {
+    const v = cx(t);
+    if (Math.abs(v - x) < 1e-5) break;
+    if (v < x) lo = t;
+    else hi = t;
+    t = (lo + hi) / 2;
+  }
+  return cy(t);
+}
+
+/**
+ * 覆盖层不透明度：交接段内按材质曲线 0→1，交接段之后恒为 1。
+ * 两个方向共用同一条曲线 —— 还原时进度反向走，调用方传同一个 p 即可。
+ * @param {number} progress 原始进度 [0,1]
+ * @returns {number} [0,1] 单调不减
+ */
+export function materialWeight(progress) {
+  return cubicBezier(clamp01(clamp01(progress) / GENIE_HANDOFF), MATERIAL_EASE);
+}
+
+/**
+ * 几何进度：交接段内冻结在 0，交接结束后把剩余时长线性映射到 [0,1]。
+ * 冻结是材质无缝的前提：只有覆盖层与真窗同一像素时，淡入/淡出才看不出来。
+ * @param {number} progress 原始进度 [0,1]
+ * @returns {number} [0,1]
+ */
+export function geomProgress(progress) {
+  const p = clamp01(progress);
+  if (p <= GENIE_HANDOFF) return 0;
+  return (p - GENIE_HANDOFF) / (1 - GENIE_HANDOFF);
+}
 
 /**
  * 收口宽度比：f=0（贴着坞线）→ 收成一条缝，f=1（远端）→ 原宽。

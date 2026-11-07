@@ -12,7 +12,15 @@
  *      都必须 resolve(false)，由调用方走兜底，绝不吞掉最小化动作本身。
  */
 
-import { buildGenieModel, GENIE_MS } from "./genie-geometry.js";
+import {
+  buildGenieModel,
+  GENIE_HANDOFF,
+  GENIE_HANDOFF_MS,
+  GENIE_MS,
+  MATERIAL_EASE,
+  geomProgress,
+  materialWeight,
+} from "./genie-geometry.js";
 import { cachedSnapshot, snapshotFor } from "./genie-capture.js";
 import { createGenieStage } from "./genie-renderer.js";
 
@@ -61,7 +69,7 @@ function dropStage(el) {
  * 就立即拆层收场，宁短勿鬼影。
  * @returns {Promise<boolean>} 是否成功建立并完整播放了渲染舞台
  */
-async function play(el, model, snap, reverse, shouldAbort, onStart) {
+async function play(el, model, snap, reverse, shouldAbort, hooks = {}) {
   dropStage(el);
   let stage;
   try {
@@ -70,6 +78,15 @@ async function play(el, model, snap, reverse, shouldAbort, onStart) {
     return false;
   }
   if (el) el._genieStage = stage;
+  // 交接段几何是冻结的：进度换算后仍是同一个值时不必重画整帧（省掉首尾各 5~6 帧
+  // 的全屏重绘），只改覆盖层不透明度。
+  let lastGeom = -1;
+  const drawAt = (p) => {
+    const g = geomProgress(p);
+    if (g === lastGeom) return;
+    lastGeom = g;
+    stage.draw(g);
+  };
   return new Promise((resolve) => {
     let start = 0;
     let raf = 0;
@@ -80,11 +97,18 @@ async function play(el, model, snap, reverse, shouldAbort, onStart) {
       cancelAnimationFrame(raf);
       if (el && el._genieStage === stage) el._genieStage = null;
       try { stage.dispose(); } catch { /* 已释放 */ }
+      if (hooks.onEnd) {
+        try { hooks.onEnd(ok); } catch { /* 收尾失败不影响 resolve */ }
+      }
       resolve(ok);
     };
     try {
-      stage.draw(reverse ? 1 : 0);
-      if (onStart) onStart();
+      const first = reverse ? 1 : 0;
+      // 交接段内几何冻结在起点：覆盖层画的就是真窗此刻的同一像素，
+      // 只让它的不透明度连续爬升，材质因此是「渐变过去」而不是被抠掉。
+      drawAt(first);
+      stage.setOpacity(materialWeight(first));
+      if (hooks.onStart) hooks.onStart();
     } catch {
       // 建层成功但首帧/隐藏步骤抛错：必须立刻拆层并 resolve(false)，
       // 否则覆盖层留在屏幕上、调用方又以为播放完成。
@@ -96,7 +120,12 @@ async function play(el, model, snap, reverse, shouldAbort, onStart) {
       if (stage.isLost && stage.isLost()) return finish(false);
       if (!start) start = now;
       const raw = Math.min((now - start) / GENIE_MS, 1);
-      stage.draw(reverse ? 1 - raw : raw);
+      const p = reverse ? 1 - raw : raw;
+      drawAt(p);
+      stage.setOpacity(materialWeight(p));
+      if (hooks.onProgress) {
+        try { hooks.onProgress(p); } catch { /* 视觉回调失败不打断动画 */ }
+      }
       if (raw >= 1) finish(true);
       else raf = requestAnimationFrame(tick);
     };
@@ -114,10 +143,41 @@ function targetRectOf(el) {
   return { x, y, w, h };
 }
 
+/** 与覆盖层材质曲线同源的 CSS 缓动串（几何与阴影都从同一个数组生成）。 */
+const SHADOW_EASE = `cubic-bezier(${MATERIAL_EASE.join(", ")})`;
+
+/**
+ * 把当前 box-shadow 的颜色通道压成透明、保留几何（偏移/模糊/内阴影）。
+ * 覆盖层裁的就是窗口矩形，100px 外阴影不在快照里，若不处理，隐藏真窗那一帧
+ * 会有一大块暗色光环整块消失。box-shadow 是纯绘制属性，不会新建渲染层，
+ * 在亚克力根上做 5~6 帧的过渡是允许的（禁止的是 filter/brightness 这类）。
+ * @param {HTMLElement} el
+ * @returns {string|null} 透明版阴影；没有阴影时返回 null
+ */
+function transparentShadow(el) {
+  const shadow = getComputedStyle(el).boxShadow;
+  if (!shadow || shadow === "none") return null;
+  return shadow.replace(
+    /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*[\d.]+\s*)?\)/g,
+    (_, r, g, b) => `rgba(${r}, ${g}, ${b}, 0)`,
+  );
+}
+
+/** 收掉阴影交接的内联属性，交回主题样式表。 */
+function clearShadow(el) {
+  el.style.transition = "";
+  el.style.boxShadow = "";
+}
+
 /**
  * 最小化：吸入 iconEl 所在的 Dock 图标。
- * 快照期间真实窗口保持原样（用户看到的还是活窗口），快照就绪后由覆盖层接管像素、
- * 真窗转 display:none。任何失败 resolve(false)，调用方走缩放淡出兜底。
+ *
+ * 材质连续性靠两件事，都不碰 `.window` 的 opacity（opacity < 1 的祖先会给
+ * `.left` 的 backdrop-filter 新建 backdrop-root，毛玻璃反而被抠掉）：
+ *   - 交接段几何冻结在 0，覆盖层画的是真窗此刻的同一像素；
+ *   - 只让覆盖层不透明度按材质曲线连续爬升，把真窗「压」住；
+ *   交接结束时覆盖层已不透明且像素同一，再把真窗 display:none —— 看不出切换。
+ * 任何失败 resolve(false)，调用方走缩放淡出兜底。
  * @param {HTMLElement} el 窗口根元素
  * @param {HTMLImageElement|null} iconEl Dock 图标
  * @returns {Promise<boolean>} 是否真正播放了动画
@@ -132,19 +192,45 @@ export async function minimizeGenie(el, iconEl) {
 
   const snap = await snapshotFor(el, rect);
   // 快照是异步的：期间用户可能把窗口还原 / 关掉，状态翻回去就别再抢屏幕。
+  // DOM 快照（snapdom）同样照常播放：原生截图是机会性能力，本扩展未申请
+  // activeTab / <all_urls>，captureVisibleTab 必然失败并进入 60s 冷却，
+  // 此时唯一可用的就是 DOM 快照 —— 曾按「只认原生」直接 return false，
+  // 结果整段神奇效果被缩放淡出兜底顶掉。
   if (!snap || !el._minimized || !el.isConnected) return false;
 
-  return play(
-    el,
-    model,
-    snap,
-    false,
-    () => !el._minimized,
-    () => {
-      el.classList.add("minimized");
-      el.style.display = "none";
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    el.classList.add("minimized");
+    el.style.display = "none";
+    clearShadow(el);
+  };
+
+  return play(el, model, snap, false, () => !el._minimized, {
+    onStart() {
+      // 阴影与覆盖层同步收尾：外阴影不在快照里，必须和材质一起淡掉，
+      // 否则隐藏真窗的那一帧会有一大块暗色光环瞬灭。
+      const clear = transparentShadow(el);
+      if (clear) {
+        el.style.transition = `box-shadow ${GENIE_HANDOFF_MS}ms ${SHADOW_EASE}`;
+        el.style.boxShadow = clear;
+      }
     },
-  );
+    onProgress(p) {
+      // 覆盖层已完全不透明（交接段收尾）才隐藏真窗，此刻两者像素同一。
+      if (p >= GENIE_HANDOFF) settle();
+    },
+    onEnd(ok) {
+      if (ok && el._minimized) settle();
+      else if (!el._minimized) {
+        // 中途被还原：真窗本来就没淡出过，放回来即可，不留半透明残影。
+        el.style.display = "";
+        el.classList.remove("minimized");
+      }
+      clearShadow(el);
+    },
+  });
 }
 
 /**
@@ -164,12 +250,39 @@ export async function restoreGenie(el, iconEl) {
   const model = buildGenieModel(rect, gatherOf(iconEl, side), side);
   if (!model) return false;
 
-  return play(
-    el,
-    model,
-    snap,
-    true,
-    () => el._minimized,
-    () => { el.style.display = "none"; },
-  );
+  let revealed = false;
+  // 反向交接：进度 p 退到交接段（覆盖层仍完全不透明、几何已冻结在落点矩形）时
+  // 把真窗放回覆盖层之下，随后覆盖层淡出 —— 露出的正是同一像素，材质无跳变。
+  // 外阴影不在快照里，所以要在这里反向补齐：先按透明阴影落地，再在剩余交接时间里
+  // 抬回主题值，和覆盖层淡出同步收尾（与吸入方向完全对称）。
+  const revealWindow = (p) => {
+    if (revealed) return;
+    revealed = true;
+    const clear = transparentShadow(el);
+    if (clear) {
+      el.style.transition = `box-shadow ${Math.max(24, Math.round(p * GENIE_MS))}ms ${SHADOW_EASE}`;
+      el.style.boxShadow = clear;
+    }
+    el.classList.remove("minimized");
+    // 提前标记已落窗，避免 display 切换重播 window-fade-in。
+    el.classList.add("wm-shown");
+    el.style.display = "";
+    if (clear) {
+      // 先让透明阴影落地，再交回主题值，过渡才会真正发生。
+      void el.offsetWidth;
+      el.style.boxShadow = "";
+    }
+  };
+
+  return play(el, model, snap, true, () => el._minimized, {
+    onStart() { el.style.display = "none"; },
+    onProgress(p) {
+      if (p <= GENIE_HANDOFF) revealWindow(p);
+    },
+    onEnd(ok) {
+      if (!revealed) revealWindow(0);
+      if (!ok && el._minimized) el.style.display = "none";
+      clearShadow(el);
+    },
+  });
 }

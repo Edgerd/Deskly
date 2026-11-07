@@ -1,0 +1,20 @@
+{
+  "id": "spotlight",
+  "name": "聚焦",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "background",
+  "author": "Deskly",
+  "description": "系统级统一搜索：应用、设置、文件、命令、书签、手册、计算与换算，⌥Space 呼出",
+  "permissions": [],
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "icon.svg",
+  "visibility": {
+    "launchpad": false,
+    "settings": false,
+    "finder": false,
+    "uninstallable": false,
+    "system": true
+  }
+}

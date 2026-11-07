@@ -61,7 +61,6 @@
             </nav>
         </aside>
 
-        <!-- 主区域 -->
         <main class="main-area">
             <div class="toolbar">
                 <div class="toolbar-left">
@@ -83,15 +82,16 @@
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 11V2M4 6l4-4 4 4M2 13h12"/></svg>
                         <span class="import-label">导入</span>
                     </button>
+                    <button type="button" class="tool-btn btn-extmount" title="添加外部图片文件夹（只读）" aria-label="添加外部图片文件夹">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1.5 3.5h5l1.5 2h6.5v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z"/><path d="M8 8v4M6 10h4"/></svg>
+                    </button>
                     <button type="button" class="tool-btn btn-select" title="多选">选择</button>
                 </div>
             </div>
             <div class="content-area">
-                <!-- 网格视图 -->
                 <div class="grid-view active">
                     <div class="grid-content"></div>
                 </div>
-                <!-- 列表视图 -->
                 <div class="list-view">
                     <div class="list-header">
                         <div class="list-col list-col-thumb"></div>
@@ -102,7 +102,6 @@
                     </div>
                     <div class="list-body"></div>
                 </div>
-                <!-- 空状态 -->
                 <div class="empty-state">
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
                         <rect x="3" y="3" width="18" height="18" rx="3"/>
@@ -113,7 +112,6 @@
                     <p class="empty-hint">点击「导入」按钮添加图片或视频</p>
                     <button type="button" class="empty-action">导入</button>
                 </div>
-                <!-- 选择模式操作栏 -->
                 <div class="selection-bar">
                     <span class="selection-count">已选择 0 项</span>
                     <div class="selection-actions">
@@ -129,7 +127,6 @@
                         <button type="button" class="sel-btn btn-sel-cancel">取消</button>
                     </div>
                 </div>
-                <!-- 拖放导入 -->
                 <div class="drop-overlay" aria-hidden="true">
                     <div class="drop-card">
                         <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -140,7 +137,6 @@
         </main>
     </div>
 
-    <!-- 预览模式覆盖层 -->
     <div class="preview-overlay" tabindex="-1">
         <div class="preview-toolbar">
             <button type="button" class="preview-btn btn-back" title="返回" aria-label="返回">
@@ -236,7 +232,6 @@
         <div class="preview-filmstrip">
             <div class="filmstrip-items"></div>
         </div>
-        <!-- 详情面板 -->
         <div class="preview-detail">
             <div class="detail-close" title="关闭详情" role="button" tabindex="0" aria-label="关闭详情">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>

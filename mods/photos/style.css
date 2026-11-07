@@ -1,7 +1,4 @@
-/* ============================
- * 照片应用样式 — 参照 macOS Photos
- * 侧边栏与系统设置同源：半透明面板 + 系统模糊档 + 墙纸着色
- * ============================ */
+/* 照片应用样式（参照 macOS Photos）：侧边栏与系统设置同源（半透明面板 + 系统模糊档 + 墙纸着色） */
 
 /* ---- CSS 变量（深色模式默认） ---- */
 .photos {
@@ -57,9 +54,7 @@ html[data-theme="light"] .photos {
     --ph-scrollbar-hover: rgba(0, 0, 0, 0.35);
 }
 
-/* ============================
- * 窗口根容器
- * ============================ */
+/* ===== 窗口根容器 ===== */
 .photos.window {
     min-width: 760px;
     min-height: 520px;
@@ -92,9 +87,7 @@ html[data-theme="light"] .photos {
     --traffic-z: 210;
 }
 
-/* ============================
- * 主体布局：侧边栏 + 主区域
- * ============================ */
+/* ===== 主体布局：侧边栏 + 主区域 ===== */
 .photos .photos-body {
     flex: 1;
     display: flex;
@@ -102,9 +95,7 @@ html[data-theme="light"] .photos {
     min-height: 0;
 }
 
-/* ============================
- * 侧边栏（毛玻璃）
- * ============================ */
+/* ===== 侧边栏（毛玻璃） ===== */
 .photos .sidebar {
     width: var(--ph-sidebar-w);
     flex: 0 0 var(--ph-sidebar-w);
@@ -303,9 +294,7 @@ html[data-theme="light"] .photos .search-input:focus {
     color: var(--ph-accent);
 }
 
-/* ============================
- * 主区域
- * ============================ */
+/* ===== 主区域 ===== */
 .photos .main-area {
     flex: 1;
     min-width: 0;
@@ -315,9 +304,7 @@ html[data-theme="light"] .photos .search-input:focus {
     background: var(--ph-content-bg);
 }
 
-/* ============================
- * 工具栏
- * ============================ */
+/* ===== 工具栏 ===== */
 .photos .toolbar {
     height: var(--ph-toolbar-h);
     flex-shrink: 0;
@@ -435,9 +422,7 @@ html[data-theme="light"] .photos .search-input:focus {
     animation: ph-spin 0.9s linear infinite;
 }
 
-/* ============================
- * 内容区
- * ============================ */
+/* ===== 内容区 ===== */
 .photos .content-area {
     flex: 1;
     overflow: hidden;
@@ -445,9 +430,7 @@ html[data-theme="light"] .photos .search-input:focus {
     min-height: 0;
 }
 
-/* ============================
- * 网格视图
- * ============================ */
+/* ===== 网格视图 ===== */
 .photos .grid-view {
     position: absolute;
     inset: 0;
@@ -616,9 +599,7 @@ html[data-theme="light"] .photos .search-input:focus {
     z-index: 2;
 }
 
-/* ============================
- * 列表视图
- * ============================ */
+/* ===== 列表视图 ===== */
 .photos .list-view {
     position: absolute;
     inset: 0;
@@ -714,9 +695,7 @@ html[data-theme="light"] .photos .search-input:focus {
     font-size: 12px;
 }
 
-/* ============================
- * 空状态
- * ============================ */
+/* ===== 空状态 ===== */
 .photos .empty-state {
     position: absolute;
     inset: 0;
@@ -770,9 +749,7 @@ html[data-theme="light"] .photos .search-input:focus {
     display: none;
 }
 
-/* ============================
- * 选择模式操作栏
- * ============================ */
+/* ===== 选择模式操作栏 ===== */
 .photos .selection-bar {
     position: absolute;
     left: 0;
@@ -835,9 +812,7 @@ html[data-theme="light"] .photos .search-input:focus {
     font-family: var(--ph-font);
 }
 
-/* ============================
- * 拖放导入
- * ============================ */
+/* ===== 拖放导入 ===== */
 .photos .drop-overlay {
     position: absolute;
     inset: 8px;
@@ -873,9 +848,7 @@ html[data-theme="light"] .photos .search-input:focus {
     margin: 0;
 }
 
-/* ============================
- * 预览模式
- * ============================ */
+/* ===== 预览模式 ===== */
 .photos .preview-overlay {
     position: absolute;
     inset: 0;
@@ -1444,9 +1417,7 @@ html[data-theme="light"] .photos .search-input:focus {
     bottom: 108px;
 }
 
-/* ============================
- * 窄窗口：隐藏次要工具，避免工具栏挤爆
- * ============================ */
+/* ===== 窄窗口：隐藏次要工具，避免工具栏挤爆 ===== */
 @media (max-width: 900px) {
     .photos .preview-actions .image-only.btn-rotate-left,
     .photos .preview-actions .image-only.btn-rotate-right {
@@ -1460,9 +1431,7 @@ html[data-theme="light"] .photos .search-input:focus {
     }
 }
 
-/* ============================
- * 导入按钮隐藏
- * ============================ */
+/* ===== 导入按钮隐藏 ===== */
 .photos .file-input {
     display: none;
 }

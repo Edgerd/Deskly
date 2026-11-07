@@ -1,19 +1,6 @@
-/**
- * script.js — 照片（统一图库与查看器）
- *
- * 一张图库同时接管原来「图片浏览器」和「视频播放器」的职责：
- * - 网格 / 列表浏览、搜索、收藏、相簿、多选与键盘导航；
- * - 预览内缩放平移、旋转、幻灯片、全屏、胶片条；
- * - 视频自定义控制条（播放 / 进度 / 音量 / 静音 / 快退快进 / 全屏）；
- * - 访达双击图片或视频直接交给本应用打开，拖放文件也能导入。
- *
- * 数据分两处：元数据在 localStorage，二进制与缩略图在 IndexedDB（photo-store.js）。
- * 网格只加载缩略图；原图只在预览与导入分析时按引用计数取用，避免大图库把内存吃满。
- */
+/** script.js — 照片（统一图库与查看器）：元数据在 localStorage，二进制与缩略图在 IndexedDB（photo-store.js），原图按引用计数取用。 */
 
-import { createContextMenu } from '../../src/javascripts/ui/contextMenu.js';
 import { i18n } from '../../src/javascripts/i18n.js';
-import { OSFS } from '../../src/javascripts/osfs.js';
 import {
     putMedia,
     getMedia,
@@ -24,7 +11,12 @@ import {
     deleteMedia,
     releaseAllMediaURLs,
     releaseAllThumbURLs,
-    dataURLToBlob,
+    scanLibrary,
+    addExternalMount,
+    scanExternalMount,
+    listExternalMounts,
+    PHOTOS_ROOT,
+    EXTERNAL_ID_PREFIX,
 } from './photo-store.js';
 
 const HOST_WINDOW = document.querySelector('.photos.window');
@@ -38,6 +30,18 @@ function startPhotos(win) {
     "use strict";
 
     const dialog = window.__dialog || null;
+
+    /** Q6 收口：只走 Deskly 公开 API；信封统一在此拆（ok:false 抛带 code 的错误）。 */
+    const Deskly = () => window.Deskly;
+    const unwrap = (env) => {
+        if (!env || !env.ok) {
+            const err = new Error((env && env.reason) || "Deskly 调用失败");
+            err.code = (env && env.code) || "EIO";
+            throw err;
+        }
+        return env.value;
+    };
+    const createContextMenu = (x, y, items) => Deskly().ui.contextMenu(x, y, items);
 
     const STORAGE_KEY = "webstartos-photos-library";
     const MODE_KEY = "webstartos_photos_view_mode";
@@ -65,6 +69,7 @@ function startPhotos(win) {
         return {
             items: [],
             albums: [],
+            meta: {},
             view: "all",
             mode: readViewMode(),
             search: "",
@@ -129,6 +134,7 @@ function startPhotos(win) {
         toolbarCount: win.querySelector(".toolbar-count"),
         segBtns: win.querySelectorAll(".seg-btn"),
         btnImport: win.querySelector(".btn-import"),
+        btnExtMount: win.querySelector(".btn-extmount"),
         importLabel: win.querySelector(".import-label"),
         btnSelect: win.querySelector(".btn-select"),
         gridView: win.querySelector(".grid-view"),
@@ -190,9 +196,7 @@ function startPhotos(win) {
         fileInput: null,
     };
 
-    // ============================================================
-    // 基础工具
-    // ============================================================
+    /* ── 基础工具 ── */
 
     /** i18n 取词（带中文兜底，缺少语言包时界面不会空白）。 */
     const T = (key, fallback) => i18n.t(key, fallback);
@@ -251,8 +255,9 @@ function startPhotos(win) {
         return `${m}:${String(s).padStart(2, "0")}`;
     }
 
-    function isInlineSource(item) {
-        return !!(item && typeof item.src === "string" && item.src.startsWith("data:"));
+    /** 外部挂载项目（ext://）判定：只读，删除/写入一律被 store 拒绝（Q2 越界不静默）。 */
+    function isExternalItem(item) {
+        return !!(item && typeof item.id === "string" && item.id.startsWith(EXTERNAL_ID_PREFIX));
     }
 
     /** 文件名 / MIME → image | video | null */
@@ -312,30 +317,23 @@ function startPhotos(win) {
                 cancelText: T("common.cancel", "取消"),
             });
         }
-        try {
-            return Promise.resolve(window.prompt(message || title, value));
-        } catch (e) {
-            return Promise.resolve(null);
-        }
+        console.warn("[photos] 系统弹窗不可用，输入按取消处理");
+        return Promise.resolve(null);
     }
 
-    function askConfirm(title, message, okText) {
+    function askConfirm(title, message, okText, danger = false) {
         if (dialog && typeof dialog.confirm === "function") {
             return dialog.confirm(title, message, {
                 okText: okText || T("common.ok", "好"),
                 cancelText: T("common.cancel", "取消"),
+                danger,
             });
         }
-        try {
-            return Promise.resolve(window.confirm(message || title));
-        } catch (e) {
-            return Promise.resolve(false);
-        }
+        console.warn("[photos] 系统弹窗不可用，确认按取消处理");
+        return Promise.resolve(false);
     }
 
-    // ============================================================
-    // 多语言
-    // ============================================================
+    /* ── 多语言 ── */
 
     function setText(selector, key, fallback) {
         win.querySelectorAll(selector).forEach((el) => { el.textContent = T(key, fallback); });
@@ -413,9 +411,7 @@ function startPhotos(win) {
         updateDynamicChrome();
     }
 
-    // ============================================================
-    // 数据持久化
-    // ============================================================
+    /* ── 数据持久化 ── */
 
     function seedAlbums() {
         return [
@@ -425,75 +421,108 @@ function startPhotos(win) {
         ];
     }
 
-    function normalizeItem(raw) {
-        if (!raw || typeof raw !== "object" || !raw.id) return null;
-        const name = String(raw.name || raw.id);
-        const type = raw.type === "video" ? "video" : raw.type === "image" ? "image" : (mediaKind(name) || "image");
-        return {
-            ...raw,
-            id: String(raw.id),
-            name,
-            type,
-            size: Number(raw.size) || 0,
-            date: raw.date || new Date().toISOString(),
-            favorite: !!raw.favorite,
-            deleted: !!raw.deleted,
-            deletedAt: raw.deletedAt || null,
-            albumIds: Array.isArray(raw.albumIds) ? raw.albumIds.filter((id) => typeof id === "string") : [],
-            rotation: normRotation(raw.rotation),
-            location: typeof raw.location === "string" ? raw.location : "",
-            width: Number(raw.width) || 0,
-            height: Number(raw.height) || 0,
-            duration: Number(raw.duration) || 0,
-            sourcePath: typeof raw.sourcePath === "string" ? raw.sourcePath : "",
-        };
-    }
-
     function loadLibrary() {
-        let raw = null;
-        try {
-            raw = localStorage.getItem(STORAGE_KEY);
-        } catch (e) {
-            console.warn("[photos] 无法读取本地媒体库", e);
-        }
-
+        // 元数据（相簿归属/收藏/旋转等）按路径挂在 localStorage；
+        // 媒体本体不在元数据里——/Picture/ 才是唯一真相（Q2）。
         let data = null;
-        if (raw) {
-            try {
-                data = JSON.parse(raw);
-            } catch (e) {
-                console.warn("[photos] 媒体库数据损坏，按空库打开", e);
-            }
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            data = raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            console.warn("[photos] 媒体库元数据损坏，按空打开", e);
         }
-
         if (data && typeof data === "object") {
-            const seen = new Set();
-            state.items = (Array.isArray(data.items) ? data.items : [])
-                .map(normalizeItem)
-                .filter((item) => item && !seen.has(item.id) && seen.add(item.id));
+            state.meta = (data.meta && typeof data.meta === "object") ? data.meta : {};
             const albumSeen = new Set();
             state.albums = (Array.isArray(data.albums) ? data.albums : [])
                 .filter((a) => a && typeof a.id === "string" && typeof a.name === "string")
                 .filter((a) => !albumSeen.has(a.id) && albumSeen.add(a.id))
                 .map((a) => ({ id: a.id, name: a.name }));
-        } else if (!raw) {
+        } else {
+            state.meta = {};
             // 只有首次打开才播种默认相簿：用户删掉的相簿不应该下次启动又长回来
             state.albums = seedAlbums();
             saveLibrary();
         }
     }
 
+    /** 扫描 /Picture/ 建库（Q2：启动自动扫描），并把按路径存的元数据贴回条目上。 */
+    async function scanIntoState() {
+        const files = await scanLibrary().catch((err) => {
+            console.warn("[photos] 扫描照片库失败：", err);
+            return [];
+        });
+        if (disposed) return;
+        state.items = files.map((f) => {
+            const meta = state.meta[f.path] || {};
+            return {
+                id: f.path,
+                name: f.name,
+                type: f.type === "video" ? "video" : "image",
+                size: Number(f.size) || 0,
+                date: f.modified ? new Date(f.modified).toISOString() : new Date().toISOString(),
+                favorite: !!meta.favorite,
+                deleted: false,
+                deletedAt: null,
+                albumIds: Array.isArray(meta.albumIds) ? meta.albumIds : [],
+                rotation: normRotation(meta.rotation),
+                location: typeof meta.location === "string" ? meta.location : "",
+                width: Number(meta.width) || 0,
+                height: Number(meta.height) || 0,
+                duration: Number(meta.duration) || 0,
+                sourcePath: f.path,
+                external: false,
+            };
+        });
+        // 外部挂载（本会话内已授权的）合并进来，只读展示
+        for (const mount of listExternalMounts()) {
+            const extItems = await scanExternalMount(mount.id).catch(() => []);
+            if (disposed) return;
+            state.items.push(...extItems.map((f) => {
+                const meta = state.meta[f.id] || {};
+                return {
+                    id: f.id,
+                    name: f.name,
+                    type: f.type,
+                    size: Number(f.size) || 0,
+                    date: f.modified ? new Date(f.modified).toISOString() : new Date().toISOString(),
+                    favorite: !!meta.favorite,
+                    deleted: false,
+                    deletedAt: null,
+                    albumIds: [],
+                    rotation: normRotation(meta.rotation),
+                    location: mount.name,
+                    width: Number(meta.width) || 0,
+                    height: Number(meta.height) || 0,
+                    duration: Number(meta.duration) || 0,
+                    sourcePath: "",
+                    external: true,
+                    mountName: mount.name,
+                };
+            }));
+        }
+    }
+
     function saveLibrary() {
         let payload;
         try {
-            const items = state.items.map((item) => {
-                const copy = { ...item };
-                delete copy._thumbState;
-                return copy;
+            // 只持久化用户意图（收藏/相簿/旋转/位置）与惰性学到的尺寸时长，
+            // 其余字段全部由扫描重建，避免元数据与库内容出现两个真相
+            const meta = {};
+            state.items.forEach((item) => {
+                const entry = {};
+                if (item.favorite) entry.favorite = true;
+                if (item.albumIds && item.albumIds.length) entry.albumIds = item.albumIds;
+                if (item.rotation) entry.rotation = item.rotation;
+                if (item.location) entry.location = item.location;
+                if (item.width) entry.width = item.width;
+                if (item.height) entry.height = item.height;
+                if (item.duration) entry.duration = item.duration;
+                if (Object.keys(entry).length) meta[item.id] = entry;
             });
-            payload = JSON.stringify({ version: 2, items, albums: state.albums });
+            payload = JSON.stringify({ version: 3, meta, albums: state.albums });
         } catch (e) {
-            console.error("[photos] 媒体库数据序列化失败", e);
+            console.error("[photos] 媒体库元数据序列化失败", e);
             reportSaveFailure("serialize", e);
             return false;
         }
@@ -501,7 +530,7 @@ function startPhotos(win) {
             localStorage.setItem(STORAGE_KEY, payload);
             return true;
         } catch (e) {
-            console.warn("[photos] 保存媒体库失败", e);
+            console.warn("[photos] 保存媒体库元数据失败", e);
             reportSaveFailure("write", e);
             return false;
         }
@@ -527,32 +556,7 @@ function startPhotos(win) {
         }, 800);
     }
 
-    /**
-     * 旧版把二进制以 base64 data URI 存在 localStorage：搬进 IndexedDB 并从元数据抹掉。
-     * 迁移失败的项目保留 src 继续可显示，不会丢数据。
-     * @returns {Promise<void>}
-     */
-    async function migrateLegacyItems() {
-        const legacy = state.items.filter(isInlineSource);
-        if (!legacy.length) return;
-        let moved = 0;
-        for (const item of legacy) {
-            try {
-                await putMedia(item.id, dataURLToBlob(item.src));
-                delete item.src;
-                moved++;
-            } catch (e) {
-                console.warn("[photos] 旧数据迁移失败，暂以内联数据继续显示：", item.id, e);
-            }
-        }
-        if (!moved) return;
-        saveLibrary();
-        if (!disposed) scheduleRender();
-    }
-
-    // ============================================================
-    // 缩略图与媒体分析
-    // ============================================================
+    /* ── 缩略图与媒体分析 ── */
 
     function canvasToBlob(canvas) {
         return new Promise((resolve) => {
@@ -720,7 +724,7 @@ function startPhotos(win) {
     }
 
     function queueThumb(item) {
-        if (disposed || !item || isInlineSource(item)) return;
+        if (disposed || !item) return;
         if (item._thumbState === "pending" || item._thumbState === "ready" || item._thumbState === "failed") return;
         item._thumbState = "pending";
         thumbQueue.push(item);
@@ -832,9 +836,7 @@ function startPhotos(win) {
         if (current && current.id === item.id) renderDetail(current);
     }
 
-    // ============================================================
-    // 查询与视图
-    // ============================================================
+    /* ── 查询与视图 ── */
 
     function findItem(id) {
         return state.items.find((item) => item.id === id);
@@ -904,9 +906,7 @@ function startPhotos(win) {
         }
     }
 
-    // ============================================================
-    // 主界面渲染
-    // ============================================================
+    /* ── 主界面渲染 ── */
 
     function stopChunkedRender() {
         renderSeq++;
@@ -1125,9 +1125,7 @@ function startPhotos(win) {
         step();
     }
 
-    // ============================================================
-    // 侧边栏 / 相簿
-    // ============================================================
+    /* ── 侧边栏 / 相簿 ── */
 
     function renderAlbumNav() {
         if (disposed) return;
@@ -1335,9 +1333,7 @@ function startPhotos(win) {
         openPreview(item.id);
     }
 
-    // ============================================================
-    // 预览：生命周期
-    // ============================================================
+    /* ── 预览：生命周期 ── */
 
     function currentPreviewItem() {
         return state.preview.items[state.preview.index] || null;
@@ -1445,7 +1441,7 @@ function startPhotos(win) {
         const list = state.preview.items;
         const index = state.preview.index;
         [list[index - 1], list[index + 1]].forEach((neighbor) => {
-            if (!neighbor || neighbor.type !== "image" || isInlineSource(neighbor)) return;
+            if (!neighbor || neighbor.type !== "image") return;
             acquirePreviewUrl(neighbor).then(() => syncPreviewHeld()).catch(() => {});
         });
     }
@@ -1454,7 +1450,6 @@ function startPhotos(win) {
 
     function acquirePreviewUrl(item) {
         if (!item) return Promise.resolve(null);
-        if (isInlineSource(item)) return Promise.resolve(item.src);
         const id = item.id;
         const held = previewHeld.get(id);
         if (held) return Promise.resolve(held);
@@ -1514,9 +1509,7 @@ function startPhotos(win) {
         syncPreviewHeld();
     }
 
-    // ============================================================
-    // 预览：媒体装载
-    // ============================================================
+    /* ── 预览：媒体装载 ── */
 
     function clearPreviewMedia() {
         resetVideoElement();
@@ -1602,9 +1595,7 @@ function startPhotos(win) {
         els.previewError.hidden = false;
     }
 
-    // ============================================================
-    // 预览：导航 / 缩放 / 旋转
-    // ============================================================
+    /* ── 预览：导航 / 缩放 / 旋转 ── */
 
     function previewGo(delta) {
         const total = state.preview.items.length;
@@ -1725,9 +1716,7 @@ function startPhotos(win) {
         updateDetailIfCurrent(item);
     }
 
-    // ============================================================
-    // 预览：详情 / 胶片条
-    // ============================================================
+    /* ── 预览：详情 / 胶片条 ── */
 
     function toggleDetail() {
         if (!state.preview.open) return;
@@ -1838,9 +1827,7 @@ function startPhotos(win) {
         }
     }
 
-    // ============================================================
-    // 预览：幻灯片 / 全屏
-    // ============================================================
+    /* ── 预览：幻灯片 / 全屏 ── */
 
     function clearSlideTimer() {
         if (state.preview.timer) {
@@ -1951,9 +1938,7 @@ function startPhotos(win) {
         });
     }
 
-    // ============================================================
-    // 预览：视频
-    // ============================================================
+    /* ── 预览：视频 ── */
 
     function isCurrentVideo() {
         const item = currentPreviewItem();
@@ -2074,9 +2059,7 @@ function startPhotos(win) {
         updateVideoProgress();
     }
 
-    // ============================================================
-    // 收藏 / 删除 / 相簿操作
-    // ============================================================
+    /* ── 收藏 / 删除 / 相簿操作 ── */
 
     function updateFavoriteButton(item) {
         const svg = els.btnFavorite.querySelector("svg");
@@ -2130,40 +2113,34 @@ function startPhotos(win) {
     function deleteItems(ids) {
         const list = toIdList(ids);
         if (!list.length) return;
+        // 外部挂载为只读：store 层会拒绝，这里先把话说明白（Q2 越界不静默）
+        const blocked = list.filter((id) => isExternalItem(findItem(id)));
+        const allowed = list.filter((id) => !blocked.includes(id));
+        if (blocked.length) {
+            showInfo(
+                T("photos.extReadonlyTitle", "外部图片文件夹为只读"),
+                T("photos.extReadonlyDelete", "外部文件夹中的项目不能在照片应用里删除；要删除请在访达中操作对应文件夹。")
+            );
+        }
+        if (!allowed.length) return;
         const prevItems = state.items;
-        const purged = [];
-        const soft = [];
-        list.forEach((id) => {
-            const item = prevItems.find((entry) => entry.id === id);
-            if (!item) return;
-            if (item.deleted) {
-                purged.push(item);
-            } else {
-                soft.push(item);
-                item.deleted = true;
-                item.deletedAt = new Date().toISOString();
-            }
-        });
-        if (!purged.length && !soft.length) return;
-        if (purged.length) state.items = prevItems.filter((item) => !purged.includes(item));
-
+        const gone = new Set(allowed);
+        // 库内删除 = 文件进 /废纸篓（store.deleteMedia → moveToTrash），没有应用内回收站旁路
+        state.items = prevItems.filter((item) => !gone.has(item.id));
         if (!saveLibrary()) {
-            soft.forEach((item) => {
-                item.deleted = false;
-                item.deletedAt = null;
-            });
             state.items = prevItems;
             return;
         }
-
         state.selection.clear();
         state.anchorId = null;
         refreshPreviewAfterLibraryChange();
         render();
         renderAlbumNav();
-        if (purged.length) {
-            deleteMedia(purged.map((item) => item.id)).catch((err) => console.warn("[photos] 回收媒体数据失败", err));
-        }
+        deleteMedia(allowed).catch((err) => {
+            console.warn("[photos] 移入废纸篓失败：", err);
+            // 移动失败的项目还躺在库里：重新扫描让界面回到真相
+            scanIntoState().then(() => { if (!disposed) { render(); renderAlbumNav(); } });
+        });
     }
 
     function restoreItems(ids) {
@@ -2267,9 +2244,7 @@ function startPhotos(win) {
         }
     }
 
-    // ============================================================
-    // 相簿 CRUD
-    // ============================================================
+    /* ── 相簿 CRUD ── */
 
     async function promptNewAlbum() {
         const name = await askText({
@@ -2326,8 +2301,9 @@ function startPhotos(win) {
         if (!album) return;
         const proceed = await askConfirm(
             T("photos.album.deleteTitle", "删除相簿"),
-            T("photos.album.deleteBody", "确定要删除相簿「{name}」吗？相簿中的项目不会被删除。").replace("{name}", album.name),
-            T("photos.album.delete", "删除相簿")
+            T("photos.album.deleteBody", "「{name}」中的项目会保留，相簿本身将被删除。").replace("{name}", album.name),
+            T("photos.album.delete", "删除相簿"),
+            true
         );
         if (!proceed) return;
 
@@ -2378,9 +2354,7 @@ function startPhotos(win) {
         createContextMenu(x, y, albumMenuItems(ids));
     }
 
-    // ============================================================
-    // 导入 / 访达打开
-    // ============================================================
+    /* ── 导入 / 访达打开 ── */
 
     function createFileInput() {
         const input = document.createElement("input");
@@ -2401,6 +2375,35 @@ function startPhotos(win) {
         if (!els.fileInput) createFileInput();
         els.fileInput.value = "";
         els.fileInput.click();
+    }
+
+    /** 添加外部图片文件夹：目录选择器授权后挂载为只读来源（Q2），合并进当前图库展示。 */
+    async function mountExternalFolder() {
+        if (typeof window.showDirectoryPicker !== "function") {
+            showInfo(T("photos.extUnsupportedTitle", "当前浏览器不支持"), T("photos.extUnsupported", "这个浏览器没有 File System Access API，无法挂载外部图片文件夹。"));
+            return;
+        }
+        let handle = null;
+        try {
+            handle = await window.showDirectoryPicker({ id: "deskly-photos-ext", mode: "read" });
+        } catch (err) {
+            return;   // 用户取消不是故障
+        }
+        setImporting(1);
+        try {
+            const mount = await addExternalMount(handle, { mode: "read" });
+            // 重新扫描（含刚挂载的外部目录），让界面回到真相
+            await scanIntoState();
+            if (disposed) return;
+            render();
+            renderAlbumNav();
+            showInfo(T("photos.extMountedTitle", "已添加外部图片文件夹"), mount.name);
+        } catch (err) {
+            console.warn("[photos] 外部文件夹挂载失败：", err);
+            showError(T("photos.extMountFailedTitle", "无法添加外部文件夹"), (err && err.message) || String(err));
+        } finally {
+            setImporting(-1);
+        }
     }
 
     function handleImportFiles(files) {
@@ -2462,6 +2465,15 @@ function startPhotos(win) {
         }
     }
 
+    /** 库内唯一落点：IMG.jpg → IMG (1).jpg 顺延（putMedia 写 /Picture/ 是原子写，此处只管起名）。 */
+    async function uniqueLibraryPath(name) {
+        const clean = Deskly().fs.paths.sanitizeName(String(name || "").replace(/\.[^.]+$/, "")) || T("photos.untitled", "未命名");
+        const ext = (String(name || "").match(/\.[^.]+$/) || [""])[0].toLowerCase() || ".jpg";
+        let candidate = `${PHOTOS_ROOT}/${clean}${ext}`;
+        for (let i = 1; unwrap(await Deskly().fs.existsAt(candidate)); i++) candidate = `${PHOTOS_ROOT}/${clean} (${i})${ext}`;
+        return candidate;
+    }
+
     async function importOne(file, sourcePath = null) {
         const kind = mediaKind(file.name || sourcePath || "", file.type || "");
         if (!kind) {
@@ -2475,7 +2487,8 @@ function startPhotos(win) {
             throw err;
         }
         const item = {
-            id: makeId("item"),
+            // id 即库内路径：/Picture/ 是唯一真相，没有第二处索引（Q2）
+            id: await uniqueLibraryPath(file.name || baseName(sourcePath) || T("photos.untitled", "未命名")),
             name: file.name || baseName(sourcePath) || T("photos.untitled", "未命名"),
             type: kind,
             size: Number(file.size) || 0,
@@ -2487,12 +2500,14 @@ function startPhotos(win) {
             location: "",
             rotation: 0,
             sourcePath: sourcePath || "",
+            external: false,
         };
+        item.sourcePath = item.id;
         try {
             await putMedia(item.id, file);
         } catch (e) {
             const err = new Error((e && e.message) || "storage");
-            err.reason = e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014) ? "quota" : "storage";
+            err.reason = e && (e.code === "EQUOTA" || e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014) ? "quota" : "storage";
             throw err;
         }
         const meta = await analyzeMedia(file, kind).catch(() => null);
@@ -2555,7 +2570,7 @@ function startPhotos(win) {
         openingPath = path;
         try {
             await libraryReady.catch(() => {});
-            const existing = state.items.find((item) => item.sourcePath === path);
+            const existing = state.items.find((item) => item.id === path || item.sourcePath === path);
             if (existing) {
                 if (existing.deleted) {
                     existing.deleted = false;
@@ -2575,8 +2590,7 @@ function startPhotos(win) {
 
             setImporting(1);
             try {
-                await OSFS.init();
-                const file = await OSFS.read(path);
+                const file = unwrap(await Deskly().fs.at(path));
                 if (!file) throw new Error(T("photos.errReadPath", "无法读取文件：{path}").replace("{path}", path));
                 const kind = mediaKind(file.name || path, file.type || "");
                 if (!kind) {
@@ -2599,9 +2613,7 @@ function startPhotos(win) {
         }
     }
 
-    // ============================================================
-    // 右键菜单
-    // ============================================================
+    /* ── 右键菜单 ── */
 
     function onItemContextMenu(e, item) {
         e.preventDefault();
@@ -2661,8 +2673,9 @@ function startPhotos(win) {
                 action: async () => {
                     const proceed = await askConfirm(
                         T("photos.trash.confirmTitle", "永久删除"),
-                        T("photos.trash.confirmBody", "确定要永久删除这些项目吗？此操作无法撤销。"),
-                        T("photos.preview.permanentDelete", "永久删除")
+                        T("photos.trash.confirmBody", "这些项目将被永久删除，无法撤销。"),
+                        T("photos.preview.permanentDelete", "永久删除"),
+                        true
                     );
                     if (proceed) deleteItems(deletedItems.map((item) => item.id));
                 },
@@ -2684,9 +2697,7 @@ function startPhotos(win) {
         ]);
     }
 
-    // ============================================================
-    // 拖放 / 键盘 / 事件
-    // ============================================================
+    /* ── 拖放 / 键盘 / 事件 ── */
 
     function hasFileDrag(e) {
         return !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files"));
@@ -2854,7 +2865,7 @@ function startPhotos(win) {
             if (!e.repeat) deleteItems([item.id]);
             return;
         }
-        if (key === ",", item.type === "video") { e.preventDefault(); skipVideo(-5); return; }
+        if (key === "," && item.type === "video") { e.preventDefault(); skipVideo(-5); return; }
         if (key === "." && item.type === "video") { e.preventDefault(); skipVideo(5); return; }
     }
 
@@ -2927,6 +2938,9 @@ function startPhotos(win) {
         els.segBtns.forEach((btn) => btn.addEventListener("click", () => setMode(btn.dataset.mode)));
 
         els.btnImport.addEventListener("click", pickFiles);
+
+        // 添加外部图片文件夹（目录选择器必须在点击手势里调用）
+        if (els.btnExtMount) els.btnExtMount.addEventListener("click", mountExternalFolder);
 
         els.btnSelect.addEventListener("click", () => {
             if (state.selecting) {
@@ -3221,9 +3235,7 @@ function startPhotos(win) {
         document.addEventListener("plugin-unload", onPhotosUnload);
     }
 
-    // ============================================================
-    // 生命周期
-    // ============================================================
+    /* ── 生命周期 ── */
 
     function updateDynamicChrome() {
         if (!els.btnSlideshow) return;
@@ -3286,7 +3298,14 @@ function startPhotos(win) {
         previewPending.clear();
         previewKeep.clear();
         loadLibrary();
-        libraryReady = migrateLegacyItems().catch((err) => console.warn("[photos] 旧数据迁移异常", err));
+        // 启动自动扫描 /Picture/（Q2：唯一照片库）；扫描完成后重渲染一次
+        libraryReady = scanIntoState()
+            .catch((err) => console.warn("[photos] 建库扫描异常", err))
+            .then(() => {
+                if (disposed) return;
+                render();
+                renderAlbumNav();
+            });
         applyStaticI18n();
         renderAlbumNav();
         setActiveNav(state.view);

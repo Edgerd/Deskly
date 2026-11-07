@@ -10,30 +10,16 @@
  *   6. 支持「每天自动更新 Bing 壁纸」：由设置项 wallpaper.autoBing 驱动，
  *      每个自然日最多拉取一次，失败静默降级（只记运行日志，不打扰用户）。
  *
- * 持久化：
- *   使用 localStorage 存储当前壁纸配置 { type, url, name? }，type 取值：
- *     "default"    项目内置默认壁纸（第1套系统壁纸）
- *     "system"     系统内置壁纸（通过 getSystemWallpapers() 选择）
- *     "network"    网络壁纸源
- *     "upload"     本地上传
- *     "bing"       Bing 每日壁纸
- *   Bing 自动更新另用一个记账槽 wallpaper-bing-date（最近一次成功应用的日期），
- *   它不是设置项，只是防止同一天重复拉取的书签。
- *
- * 对外 API：
- *   wallpaper.init()                        初始化并恢复上次壁纸（含每日 Bing 检查）
- *   wallpaper.getWallpaperConfig()          读取当前壁纸配置
- *   wallpaper.applyConfig(config)           按配置对象应用壁纸（只应用、不落盘）
- *   wallpaper.setWallpaper(url)             直接应用壁纸（不持久化）
- *   wallpaper.setNetworkWallpaper(url)      设置网络壁纸源并持久化（含图片预加载校验）
- *   wallpaper.uploadLocal(file)             上传本地图片并持久化
- *   wallpaper.resetWallpaper()              恢复项目默认壁纸
- *   wallpaper.fetchBingWallpaper()          获取 Bing 每日壁纸并设为壁纸（持久化）
- *   wallpaper.setAutoBing(on)               开关「每天自动更新 Bing 壁纸」
- *   wallpaper.getSystemWallpapers()         获取系统内置壁纸列表
- *   wallpaper.setSystemWallpaper(id)        按 ID 切换系统内置壁纸并持久化
- *   getDominantColor(url)                   取图片平均色，返回 Promise<[r, g, b]>
- *   applyTint()                            按当前壁纸刷新 <html> 上的着色令牌
+ * 持久化（0.4.0 重构）：
+ *   图片本体进 IndexedDB（库 deskly-wallpaper / 表 images，blob 直存，不走 base64），
+ *   localStorage 只存引用 { type, url, name?, sourceUrl?, thumb?, bytes? }：
+ *     url = "idb:<id>"  →  本体在 IndexedDB（upload / network / bing 三类都落盘缓存）；
+ *     url = 直链        →  站内系统壁纸或缓存失败时的网络外链（旧行为兼容）；
+ *     thumb             →  48px JPEG 小图，wallpaper-boot.js 首帧先铺它（模糊但同色同图），
+ *                          全尺寸图由 init 异步从 IndexedDB 换回，不再先闪默认壁纸。
+ *   旧的 base64 data: 配置在启动时懒迁移进 IndexedDB（localStorage 配额因此释放）。
+ *   写入 IndexedDB 失败（隐私模式 / 配额）会弹一次可见提示，不静默丢失。
+ *   Bing 自动更新另用一个记账槽 wallpaper-bing-date（最近一次成功应用的日期）。
  *
  * 着色令牌由本模块统一产出：壁纸主色只有这里能算（采样器在本文件），所以
  * `--wallpaper-tint-color` / `--wallpaper-tint-rgb` 与样式表正在消费的旧令牌
@@ -49,12 +35,13 @@ const WALLPAPER_DAY = assetPath("images/sequoia.shape.day.jpg");
 const WALLPAPER_NIGHT = assetPath("images/sequoia.shape.night.jpg");
 const DEFAULT_WALLPAPER = WALLPAPER_DEFAULT;
 
-// 壁纸配置存储键名
 const WALLPAPER_CONFIG_KEY = "wallpaper-config";
 // 「每天自动更新 Bing 壁纸」开关的存储槽（= 设置项 wallpaper.autoBing 的推导槽名）
 const AUTO_BING_SLOT = "wallpaper-autoBing";
 // 最近一次成功应用 Bing 壁纸的自然日（记账槽，不是设置项）
 const BING_DATE_SLOT = "wallpaper-bing-date";
+// 每日 Bing 的跨标签页在途锁（值为毫秒时间戳）：双标签同日只拉一次（BUG-46c）
+const BING_LOCK_SLOT = "wallpaper-bing-daily-lock";
 // 主色采样取不到值时的兜底 RGB（中性蓝灰，与 macOS 窗口底色同调，样式表里也有一份同名兜底）
 const TINT_FALLBACK_RGB = [107, 124, 147];
 // 同一色的十六进制形态（着色令牌 --*-tint-color 用它）
@@ -62,9 +49,15 @@ const TINT_FALLBACK = rgbToHex(TINT_FALLBACK_RGB);
 // 主色采样画布边长：16x16 只是「取平均色」，不是缩略图
 const SAMPLE_EDGE = 16;
 
-// 上传压缩参数：最大边长与 JPEG 质量
 const UPLOAD_MAX_EDGE = 2560;
 const UPLOAD_JPEG_QUALITY = 0.85;
+
+// IndexedDB：壁纸本体（blob）的持久层。localStorage 配置里只留 "idb:<id>" 引用。
+const IDB_NAME = "deskly-wallpaper";
+const IDB_STORE = "images";
+const IDB_PREFIX = "idb:";
+// 首帧引导小图边长（px）：48px JPEG 约 2–4KB，localStorage 毫无压力
+const BOOT_THUMB_EDGE = 48;
 
 // Bing 壁纸接口
 const BING_API_URL = "https://cn.bing.com/hpimagearchive.aspx?format=js&idx=0&n=1&mkt=zh-CN";
@@ -135,6 +128,189 @@ function todayKey() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// ---- IndexedDB 本体层（探针直接测这四个函数） ----
+
+/** 会话内 objectURL 缓存：同一 id 只 create 一次，避免重复分配与泄漏。 */
+const objectUrlCache = new Map();
+
+/** 已弹过的提示（按标题去重）：同一失败不连环弹窗。 */
+const notifiedTitles = new Set();
+
+/**
+ * 可见提示：写入/恢复失败必须可感知。优先系统弹窗，弹窗不可用退到运行记录。
+ * @param {string} title 标题
+ * @param {string} message 正文
+ * @returns {void}
+ */
+function notifyOnce(title, message) {
+    if (notifiedTitles.has(title)) return;
+    notifiedTitles.add(title);
+    if (window.__dialog && typeof window.__dialog.error === "function") {
+        window.__dialog.error(title, message);
+    } else {
+        warnLog(`${title}：${message}`);
+    }
+}
+
+/**
+ * 打开壁纸库（首次创建对象仓库）。
+ * @returns {Promise<IDBDatabase>} 数据库句柄
+ */
+function idbOpen() {
+    return new Promise((resolve, reject) => {
+        if (!globalThis.indexedDB) {
+            reject(new Error("IndexedDB 不可用"));
+            return;
+        }
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error("IndexedDB 打开失败"));
+    });
+}
+
+/**
+ * 写入一张壁纸本体。
+ * @param {string} id 图片 id（upload / network / bing）
+ * @param {Blob} blob 图片本体
+ * @returns {Promise<boolean>} 是否写入成功
+ */
+async function idbPutImage(id, blob) {
+    const db = await idbOpen();
+    try {
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, "readwrite");
+            tx.objectStore(IDB_STORE).put(blob, id);
+            tx.oncomplete = () => resolve(true);
+            tx.onerror = () => reject(tx.error || new Error("IndexedDB 写入失败"));
+        });
+        return true;
+    } finally {
+        db.close();
+    }
+}
+
+/**
+ * 读一张壁纸本体。
+ * @param {string} id 图片 id
+ * @returns {Promise<Blob|null>} 图片本体；不存在为 null
+ */
+async function idbGetImage(id) {
+    const db = await idbOpen();
+    try {
+        return await new Promise((resolve, reject) => {
+            const req = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(id);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => reject(req.error || new Error("IndexedDB 读取失败"));
+        });
+    } finally {
+        db.close();
+    }
+}
+
+/**
+ * 由本体取（或建）会话级 objectURL。
+ * @param {string} id 图片 id
+ * @param {Blob} blob 图片本体
+ * @returns {string} objectURL
+ */
+function objectUrlFor(id, blob) {
+    let url = objectUrlCache.get(id);
+    if (!url) {
+        url = URL.createObjectURL(blob);
+        objectUrlCache.set(id, url);
+    }
+    return url;
+}
+
+/**
+ * 把配置里的 url 解析成可显示地址："idb:<id>" → objectURL，其余原样返回。
+ * @param {{url?: string}} config 壁纸配置
+ * @returns {Promise<string>} 可用于 CSS 的地址
+ */
+async function resolveConfigUrl(config) {
+    const url = String(config?.url || "");
+    if (!url.startsWith(IDB_PREFIX)) return url;
+    const id = url.slice(IDB_PREFIX.length);
+    if (objectUrlCache.has(id)) return objectUrlCache.get(id);
+    const blob = await idbGetImage(id);
+    if (!blob) throw new Error(`本地壁纸数据缺失（${id}）`);
+    return objectUrlFor(id, blob);
+}
+
+/**
+ * 生成首帧引导小图（48px JPEG dataURL，失败为空串 —— 没有小图就退回直链引导）。
+ * @param {Blob} blob 图片本体
+ * @returns {Promise<string>} dataURL 或 ""
+ */
+async function buildThumb(blob) {
+    try {
+        const url = URL.createObjectURL(blob);
+        try {
+            const img = await new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = () => reject(new Error("缩略图解码失败"));
+                image.src = url;
+            });
+            const scale = BOOT_THUMB_EDGE / Math.max(img.width, img.height, 1);
+            const w = Math.max(1, Math.round(img.width * scale));
+            const h = Math.max(1, Math.round(img.height * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            return canvas.toDataURL("image/jpeg", 0.6);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    } catch (err) {
+        warnLog("缩略图生成失败（首帧引导退回直链）：", err);
+        return "";
+    }
+}
+
+/**
+ * 拉取网络壁纸本体并落盘 IndexedDB（离线/限频时的显示保障）。
+ * 跨域被拒、非图片响应、IDB 写失败都返回 null —— 调用方退回「只存外链」的旧行为。
+ * @param {string} id 图片 id
+ * @param {string} url 远程地址
+ * @returns {Promise<{blob: Blob}|null>} 成功为本体，失败为 null
+ */
+async function cacheRemoteImage(id, url) {
+    try {
+        const response = await fetch(url, { mode: "cors" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        if (!blob || !String(blob.type || "").startsWith("image/")) throw new Error("响应不是图片");
+        await idbPutImage(id, blob);
+        return { blob };
+    } catch (err) {
+        warnLog(`网络壁纸缓存失败，退回只存外链（${url.slice(0, 60)}）：`, err);
+        return null;
+    }
+}
+
+/**
+ * 旧版 base64（data:）配置懒迁移进 IndexedDB：本体搬走、配置换成引用 + 小图。
+ * 迁移失败保持原样（旧的 data: 配置本次仍能显示，只是继续占配额）。
+ * @param {object} config 当前配置
+ * @returns {Promise<void>}
+ */
+async function migrateLegacyDataUrl(config) {
+    try {
+        const blob = await (await fetch(config.url)).blob();
+        await idbPutImage("upload", blob);
+        const thumb = await buildThumb(blob);
+        safeSetItem(WALLPAPER_CONFIG_KEY, JSON.stringify({
+            ...config, url: `${IDB_PREFIX}upload`, thumb, bytes: blob.size,
+        }));
+        logWallpaper("info", "旧版 base64 墙纸已迁移到 IndexedDB，localStorage 配额已释放");
+    } catch (err) {
+        warnLog("旧版墙纸迁移失败（保持原样）：", err);
+    }
+}
+
 /**
  * 「每天自动更新 Bing 壁纸」是否开启：优先问设置中枢（它才知道类型），
  * 中枢未注册该键时按存储文本兜底判断（on / true / 1 均视为开）。
@@ -200,7 +376,6 @@ const SYSTEM_WALLPAPERS = [
     },
 ];
 
-/** 壁纸模块对象 */
 const wallpaper = {
     /**
      * 初始化桌面背景系统。
@@ -213,20 +388,14 @@ const wallpaper = {
         wallpaperElement = document.querySelector("body > div.wallpaper") || Object.assign(document.createElement("div"), { className: "wallpaper" });
         if (!wallpaperElement.parentNode) document.body.appendChild(wallpaperElement);
         const config = wallpaper.getWallpaperConfig();
-        // 默认壁纸已由 main.css（body > div.wallpaper 的 background-image）在渲染时直接呈现，
-        // 若配置与默认一致则跳过 JS 重写：避免 LCP 元素初始渲染后二次样式调整与
-        // 重复图片请求，缩短 LCP 渲染耗时。仅当用户配置了自定义壁纸时才覆盖。
-        // 自定义壁纸其实早在首帧前就由 wallpaper-boot.js 写进 CSS 变量了，这里写内联
-        // 样式是为了把「当前壁纸」收敛到壁纸元素自身（后续切换壁纸只改这一处）。
-        if (config?.url && config.url !== DEFAULT_WALLPAPER) {
-            wallpaper.setWallpaper(config.url);
-        }
+        // 恢复上次的壁纸：idb: 引用要异步取本体（首帧已由 wallpaper-boot 用 thumb 兜住，
+        // 这里异步换回全尺寸图）；直链 / 默认图维持原同步路径。
+        restoreConfig(config);
         // 内联样式已接管（或确认就是默认图），释放 head 引导脚本留下的 CSS 变量覆盖，
         // 避免同一张壁纸存在两个写主。
         const boot = window.__desklyWallpaperBoot;
         if (boot && typeof boot.release === "function") boot.release();
         bindTintEvents();
-        applyTint(config?.url);
         logWallpaper("info", `壁纸就绪：${config?.type || "default"}${config?.name ? `（${config.name}）` : ""}`);
         if (isAutoBingEnabled()) applyDailyBing();
     },
@@ -292,7 +461,8 @@ const wallpaper = {
             wallpaper.init();
         }
         Object.assign(wallpaperElement.style, {
-            backgroundImage: `url("${url}")`,
+            // JSON.stringify 自带转义：含引号/反斜杠的自定义 URL 不会把整条声明弄失效（BUG-46a）
+            backgroundImage: `url(${JSON.stringify(url)})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
@@ -316,6 +486,7 @@ const wallpaper = {
 
     /**
      * 设置自定义网络壁纸源并持久化（先预加载校验图片有效性）。
+     * 本体尽力落盘 IndexedDB：成功则离线也能显示；跨域/写盘失败退回「只存外链」旧行为。
      * @param {string} url 网络图片地址
      * @returns {Promise<boolean>} 是否成功应用
      */
@@ -323,37 +494,54 @@ const wallpaper = {
         const trimmed = (url || "").trim();
         if (!trimmed) return false;
         const validUrl = await wallpaper.preloadImage(trimmed);
-        wallpaper.setWallpaper(validUrl);
-        wallpaper.saveWallpaperConfig({ type: "network", url: validUrl });
+        const cached = await cacheRemoteImage("network", validUrl);
+        if (cached) {
+            const thumb = await buildThumb(cached.blob);
+            wallpaper.setWallpaper(objectUrlFor("network", cached.blob));
+            wallpaper.saveWallpaperConfig({
+                type: "network", url: `${IDB_PREFIX}network`, sourceUrl: validUrl,
+                thumb, bytes: cached.blob.size,
+            });
+        } else {
+            wallpaper.setWallpaper(validUrl);
+            wallpaper.saveWallpaperConfig({ type: "network", url: validUrl, sourceUrl: validUrl });
+        }
         return true;
     },
 
     /**
-     * 上传本地图片并设为壁纸（持久化为 base64）。
-     * 图片尺寸过大时会先压缩，避免超出 localStorage 容量。
+     * 上传本地图片并设为壁纸。
+     * 压缩后的本体写入 IndexedDB（不再是 base64 塞 localStorage —— 那是 5MB 配额下
+     * 「看着生效、刷新就丢」的根因），配置里只留 "idb:upload" 引用与 48px 引导小图。
+     * 写盘失败（隐私模式 / 配额）弹一次可见提示，本次会话内壁纸仍生效但不持久化。
      * @param {File} file 本地图片文件
-     * @returns {Promise<string>} 生成的 base64 数据
+     * @returns {Promise<{url: string, bytes: number, persisted: boolean}>} 显示地址与体积信息
      */
-    uploadLocal(file) {
-        return new Promise((resolve, reject) => {
-            if (!file || !file.type.startsWith("image/")) {
-                reject(new Error("请选择有效的图片文件"));
-                return;
-            }
+    async uploadLocal(file) {
+        if (!file || !file.type.startsWith("image/")) throw new Error("请选择有效的图片文件");
+        const dataUrl = await new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = async () => {
-                try {
-                    const dataUrl = await compressImage(reader.result, file.type);
-                    wallpaper.setWallpaper(dataUrl);
-                    wallpaper.saveWallpaperConfig({ type: "upload", url: dataUrl });
-                    resolve(dataUrl);
-                } catch (err) {
-                    reject(err);
-                }
-            };
+            reader.onload = () => resolve(String(reader.result));
             reader.onerror = () => reject(new Error("读取图片失败"));
             reader.readAsDataURL(file);
         });
+        const compressed = await compressImage(dataUrl, file.type);
+        const blob = await (await fetch(compressed)).blob();
+        try {
+            await idbPutImage("upload", blob);
+        } catch (err) {
+            warnLog("上传壁纸写入 IndexedDB 失败，本次不持久化：", err);
+            wallpaper.setWallpaper(compressed);
+            applyTint(compressed);
+            notifyOnce("墙纸未能保存",
+                "本地存储不可用或已满，本次墙纸只在当前页面生效，刷新后会恢复为上次保存的墙纸。");
+            return { url: compressed, bytes: blob.size, persisted: false };
+        }
+        const thumb = await buildThumb(blob);
+        const viewUrl = objectUrlFor("upload", blob);
+        wallpaper.setWallpaper(viewUrl);
+        wallpaper.saveWallpaperConfig({ type: "upload", url: `${IDB_PREFIX}upload`, thumb, bytes: blob.size });
+        return { url: viewUrl, bytes: blob.size, persisted: true };
     },
 
     /**
@@ -411,13 +599,55 @@ const wallpaper = {
             finalUrl = altResult.url;
             if (altResult.title) finalName = `Bing：${altResult.title}`;
         }
-        // 预加载一次，避免跨域/失效时界面空白
+        // 预加载一次，避免跨域/失效时界面空白；本体落盘缓存，离线/限频时仍能显示
         await wallpaper.preloadImage(finalUrl);
-        wallpaper.setWallpaper(finalUrl);
-        wallpaper.saveWallpaperConfig({ type: "bing", url: finalUrl, name: finalName });
+        const cached = await cacheRemoteImage("bing", finalUrl);
+        if (cached) {
+            const thumb = await buildThumb(cached.blob);
+            wallpaper.setWallpaper(objectUrlFor("bing", cached.blob));
+            wallpaper.saveWallpaperConfig({
+                type: "bing", url: `${IDB_PREFIX}bing`, sourceUrl: finalUrl,
+                name: finalName, thumb, bytes: cached.blob.size,
+            });
+        } else {
+            wallpaper.setWallpaper(finalUrl);
+            wallpaper.saveWallpaperConfig({ type: "bing", url: finalUrl, sourceUrl: finalUrl, name: finalName });
+        }
         return finalUrl;
     },
 };
+
+/**
+ * 启动恢复：把配置解析成可显示地址并铺到壁纸元素。
+ * idb: 引用异步取本体；读失败（数据缺失 / IndexedDB 不可用）回退默认壁纸并弹一次
+ * 可见提示 —— 不白屏、不静默丢。直链配置维持同步路径，旧 base64 配置顺手懒迁移。
+ * @param {{type?: string, url?: string, name?: string}} config 壁纸配置
+ * @returns {Promise<void>}
+ */
+async function restoreConfig(config) {
+    const url = String(config?.url || "");
+    if (!url || url === DEFAULT_WALLPAPER) {
+        applyTint(url || DEFAULT_WALLPAPER);
+        return;
+    }
+    if (url.startsWith(IDB_PREFIX)) {
+        try {
+            const objectUrl = await resolveConfigUrl(config);
+            wallpaper.setWallpaper(objectUrl);
+            applyTint(objectUrl);
+        } catch (err) {
+            warnLog("本地壁纸恢复失败，回退默认壁纸：", err);
+            wallpaper.setWallpaper(DEFAULT_WALLPAPER);
+            applyTint(DEFAULT_WALLPAPER);
+            notifyOnce("墙纸未能恢复",
+                "本地保存的墙纸数据读不出来，已回退到默认墙纸。网络墙纸可在系统设置中重新拉取。");
+        }
+        return;
+    }
+    wallpaper.setWallpaper(url);
+    applyTint(url);
+    if (url.startsWith("data:")) migrateLegacyDataUrl(config);
+}
 
 /**
  * 按配置对象应用壁纸：只画界面、不再写存储。
@@ -429,6 +659,23 @@ const wallpaper = {
 export function applyConfig(config) {
     const url = config && typeof config === "object" ? String(config.url || "") : "";
     if (!url) return false;
+    if (url.startsWith(IDB_PREFIX)) {
+        // 设置中枢回放 idb: 配置：异步取本体再铺，失败回退默认并复用同一提示路径
+        resolveConfigUrl(config)
+            .then((objectUrl) => {
+                wallpaper.setWallpaper(objectUrl);
+                applyTint(objectUrl);
+            })
+            .catch((err) => {
+                warnLog("墙纸配置应用失败，回退默认壁纸：", err);
+                wallpaper.setWallpaper(DEFAULT_WALLPAPER);
+                applyTint(DEFAULT_WALLPAPER);
+                notifyOnce("墙纸未能恢复",
+                    "本地保存的墙纸数据读不出来，已回退到默认墙纸。网络墙纸可在系统设置中重新拉取。");
+            });
+        window.dispatchEvent(new CustomEvent("wallpaper-change", { detail: { ...config, url } }));
+        return true;
+    }
     wallpaper.setWallpaper(url);
     window.dispatchEvent(new CustomEvent("wallpaper-change", { detail: { ...config, url } }));
     applyTint(url);
@@ -464,21 +711,40 @@ async function applyDailyBing() {
     if (document.visibilityState === "hidden") return false;
     const today = todayKey();
     if (readSlot(BING_DATE_SLOT) === today) return false;
-    let config = null;
+    // 跨标签页互斥（BUG-46c）：两个标签页同一天先后通过日期检查会各拉一次 Bing。
+    // 拉取前先落「在途」时间戳，另一标签页看到近 2 分钟内的锁即放弃；完成/失败都释放。
+    const lockRaw = readSlot(BING_LOCK_SLOT);
+    if (lockRaw && Date.now() - Number(lockRaw) < 2 * 60 * 1000) return false;
+    writeSlotQuietly(BING_LOCK_SLOT, String(Date.now()));
     try {
-        const found = await fetchBingOfficial().catch(fetchBingAlt);
-        config = { type: "bing", url: found.url, name: found.title ? `Bing：${found.title}` : "Bing 每日墙纸" };
-        await wallpaper.preloadImage(config.url);
-    } catch (err) {
-        // 失败绝不 blank 桌面：不碰 setWallpaper，当前壁纸原样留着
-        errorLog(`Bing 每日壁纸拉取失败，保留当前壁纸：${String((err && err.message) || err)}`, err);
-        return false;
+        let config = null;
+        try {
+            const found = await fetchBingOfficial().catch(fetchBingAlt);
+            config = { type: "bing", url: found.url, name: found.title ? `Bing：${found.title}` : "Bing 每日墙纸" };
+            await wallpaper.preloadImage(config.url);
+        } catch (err) {
+            // 失败绝不 blank 桌面：不碰 setWallpaper，当前壁纸原样留着
+            errorLog(`Bing 每日壁纸拉取失败，保留当前壁纸：${String((err && err.message) || err)}`, err);
+            return false;
+        }
+        // 与用户手动拉取同一条落盘缓存路径：明天断网也能看到今天的 Bing
+        const cached = await cacheRemoteImage("bing", config.url);
+        if (cached) {
+            const thumb = await buildThumb(cached.blob);
+            wallpaper.setWallpaper(objectUrlFor("bing", cached.blob));
+            persistConfigQuietly({
+                ...config, url: `${IDB_PREFIX}bing`, sourceUrl: config.url, thumb, bytes: cached.blob.size,
+            });
+        } else {
+            wallpaper.setWallpaper(config.url);
+            persistConfigQuietly({ ...config, sourceUrl: config.url });
+        }
+        writeSlotQuietly(BING_DATE_SLOT, today);
+        logWallpaper("info", `已应用 Bing 每日壁纸（${today}）`);
+        return true;
+    } finally {
+        try { localStorage.removeItem(BING_LOCK_SLOT); } catch { /* 存储被禁用时锁自然过期 */ }
     }
-    wallpaper.setWallpaper(config.url);
-    persistConfigQuietly(config);
-    writeSlotQuietly(BING_DATE_SLOT, today);
-    logWallpaper("info", `已应用 Bing 每日壁纸（${today}）`);
-    return true;
 }
 
 /**
@@ -519,13 +785,19 @@ function bindTintEvents() {
 export async function getDominantColor(url) {
     const target = String(url || "");
     if (!target || !isSamplable(target)) return [...TINT_FALLBACK_RGB];
-    let job = dominantCache.get(target);
+    // data URL（上传壁纸可达数 MB 字符串）不做缓存键：Map 只增不减就是会话级内存泄漏（BUG-46b）
+    const cacheable = !target.startsWith("data:") && target.length < 2048;
+    let job = cacheable ? dominantCache.get(target) : null;
     if (!job) {
         job = sampleAverageColor(target).catch((err) => {
             warnLog(`主色采样失败，回退 ${TINT_FALLBACK}：${target.slice(0, 80)}`, err);
             return [...TINT_FALLBACK_RGB];
         });
-        dominantCache.set(target, job);
+        if (cacheable) {
+            // 容量上限：超出就淘汰最早一条（Map 迭代序即插入序），缓存只增不减同样是泄漏
+            if (dominantCache.size >= 64) dominantCache.delete(dominantCache.keys().next().value);
+            dominantCache.set(target, job);
+        }
     }
     return [...(await job)];
 }
@@ -539,6 +811,9 @@ export async function getDominantColor(url) {
  */
 function isSamplable(url) {
     if (url.startsWith("data:")) return true;
+    // blob: 一定同源（只能由本页面创建），IndexedDB 取回的壁纸本体因此也可采样 —
+    // 网络壁纸落盘缓存后，着色取色不再受跨域画布污染限制。
+    if (url.startsWith("blob:")) return true;
     try {
         const abs = new URL(url, document.baseURI);
         return abs.protocol === window.location.protocol && abs.host === window.location.host;
@@ -652,9 +927,14 @@ function averageRgb(data) {
  * @param {string} [url] 指定取色图片；缺省取当前壁纸配置里的 url
  * @returns {Promise<string>} 实际写入的十六进制色值
  */
+/** 着色序号：快速连换壁纸时，慢采样的旧结果不得覆盖新结果（BUG-39）。 */
+let tintSeq = 0;
+
 export async function applyTint(url) {
     const target = url || wallpaper.getWallpaperConfig()?.url || "";
+    const seq = ++tintSeq;
     const [r, g, b] = await getDominantColor(target);
+    if (seq !== tintSeq) return null; // 期间又发起了更新的着色：丢弃这次过期结果
     const hex = rgbToHex([r, g, b]);
     const rgbText = `${r}, ${g}, ${b}`;
     const root = document.documentElement;
@@ -739,3 +1019,9 @@ async function fetchBingAlt() {
 }
 
 export { wallpaper };
+
+/** 测试探针专用：持久化闭环（存 → 重开 → 读回）的最小面。生产代码不应引用。 */
+export const __wallpaperInternals = {
+    idbPutImage, idbGetImage, resolveConfigUrl, restoreConfig,
+    IDB_PREFIX, IDB_NAME, IDB_STORE,
+};

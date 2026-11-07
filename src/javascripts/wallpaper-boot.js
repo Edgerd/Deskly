@@ -18,26 +18,33 @@
 (() => {
     const CONFIG_KEY = "wallpaper-config";
     let url = "";
+    let thumb = "";
     try {
         const raw = localStorage.getItem(CONFIG_KEY);
         if (raw) {
             const config = JSON.parse(raw);
             if (config && typeof config.url === "string") url = config.url.trim();
+            if (config && typeof config.thumb === "string") thumb = config.thumb.trim();
         }
     } catch (err) {
         // 隐私模式 / 配置损坏：保持样式表默认壁纸，交给 wallpaper.init() 正常回退。
         return;
     }
-    if (!url) return;
+    // 首帧引导图的选择：48px 小图（thumb）优先 —— 它是同一张壁纸的低清版，
+    // 全尺寸本体在 IndexedDB 里由 wallpaper.init() 异步换回；
+    // 没有小图时用直链（系统壁纸 / 旧版 base64 / 未缓存的网络外链）；
+    // "idb:" 引用在本阶段无法同步解析，绝不能让 CSS 拿到它（会画出空白）。
+    const boot = thumb || (url.startsWith("idb:") ? "" : url);
+    if (!boot) return;
 
     const root = document.documentElement;
     // 相对地址必须先解析成绝对地址：CSS 自定义属性里的 url() 会按「消费它的样式表」
     // （main.css 在 assets/stylesheets/main/）解析，而不是按文档解析；直接塞 ./assets/…
     // 会变成 assets/stylesheets/main/assets/…。这里按文档基准转成绝对 URL，与
     // wallpaper.js 内联 background-image 的解析结果保持一致。
-    let absolute = url;
+    let absolute = boot;
     try {
-        absolute = new URL(url, document.baseURI).href;
+        absolute = new URL(boot, document.baseURI).href;
     } catch (err) {
         return;
     }

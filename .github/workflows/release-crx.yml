@@ -30,7 +30,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(node --input-type=module -e "const { VERSION } = await import('./src/javascripts/version.js'); process.stdout.write(VERSION)")
-          MANIFEST_VERSION=$(node --input-type=module -e "import { readFileSync } from 'node:fs'; process.stdout.write(JSON.parse(readFileSync('manifest.json', 'utf8')).version)")
+          # manifest.json 带 UTF-8 BOM，JSON.parse 前先剥掉
+          MANIFEST_VERSION=$(node --input-type=module -e "import { readFileSync } from 'node:fs'; process.stdout.write(JSON.parse(readFileSync('manifest.json', 'utf8').replace(/^\uFEFF/, '')).version)")
           if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
             echo "::error::src/javascripts/version.js 的 $VERSION 与 manifest.json 的 $MANIFEST_VERSION 不一致"
             exit 1

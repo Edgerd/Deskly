@@ -8,7 +8,7 @@
      属于本面板自己的取值，按规则保留字面值。 */
   backdrop-filter: blur(var(--surface-blur-4)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(1.2);
-  /* 亚克力稳定层（0.2.74 固化） */
+  /* 亚克力稳定层 */
   isolation: isolate;
   overflow: hidden;
   border-radius: 16px;
@@ -98,4 +98,13 @@
 .about_this_mac .wintools {
   align-self: flex-start;
   margin: var(--traffic-top) 0 0 var(--traffic-inset);
+}
+
+/* 品牌标：署名区的 Deskly 图标。上面 `.about_this_mac img` 的 70% 规则是为
+   机型大图设的，这里用更高特殊度把品牌标固定为 32px，不随窗口宽度变化。
+   面板是 280×515 且 overflow:hidden，32px 只占约 38px 纵向，给底部署名留余量。 */
+.about_this_mac img.brand-logo {
+  width: 32px;
+  height: 32px;
+  margin: 6px 0 0;
 }

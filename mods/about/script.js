@@ -1,11 +1,4 @@
-/**
- * script.js — 关于本机插件逻辑
- *
- * 职责：
- * 1. 插件 HTML 由 loader 在 i18n 首屏扫描之后注入，故按 i18n.js 同一套 data-i18n 约定补一次翻译；
- * 2. 「更多信息…」展示产品名称 / 版本 / 作者，数据源为 src/javascripts/version.js（单一来源）；
- * 3. 系统版本行同样取自 version.js，避免手写文案随版本漂移。
- */
+/** script.js — 关于本机：补一次 data-i18n 翻译、填充系统版本行、「更多信息…」弹窗（名称/版本/作者取自 src/javascripts/version.js 单一来源）。 */
 
 import { i18n } from '../../src/javascripts/i18n.js';
 import { VERSION, APP_NAME, APP_AUTHOR } from '../../src/javascripts/version.js';

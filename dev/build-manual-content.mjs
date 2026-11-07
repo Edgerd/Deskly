@@ -1,15 +1,7 @@
 /**
- * dev/build-manual-content.mjs — 由知识库生成「Mac 使用手册」插件内容
- *
- * 输入：docs/iMac-2024-macOS15-知识库/ 的 8 章 Markdown（含 209 张图的引用）
- * 输出：mods/manual/content/*.md + index.json
- *
- * 图片：知识库原图共 43MB，而商店 ZIP 上限是 10MB，所以插件里放的是压缩后的
- * WebP 副本 mods/manual/images/*.webp（约 6MB）。正文保留图片引用并改指 WebP，
- * 渲染端直接出 <img>；构建期缺图会直接报错，不会把破图带进包里。
- * 重新生成 WebP：python dev/optimize-manual-images.py
- *
- * 用法：node dev/build-manual-content.mjs
+ * dev/build-manual-content.mjs — 由知识库 8 章 Markdown 生成手册插件内容（mods/manual/content/*.md + index.json）。
+ * 商店 ZIP 上限 10MB：原图 43MB 压成 mods/manual/images/*.webp（约 6MB），缺图直接报错。
+ * 重新生成 WebP：python dev/optimize-manual-images.py　　用法：node dev/build-manual-content.mjs
  */
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
@@ -63,13 +55,12 @@ for (const file of files) {
         return `![${label}](images/${toWebp(base)})\n\n`;
     });
 
-    // 3. 压缩多余空行
     text = text.replace(/\n{3,}/g, "\n\n").trim() + "\n";
 
     const fname = `${id}.md`;
     writeFileSync(join(OUT, fname), text);
 
-    // 4. 解析标题：H1 为章名，H2 为小节。标题序号按「文档里第几个标题」计，
+    // 3. 解析标题：H1 为章名，H2 为小节。标题序号按「文档里第几个标题」计，
     //    渲染端同样按顺序给每个标题打 data-h，跳转才不会落到段落中间。
     const lines = text.split("\n");
     let title = "";

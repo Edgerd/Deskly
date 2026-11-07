@@ -59,11 +59,14 @@ function onDocumentPointerDown(event) {
 function onDocumentKeyDown(event) {
     if (event.isComposing) return;
     if (event.key === "Escape") {
+        // 确认框是无条件允许 Esc 的特例；其余浮层只在 Safari 是前台窗口时响应，
+        // 否则在别的窗口按 Esc 会把后台 Safari 的概览/菜单悄悄收掉（BUG-62）。
         if (!app.dom.confirm.hidden) {
             event.preventDefault();
             settleConfirm(false);
             return;
         }
+        if (!isSafariFrontmost()) return;
         if (!app.dom.contextMenu.hidden || !app.dom.pageMenu.hidden || !app.dom.shareMenu.hidden ||
             !app.dom.tabList.hidden || !app.dom.editPanel.hidden) {
             event.preventDefault();

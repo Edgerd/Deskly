@@ -1,16 +1,8 @@
 /**
- * script.js — 「Mac 使用手册」插件
- *
- * 内容来自构建脚本 dev/build-manual-content.mjs 生成的 content/*.md 与 index.json。
- * 插图随插件打包在 images/*.webp（知识库原图 43MB，构建期压缩到约 6MB），
- * 运行时按需懒加载；正文里的 `![说明](images/x.webp)` 渲染为 figure + img。
- *
- * 结构：章列表 → 小节列表 → 正文；顶部搜索在 index.search 上做子串匹配。
- * 外部入口：document 上的 `manual-open` 事件（detail: {chapter, section, h}），
- * 由帮助菜单与聚焦派发；本模块负责解析章节/小节并滚动到对应标题。
- *
- * 安全：正文用 DOM 构建（textContent / createElement），不把 Markdown 直接塞进 innerHTML；
- * 图片只允许插件 images/ 下的单层文件名，链接只允许 http(s)。
+ * script.js — 「Mac 使用手册」插件：章列表 → 小节列表 → 正文；顶部搜索在 index.search 上做子串匹配。
+ * 内容来自构建脚本 dev/build-manual-content.mjs 生成的 content/*.md 与 index.json；插图 images/*.webp 运行时懒加载。
+ * 外部入口：document 上的 manual-open 事件（detail: {chapter, section, h}），由帮助菜单与聚焦派发。
+ * 安全：正文用 DOM 构建（textContent / createElement），不把 Markdown 塞进 innerHTML；图片只允许插件 images/ 下单层文件名，链接只允许 http(s)。
  */
 
 import { i18n } from "../../src/javascripts/i18n.js";
@@ -49,6 +41,9 @@ async function init() {
 
     localize();
     bind();
+    // 卸载监听必须在第一个 await 之前挂上：索引加载失败/缓慢期间关窗，
+    // onUnload 永远不注册，manual-open/languagechange 三个监听持续引用已脱离的 root（BUG-68）。
+    window.addEventListener("plugin-unload", onUnload);
     try {
         const res = await fetch(new URL("./content/index.json", import.meta.url));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -63,8 +58,6 @@ async function init() {
     renderChapters();
     const first = state.index.chapters[0];
     await open(first.id, first.sections[0] ? first.sections[0].h : 0);
-
-    window.addEventListener("plugin-unload", onUnload);
 }
 
 /** 静态文案与无障碍属性：与 about 插件同一套 data-i18n 约定。 */
@@ -102,6 +95,7 @@ function bind() {
 }
 
 function onUnload() {
+    window.removeEventListener("plugin-unload", onUnload);
     document.removeEventListener("manual-open", onManualOpen);
     document.removeEventListener("languagechange", onLanguageChange);
     state.cache.clear();

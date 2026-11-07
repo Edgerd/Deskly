@@ -1,17 +1,4 @@
-/**
- * script.js — VS Code 嵌入式插件逻辑
- *
- * 职责：
- * 1. 嵌入 github1s.com 在线编辑器。
- * 2. 标题栏颜色跟随 iframe 内网页主色调（同源策略下的双通道方案）：
- *    - 同源页面：读 <meta name="theme-color"> 或 body 背景色，并监听变化实时跟随；
- *    - 跨域页面：抓取站点 favicon（需 CORS 允许，github1s 已放行）提取品牌主色；
- *    - 提取失败：保持 VSCode 默认深灰 #3c3c3c。
- *    背景偏亮时自动加 .light 类切换深色文字，保证可读性。
- * 3. 加载失败时在标题栏给出提示（errored 类）。
- *
- * 说明：窗口拖拽/缩放/关闭由 window.js 统一处理，本插件不重复实现。
- */
+/** script.js — VS Code 嵌入插件：iframe 加载 github1s.com；标题栏颜色跟随网页主色（同源读 theme-color/body 背景并监听变化，跨域抓 favicon 提主色，失败保持默认深灰），背景偏亮加 .light，加载失败打 errored；窗口拖拽/缩放/关闭由 window.js 统一处理。 */
 const frame = document.querySelector(".vscode-frame");
 const titlebar = document.querySelector(".vscode .vscode-titlebar");
 const DEFAULT_BG = "#3c3c3c";
@@ -160,8 +147,21 @@ function watchSameOriginTheme() {
     } catch { /* 跨域不可读 */ }
 }
 
+/** 加载看门狗：目标站 4xx/5xx、X-Frame-Options 拒绝、断网超时都不会触发 error 事件，
+ * 没有超时判定的话「加载失败提示」基本不会生效（BUG-69）。 */
+let loadWatchdog = null;
+let loadedOnce = false;
+function armWatchdog() {
+    if (loadWatchdog) clearTimeout(loadWatchdog);
+    loadWatchdog = setTimeout(() => {
+        if (!released && !loadedOnce) titlebar.classList.add("errored");
+    }, 12000);
+}
+
 /** iframe 加载成功：清除错误标记、重建同源监听并同步颜色（跨域导航同样会触发 load） */
 function onLoad() {
+    loadedOnce = true;
+    if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
     titlebar.classList.remove("errored");
     watchSameOriginTheme();
     syncTitlebarColor();
@@ -183,6 +183,7 @@ function onError() {
 function releaseResources() {
     if (released) return;
     released = true;
+    if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
     if (observer) { observer.disconnect(); observer = null; }
     try { colorAbort.abort(); } catch { /* 已中止 */ }
     if (!frame) return;
@@ -198,6 +199,9 @@ function releaseResources() {
 if (frame) {
     frame.addEventListener("load", onLoad);
     frame.addEventListener("error", onError);
+    armWatchdog();
+    // 断网是「什么都不触发」的典型场景：离线事件一到立刻打标，不必等看门狗
+    window.addEventListener("offline", onError);
 
     watchSameOriginTheme(); // iframe 可能已加载完成（如缓存/同步场景）
     syncTitlebarColor();     // 首次同步（favicon 抓取不依赖 iframe 加载完成）

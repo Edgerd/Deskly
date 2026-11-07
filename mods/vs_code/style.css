@@ -1,7 +1,4 @@
-/* style.css — VS Code 嵌入式插件样式
- * 标题栏默认 VSCode 深灰 #3c3c3c，由 script.js 根据 iframe 内网页主色调动态改写
- * （background 走 inline，仅保留过渡动画与浅色主题下的文字配色）。
- */
+/* style.css — VS Code 嵌入插件样式；标题栏默认深灰 #3c3c3c，背景由 script.js 按网页主色内联改写，此处只留过渡动画与浅色主题文字配色。 */
 
 .vscode.window {
     background: #1e1e1e;

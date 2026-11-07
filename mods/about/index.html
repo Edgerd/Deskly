@@ -1,5 +1,4 @@
-<!-- 窗口尺寸与可缩放性由应用自己声明（data-window，见 window-manager.readDeclaration）：
-     改尺寸只动这一个文件，不必再去 manifest.json 里对第二份数字。 -->
+<!-- 窗口尺寸与可缩放性在本文件 data-window 声明（window-manager.readDeclaration），改尺寸只动这里 -->
 <div class="about_this_mac window" data-window="size:280x515 resizable:false centered">
     <deskly-traffic-lights class="wintools" variant="dialog"></deskly-traffic-lights>
     <img src="../../assets/devices/mac16,11.png" />
@@ -20,6 +19,7 @@
         </div>
     </div>
     <div class="button" data-i18n="about.moreInfo" data-i18n-fallback="更多信息...">更多信息...</div>
+    <img class="brand-logo" src="../../assets/brand/deskly-logo-192.png" alt="Deskly" width="32" height="32" />
     <p class="copyright"><span data-i18n="about.compliance" data-i18n-fallback="监管认证">监管认证</span><br />
         &trade; 和 &copy; 2026 Edgerd &middot; Deskly<br />
         <span data-i18n="about.attribution" data-i18n-fallback="参考设计来源于 Apple macOS UI 设计。">参考设计来源于 Apple macOS UI 设计。</span>

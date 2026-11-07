@@ -21,7 +21,8 @@ self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
 
     // 只认根下的 /mods/<id>/<file>。早先用 parts.indexOf("mods") 会把路径中段带 mods 段的
-    // 同源请求也截下来，白做一次库查询；判据要与 api-grants.js 的 MODS_FRAME 同一语义。
+    // 同源请求也截下来，白做一次库查询；与 caller-context.js 的 MODS_FRAME 同一起点
+    // （都认 mods/ 段），但严格性不同：那里匹配栈帧 URL 的任意段，这里只认路径首段。
     if (url.origin !== self.location.origin) return;
     const parts = url.pathname.split("/").filter(Boolean);
     if (parts[0] !== "mods") return;
@@ -49,15 +50,20 @@ self.addEventListener("fetch", (event) => {
 let installedIds = null;
 let idsPromise = null;
 
+/** 缓存代际：reset 一次 +1，在途旧 Promise 的回写凭它作废（BUG-52）。 */
+let idsGeneration = 0;
+
 function resetInstalledIds() {
     installedIds = null;
     idsPromise = null;
+    idsGeneration += 1;
 }
 
 /** 读一次全部已安装 id；失败时清缓存，让下一次请求重试。 */
 function getAllIds() {
     if (installedIds) return Promise.resolve(installedIds);
     if (idsPromise) return idsPromise;
+    const gen = idsGeneration;
     idsPromise = openDb()
         .then((db) => new Promise((resolve, reject) => {
             const tx = db.transaction(STORE, "readonly");
@@ -66,7 +72,13 @@ function getAllIds() {
             req.onerror = () => reject(req.error);
             tx.onerror = () => reject(tx.error);
         }))
-        .then((set) => { installedIds = set; return set; })
+        .then((set) => {
+            // 安装/卸载的 reset 已经在等待期间发生：这个集合是旧快照，
+            // 写回会把「刚装好的插件」重新变回查不到（安装回滚竞态，BUG-52）。
+            if (gen !== idsGeneration) return getAllIds();
+            installedIds = set;
+            return set;
+        })
         .catch((err) => { resetInstalledIds(); throw err; });
     return idsPromise;
 }
@@ -130,10 +142,14 @@ async function serveFromDb(request, id, fileName) {
  * 而请求路径为 ./mods/<id>/index.html，需在 files 中做后缀匹配。
  */
 function matchBySuffix(files, fileName) {
-    const hit = Object.keys(files).find(
-        (k) => k === fileName || k.endsWith("/" + fileName)
-    );
-    return hit ? files[hit] : null;
+    // 多后缀命中（a/index.html 与 b/index.html）时取键长最短者：
+    // 对象键插入序会让结果随打包工具变化，最短键是唯一确定的选择（BUG-54）。
+    let hit = null;
+    for (const k of Object.keys(files)) {
+        if (k !== fileName && !k.endsWith("/" + fileName)) continue;
+        if (hit === null || k.length < hit.length) hit = k;
+    }
+    return hit !== null ? files[hit] : null;
 }
 
 /**
@@ -162,6 +178,14 @@ function contentType(name) {
         otf: "font/otf",
         txt: "text/plain",
         md: "text/plain",
+        // 音视频（通知音、预览视频）：octet-stream 会让 Chrome 的 <audio>/<video> 拒播（BUG-55）
+        mp3: "audio/mpeg",
+        wav: "audio/wav",
+        ogg: "audio/ogg",
+        m4a: "audio/mp4",
+        mp4: "video/mp4",
+        webm: "video/webm",
+        avif: "image/avif",
     };
     return map[ext] || "application/octet-stream";
 }
@@ -180,6 +204,7 @@ let dbPromise = null;
 function openDb() {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
+        let settled = false;
         const req = indexedDB.open(DB_NAME, 1);
         req.onupgradeneeded = () => {
             const db = req.result;
@@ -190,17 +215,22 @@ function openDb() {
         // 别的连接占着旧版本时 open 既不 success 也不 error：不 reject 的话
         // dbPromise 会被永久缓存，之后所有资源请求都挂在上面再无重试机会。
         req.onblocked = () => {
+            settled = true;
             dbPromise = null;
             reject(new Error("IndexedDB 升级被其它连接阻塞"));
         };
         req.onsuccess = () => {
             const db = req.result;
+            // blocked 已经 reject 后 success 仍可能触发（阻塞方随后放行）：
+            // 这个连接无人持有、永不 close，会挂到下一次 versionchange 才自愈（BUG-53）。
+            if (settled) { db.close(); return; }
+            settled = true;
             // 连接换了就是库换了一批内容：id 集合必须一起作废，否则新装的插件照旧查不到。
             db.onversionchange = () => { db.close(); dbPromise = null; resetInstalledIds(); };
             db.onclose = () => { dbPromise = null; resetInstalledIds(); };
             resolve(db);
         };
-        req.onerror = () => { dbPromise = null; reject(req.error); };
+        req.onerror = () => { settled = true; dbPromise = null; reject(req.error); };
     });
     return dbPromise;
 }

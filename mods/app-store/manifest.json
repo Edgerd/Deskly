@@ -13,6 +13,9 @@
   "icon": "App Store.png",
   "menus": {
     "显示": [
+      { "label": "Today", "cmd": "storeShowToday()" },
+      { "label": "新功能", "cmd": "storeShowWhatsNew()" },
+      { "separator": true },
       { "label": "全部应用", "cmd": "storeShowCategory('all')" },
       { "label": "仅内置", "cmd": "storeShowCategory('builtin')" },
       { "label": "仅已安装", "cmd": "storeShowCategory('installed')" },

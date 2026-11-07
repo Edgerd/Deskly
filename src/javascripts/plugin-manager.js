@@ -21,7 +21,7 @@ import { brandIcon } from "./office-brand.js";
 // 否则 `await import("./window.js")` 的网络往返会先画出一帧「默认 680×570、
 // 未居中」的裸窗口，再跳到真实尺寸 —— 这正是用户看到的打开瞬间错位。
 // window.js 只在函数内部动态 import 本模块，静态依赖方向是单向的，不成环。
-import { bringToFront, manage, prepareOpen, revealOpen } from "./window-manager.js";
+import { bringToFront, manage, prepareOpen, revealOpen, nextWindowId } from "./window-manager.js";
 // 确保应用 HTML 注入前 <deskly-traffic-lights> 已注册（只要副作用）。
 // 能力禁用态改由 window-manager.applyConfig 统一落实，本模块不再自己调。
 // 说明符不带 ?v=，否则会被当作第二个模块重复求值。
@@ -44,6 +44,7 @@ import {
     disabledIds,
     isPluginEnabled,
     setPluginEnabled,
+    isUninstallable,
 } from "./app-registry.js";
 
 // 注册表查询 API 现由 app-registry.js 提供；这里 re-export 保持既有
@@ -65,6 +66,7 @@ export {
     disabledIds,
     isPluginEnabled,
     setPluginEnabled,
+    isUninstallable,
 };
 
 // 内置插件 id 列表（冷加载时据此逐个拉取清单）
@@ -83,6 +85,7 @@ const BUILTIN_IDS = [
     "safari",
     "office",
     "manual",
+    "spotlight",
 ];
 
 // 重显启动台：取消遗留退出计时器并标记运行态（启动台为 fullscreen 入口，根元素 .launchpad 无 id）
@@ -121,10 +124,12 @@ const STYLE_READY_TIMEOUT_MS = 1500;
 
 /**
  * 等一个样式表真正可参与渲染（load / error / 超时三者取先到）。
+ * 旧式 App 装载路径（window.js）也用它做同一个门控：`<link>` 挂上 DOM 不等于样式
+ * 已经进入渲染管线，append 后立刻显示窗口仍会先画一帧无样式块级流。
  * @param {HTMLLinkElement} link 已插入或即将插入的 <link rel="stylesheet">
  * @returns {Promise<void>}
  */
-function whenStyleReady(link) {
+export function whenStyleReady(link) {
     if (!link) return Promise.resolve();
     try {
         // 同源样式加载完成后 sheet 非空；缓存命中时直接放行，不再多等一次事件。
@@ -441,6 +446,15 @@ export async function init() {
         // 返回 null 表示索引缺失或解析失败（升级前装过插件、还没写过索引的老用户），
         // 此时才回退到 IndexedDB 全量读取，保证不丢插件。
         const indexed = _readInstalledIndex();
+        // 索引可信吗？索引写失败只告警（配额/隐私模式），可能出现「IDB 里有、索引里没有」
+        // —— 旧逻辑此时整批跳过 IDB，插件静默消失（BUG-22）。廉价对账：只取 id 键集
+        // （getAllKeys 不反序列化记录，Blob 不出库），不一致才回退全量读并补写索引。
+        const idbKeysPromise = indexed
+            ? _getAllInstalledKeys().catch((err) => {
+                console.warn("[plugin-manager] 索引对账失败，信任索引继续", err);
+                return null; // 对账本身失败时不阻塞启动：索引照用，下次启动再对
+            })
+            : null;
         const installedPromise = indexed
             ? null
             : _getAllInstalled().catch((err) => {
@@ -453,7 +467,23 @@ export async function init() {
             if (manifest) registerPlugin(manifest);
         });
 
-        const installed = indexed || await installedPromise;
+        let installed = indexed;
+        if (installed) {
+            const dbIds = await idbKeysPromise;
+            const indexedIds = new Set(installed.map((m) => m && m.id));
+            const diverged = dbIds && (dbIds.length !== indexedIds.size || dbIds.some((id) => !indexedIds.has(id)));
+            if (diverged) {
+                const fromDb = await _getAllInstalled().catch(() => []);
+                const missing = fromDb.filter((rec) => rec && rec.id && !indexedIds.has(rec.id));
+                if (missing.length) {
+                    // 以 IndexedDB 为真相补齐；files Blob 不出库，注册表只拿 manifest 部分。
+                    installed = [...installed, ...missing];
+                    _replaceInstalledIndex(installed);
+                }
+            }
+        } else {
+            installed = await installedPromise;
+        }
         // 老用户走完回退后补写一次索引；否则这批人每次启动都要全量读 Blob，优化对他们永不生效。
         if (!indexed && installed.length) _replaceInstalledIndex(installed);
 
@@ -606,6 +636,12 @@ export function load(id, opts = {}) {
         console.warn(`[plugin-manager] 插件已被禁用: ${id}`);
         return Promise.resolve(null);
     }
+    // 背景型系统应用（聚焦等）：没有可打开的窗口，逻辑由内核适配层在引导期点亮，
+    // 走窗口注入只会拿到 404 的空壳。
+    if (manifest.entry === "background") {
+        console.warn(`[plugin-manager] ${id} 是背景型系统应用，不提供窗口入口`);
+        return Promise.resolve(null);
+    }
     if (isMultiApp(manifest)) return loadApp(`${id}.${manifest.apps[0].id}`, opts);
     if (!loadingMap.has(id)) {
         const task = doLoad(id, manifest, opts).finally(() => loadingMap.delete(id));
@@ -616,7 +652,8 @@ export function load(id, opts = {}) {
         const windowName = manifest.windowName || manifest.name;
         loadingMap.get(id).then((win) => {
             if (win) announceFile(id, id, windowName, opts.file);
-        });
+            // 首次装载失败时这条链必须有 catch：否则 unhandledrejection 噪音 + 第二次的文件无声丢失（BUG-27）
+        }).catch(() => { });
     }
     return loadingMap.get(id);
 }
@@ -667,10 +704,14 @@ async function doLoadApp(appId, rec, opts) {
     const stamp = manifest._installed ? Date.now() : VERSION;
     const windowName = rec.windowName;
 
+    // NW-7 多窗口：opts.newWindow + manifest/app 声明 multiWindow:true 才跳过去重另开新窗；
+    // 未声明时 newWindow 在 Deskly.apps.launch 就已被拦回，这里看到的仍是缺省去重语义。
+    const allowMulti = opts.newWindow === true && (app.multiWindow === true || manifest.multiWindow === true);
+
     // 同一 appId 的窗口已存在则置顶复用（与单应用路径同一套去重语义）。
     // 必须校验 data-app-id：两个应用同名时按 id 命中别人的窗口会把它误当自己。
     const existing = document.getElementById(windowName);
-    if (existing && existing.classList.contains("window") && existing.dataset.appId === appId) {
+    if (!allowMulti && existing && existing.classList.contains("window") && existing.dataset.appId === appId) {
         bringToFront(existing, windowName);
         announceFile(id, appId, windowName, file);
         return existing;
@@ -705,7 +746,8 @@ async function doLoadApp(appId, rec, opts) {
         prepareOpen(newWin);
         // 多应用一律按 app 声明强制命名：同一份 HTML 被复制成多个窗口时，
         // 保留插件名会让第二个应用与第一个撞 id，去重判断就此失效。
-        newWin.id = windowName;
+        // NW-7：多窗模式下基名被占时追加 #2、#3… 实例后缀（首窗仍用基名）。
+        newWin.id = allowMulti ? nextWindowId(windowName) : windowName;
         newWin.dataset.pluginId = id;
         newWin.dataset.appId = appId;
     }
@@ -739,38 +781,44 @@ async function doLoadApp(appId, rec, opts) {
  * @param {string|number} stamp 样式缓存参数（发布版本或安装时间戳）
  * @returns {Promise<void>}
  */
+/** 外壳注入的在途 Promise：id -> Promise。并发首开同套件两个子应用时复用同一次注入。 */
+const shellLoading = new Map();
+
 async function ensureShell(id, manifest, stamp) {
     if (liveShells.has(id)) return;
+    // 并发互斥（BUG-16）：两个 ensureShell 交错时，后到的会把先到尚在加载中的 <script>
+    // remove 掉 —— 被移除的脚本既不 fire load 也不 fire error，先到方的 Promise 永久悬挂。
+    const inflight = shellLoading.get(id);
+    if (inflight) return inflight;
+    const task = (async () => {
+        if (liveShells.has(id)) return; // 等在途期间别的调用方可能已完成注入
 
-    // 外壳样式是各子应用窗口的共同排版基础：等它可用再注入任何 HTML。
-    await ensurePluginStyle(id, modUrl(id, safeAssetName(manifest.style, "style.css", id), stamp));
+        // 外壳样式是各子应用窗口的共同排版基础：等它可用再注入任何 HTML。
+        await ensurePluginStyle(id, modUrl(id, safeAssetName(manifest.style, "style.css", id), stamp));
 
-    const old = document.querySelector(`script[plugin="${id}"]`);
-    if (old) old.remove();
-    const script = document.createElement("script");
-    // 悬停预取过就用它的 URL，否则生成新 URL；多应用外壳只求值一次。
-    const shellUrl = nextScriptUrl(id, safeAssetName(manifest.script, "script.js", id), !manifest._installed);
-    script.src = shellUrl;
-    script.type = "module";
-    script.setAttribute("plugin", id);
-    // 并列提示当前正在注入哪个插件，供 os-api.js 的调用者识别兜底用。
-    // 权威判据是调用栈里的 mods/<id>/ 帧：注入是 await 的，两个插件可能交错，
-    // 这个值只能当提示，不能当权限依据（api-grants.js getCallerPluginId 注释说明了边界）。
-    window.__currentPluginId = id;
-    await new Promise((resolve, reject) => {
-        script.addEventListener("load", () => {
-            // 真正求值成功后才登记，加载失败则保留可重试的新 URL。
-            evaluatedScripts.add(shellUrl);
-            if (window.__currentPluginId === id) window.__currentPluginId = null;
-            resolve();
-        }, { once: true });
-        script.addEventListener("error", () => {
-            if (window.__currentPluginId === id) window.__currentPluginId = null;
-            reject(new Error(`加载插件 ${id} 的脚本失败`));
-        }, { once: true });
-        document.body.appendChild(script);
-    });
-    liveShells.add(id);
+        const old = document.querySelector(`script[plugin="${id}"]`);
+        if (old) old.remove();
+        const script = document.createElement("script");
+        // 悬停预取过就用它的 URL，否则生成新 URL；多应用外壳只求值一次。
+        const shellUrl = nextScriptUrl(id, safeAssetName(manifest.script, "script.js", id), !manifest._installed);
+        script.src = shellUrl;
+        script.type = "module";
+        script.setAttribute("plugin", id);
+        await new Promise((resolve, reject) => {
+            script.addEventListener("load", () => {
+                // 真正求值成功后才登记，加载失败则保留可重试的新 URL。
+                evaluatedScripts.add(shellUrl);
+                resolve();
+            }, { once: true });
+            script.addEventListener("error", () => {
+                reject(new Error(`加载插件 ${id} 的脚本失败`));
+            }, { once: true });
+            document.body.appendChild(script);
+        });
+        liveShells.add(id);
+    })();
+    shellLoading.set(id, task);
+    try { await task; } finally { shellLoading.delete(id); }
 }
 
 /**
@@ -795,8 +843,11 @@ async function doLoad(id, manifest, opts) {
     // 内置插件按发布版本号，同一发布内可复用 HTTP 缓存。
     const stamp = manifest._installed ? Date.now() : VERSION;
 
-    // 窗口名：优先用 manifest.entry 决定窗口 id 规则；沿用插件显示名作为窗口 id
+    // 窗口名：manifest.windowName 优先，否则沿用插件显示名作为窗口 id
     const windowName = manifest.windowName || manifest.name;
+
+    // NW-7 多窗口：opts.newWindow + manifest.multiWindow:true 才跳过去重另开新窗
+    const allowMulti = opts.newWindow === true && manifest.multiWindow === true;
 
     // 已存在实例的复用判断必须按入口类型分流：
     // - fullscreen（启动台）：根元素是 .launchpad（非 .window、无 id），只能用类名识别。
@@ -812,7 +863,7 @@ async function doLoad(id, manifest, opts) {
         }
     } else {
         const existing = document.getElementById(windowName);
-        if (existing) {
+        if (!allowMulti && existing) {
             bringToFront(existing, windowName);
             // 单应用插件（如照片）同样要把「用哪个文件唤起」告诉已存在的窗口。
             announceFile(id, id, windowName, file);
@@ -839,7 +890,6 @@ async function doLoad(id, manifest, opts) {
     //   window.js:182-188 早已改成差集法，这里是没跟上的第二、第三处。
     const preWins = new Set(document.querySelectorAll("body > .window"));
 
-    // 注入 HTML
     const [, htmlTextRaw] = await Promise.all([stylePromise, htmlPromise]);
     let htmlText = htmlTextRaw;
     // 用户安装的 ZIP 属于不可信输入：insertAdjacentHTML 不会执行 <script>，
@@ -847,14 +897,14 @@ async function doLoad(id, manifest, opts) {
     if (manifest._installed) htmlText = sanitizePluginHtml(htmlText);
     document.body.insertAdjacentHTML("beforeend", htmlText);
 
-    // 找到新注入的窗口元素（仅本次新增的真窗口，fullscreen 入口无 .window 时为 null）
+    // 取本次新增的真窗口；fullscreen 入口无 .window 时为 null
     const added = Array.from(document.querySelectorAll("body > .window"))
         .filter((w) => !preWins.has(w));
     let newWin = added.length ? added[added.length - 1] : null;
     if (newWin) {
         // 与多应用路径同一理由：先隐藏，等真实尺寸/居中落实后再显示。
         prepareOpen(newWin);
-        if (!newWin.id) newWin.id = windowName;
+        if (!newWin.id || allowMulti) newWin.id = allowMulti ? nextWindowId(windowName) : windowName;
         // 标记插件 id，供关闭时 plugin-manager.unload 精准释放该应用资源（CSS / 脚本 / 全局监听）
         newWin.dataset.pluginId = id;
         // 单应用插件的 appId 等于插件 id，一并打标：window.js 关闭时走同一条引用计数路径
@@ -882,12 +932,8 @@ async function doLoad(id, manifest, opts) {
     script.src = entryUrl;
     script.type = "module";
     script.setAttribute("plugin", id);
-    // 与 ensureShell 同一套并列提示：模块求值发生在 appendChild 之后，
-    // 所以只能在 load 回调里清，不能在下一行同步清。
-    window.__currentPluginId = id;
     script.addEventListener("load", () => {
         evaluatedScripts.add(entryUrl);
-        if (window.__currentPluginId === id) window.__currentPluginId = null;
         // 单应用插件的脚本在窗口 HTML 注入之后才求值：等 load 再派发文件事件，
         // 插件注册在模块顶层的 plugin-app-open 监听才能收到。
         announceFile(id, id, windowName, file);
@@ -896,7 +942,13 @@ async function doLoad(id, manifest, opts) {
         // 用户就不会先看到基础尺寸、随后又跳一次的「打开瞬间错位」。
         revealOpen(newWin);
     }, { once: true });
-    script.addEventListener("error", () => revealOpen(newWin), { once: true });
+    script.addEventListener("error", () => {
+        // 入口脚本加载失败也要把文件事件补发出去（插件若有部分逻辑存活仍可能收到），
+        // 并广播错误让商店/设置页能给出可见反馈 —— 否则用户双击的文件静默丢失（BUG-27）。
+        announceFile(id, id, windowName, file);
+        revealOpen(newWin);
+        document.dispatchEvent(new CustomEvent("plugin-app-error", { detail: { id, appId: id, stage: "script-load" } }));
+    }, { once: true });
     document.body.appendChild(script);
 
     // 交给 window-manager 绑定窗口拖动/缩放/关闭/全屏/红绿灯逻辑（接管时按声明居中）。
@@ -911,8 +963,7 @@ async function doLoad(id, manifest, opts) {
         bringToFront(newWin, windowName);
     }
 
-    // 通知程序坞：根据实际打开的窗口刷新运行区与指示灯
-    // （应用商店卡片「打开」、openAppByName、启动台等入口均经此统一收敛）
+    // 各打开入口（商店卡片 / openAppByName / 启动台）均经此统一收敛
     syncDock();
     // 入场由上面的脚本 load 触发；脚本卡住时 prepareOpen 的 1.2s 兜底会显示窗口。
     return newWin;
@@ -948,16 +999,36 @@ export function unloadApp(id, appId) {
  * @param {string} id 插件 id
  * @returns {void}
  */
+/** Deskly.lifecycle.onBeforeUnload 的注册表：id -> Set<fn>（API-20）。
+ * 同步收尾窗口：广播 plugin-unload 之前先逐个调用，给「卸载前落一次盘」的同步机会。 */
+const beforeUnloadHooks = new Map();
+
+/** 注册卸载前回调（os-api 的 lifecycle 面调用；重复注册同一函数会去重）。 */
+export function registerBeforeUnload(id, fn) {
+    if (!id || typeof fn !== "function") return () => { };
+    let set = beforeUnloadHooks.get(id);
+    if (!set) { set = new Set(); beforeUnloadHooks.set(id, set); }
+    set.add(fn);
+    return () => set.delete(fn);
+}
+
 export function unload(id) {
     const manifest = getPlugin(id);
 
-    // 1. 通知插件自检清理（定时器、document/window 级监听等）。
-    //    插件需监听 plugin-unload 事件并在回调中移除自身注册的全局资源。
+    // 0. 同步收尾窗口（API-20）：先给插件一次「卸载前落盘」的机会，再广播拆解。
+    const hooks = beforeUnloadHooks.get(id);
+    if (hooks) {
+        beforeUnloadHooks.delete(id);
+        for (const fn of hooks) {
+            try { fn(); } catch (err) { console.warn(`[plugin-manager] beforeUnload 执行失败: ${id}`, err); }
+        }
+    }
+
+    // 1. 通知插件自检清理
     broadcast("plugin-unload", { id });
     liveShells.delete(id);
 
-    // 2. 移除窗口 DOM。多应用插件可能同时存在多个窗口，按 data-plugin-id 一次清干净
-    //    （fullscreen 入口根元素无 id，按类名定位）。
+    // 2. 移除窗口 DOM（按 data-plugin-id 一次清干净；fullscreen 根元素无 id，按类名定位）
     if (manifest && manifest.entry === "fullscreen") {
         const lp = document.querySelector(".launchpad");
         if (lp && lp.isConnected) lp.remove();
@@ -968,11 +1039,11 @@ export function unload(id) {
         if (legacy && legacy.isConnected && !legacy.dataset.pluginId) legacy.remove();
     }
 
-    // 3. 移除插件样式表（释放 CSSOM，避免样式规则常驻内存）
+    // 3. 移除插件样式表
     const style = document.getElementById(`plugin-style-${id}`);
     if (style) style.remove();
 
-    // 4. 移除插件脚本（避免脚本元素常驻 DOM）
+    // 4. 移除插件脚本
     const script = document.querySelector(`script[plugin="${id}"]`);
     if (script) script.remove();
 }
@@ -1119,13 +1190,27 @@ async function _getAllInstalled() {
     return (await _tx("readonly", (store) => store.getAll())) || [];
 }
 
+/** 只取已安装 id 键集（不反序列化记录）：启动时索引对账用，Blob 不出库。 */
+async function _getAllInstalledKeys() {
+    return (await _tx("readonly", (store) => store.getAllKeys())) || [];
+}
+
 /**
  * 卸载并删除一个已安装（ZIP）插件的持久化记录（含 IndexedDB 与内存注册表）。
  * 仅删除用户安装的插件；内置插件不受影响。
+ * 可见性 API 声明 uninstallable:false 的（系统应用等）在数据层直接拒绝：
+ * 商店/设置 UI 未来漏判时，这里仍是最后一道闸。
  * @param {string} id 插件 id
  * @returns {Promise<boolean>}
  */
 export async function unregisterInstalledPlugin(id) {
+    if (!isUninstallable(id)) {
+        console.warn(`[plugin-manager] 拒绝卸载不可卸载的应用：${id}`);
+        return false;
+    }
+    // 先关运行中实例（窗口/样式/脚本一并回收），再走持久化删除：
+    // 只摘注册表会让存活窗口继续跑已被 SW 404 的资源，且同 id 立刻重装会复用到旧窗口（BUG-24）。
+    try { unload(id); } catch (err) { console.warn(`[plugin-manager] 卸载前关闭实例失败: ${id}`, err); }
     invalidatePluginCaches(id);
     let removed = false;
     try {
@@ -1134,8 +1219,10 @@ export async function unregisterInstalledPlugin(id) {
     } catch (err) {
         console.warn("[plugin-manager] 删除已安装插件记录失败", err);
     }
-    // 删除成功才摘索引：库删失败时保持索引与库一致，下次启动仍会照旧还原它（同现状）。
-    if (removed) _updateInstalledIndex(id, null);
+    // 库删失败（removed=false）时索引与注册表都必须保留：否则商店报「卸载成功」，
+    // 而库还在、下次启动完整复活（BUG-23）。失败路径返回 false，由调用方如实提示。
+    if (!removed) return false;
+    _updateInstalledIndex(id, null);
     await notifyInstalledChanged();
     return unregisterPlugin(id);
 }
@@ -1180,8 +1267,10 @@ function _tx(mode, action) {
         const req = action(tx.objectStore("installed"));
         tx.oncomplete = () => resolve(req ? req.result : undefined);
         tx.onerror = () => reject((req && req.error) || tx.error);
+        // 事务被 abort 而非 error 时（如 onversionchange 里 db.close() 掐断在飞事务），
+        // 不补这条 Promise 既不 resolve 也不 reject —— 安装/卸载链永久悬挂（BUG-30）。
+        tx.onabort = () => reject(tx.error || new Error("事务被中止"));
     }));
 }
 
-// 导出常量供其它模块使用
 export { BUILTIN_IDS };

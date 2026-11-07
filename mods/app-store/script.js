@@ -1,19 +1,23 @@
 /**
- * script.js — App Store 插件界面
+ * script.js — App Store 界面：Today / 应用列表 / 应用详情 / 更新日志 / 安装记录。
  *
- * 分层：本文件只做界面与交互，数据与动作全部来自 `src/javascripts/store-api.js`。
- * 之前是反过来的 —— 宿主 `src/javascripts/app-store.js` 伸手进本 mod 的 DOM 画卡片，
- * 我们再拿 MutationObserver 往别人的卡片上补卸载按钮、按显示名回查 manifest。
- * 现在商店的 DOM 只由这里生成，宿主不认识商店的界面，商店也不碰宿主的内部状态。
+ * 分层：本文件只做界面与交互，数据与动作全部来自 src/javascripts/store-api.js
+ * 与 src/javascripts/changelog.js；商店 DOM 只由这里生成，宿主不认识商店的界面。
  *
- * 界面三段：侧栏（分类 + 记录）→ 卡片列表 → 详情页。
- * 详情页的内容来自插件自己声明的 `manifest.store`（见 plugin-format.md），
- * 没声明的区块就不渲染，不编文案。
+ * 只渲染清单里真实存在的内容：
+ * - 详情页没有截图就不留空位，没有评分数据就不摆分数；
+ * - 权限与隐私两个卡片读的是 manifest.permissions，与授权账本同源；
+ * - 详情页不出现任何「推荐应用 / 你可能也喜欢」之类的板块。
+ *
+ * 亚克力禁忌：带 backdrop-filter 的元素不加 transform / will-change:transform，
+ * 悬停反馈一律走 background / box-shadow / border-color。
  */
 
-import { openApp, whenReady } from '../../src/javascripts/plugin-manager.js';
+import { i18n } from "../../src/javascripts/i18n.js";
+import { openApp, whenReady } from "../../src/javascripts/plugin-manager.js";
 import {
     getEntry,
+    listEntries,
     categories,
     filterEntries,
     history,
@@ -25,16 +29,46 @@ import {
     versionDiff,
     setEnabled,
     PLACEHOLDER_ICON,
-} from '../../src/javascripts/store-api.js';
+} from "../../src/javascripts/store-api.js";
+import {
+    getSystemChangelog,
+    getPluginChangelog,
+    versionGroups,
+    latestGroup,
+    summaryOf,
+    relativeTime,
+    versionLabel,
+} from "../../src/javascripts/changelog.js";
+import { STORE_MESSAGES as MESSAGES } from "./messages.js";
+import { iconEl } from "../../src/javascripts/ui/phosphor-icons.js";
+
+/* ───────────────────────── 四语文案 ───────────────────────── */
+
+try {
+    if (typeof i18n.registerMessagesAll === "function") i18n.registerMessagesAll(MESSAGES);
+} catch (err) {
+    console.warn("[app-store] 注册文案失败", err);
+}
+
+/** 取词条：始终带中文回退，缺词条时不至于露出键名。 */
+function t(key, fallback) {
+    return i18n.t(key, fallback);
+}
+
+/* ───────────────────────── 基础 ───────────────────────── */
 
 // 窗口根元素：整份脚本只服务这一个窗口。
 const win = document.querySelector(".appstore.window");
 
 // 视图状态：模块级可变，init() 复位（窗口关闭再打开时重新执行本脚本）
-let category = "all";
+let view = "today";          // today | list | detail | changelog | history
+let categoryKey = "all";     // all | builtin | installed | cat:<分类名>
 let keyword = "";
-let currentId = null;   // 详情页对应的插件 id；null 表示在列表
-let mode = "list";      // list | detail | history
+let currentId = null;        // 详情页 / 插件日志对应的插件 id
+let logTarget = null;        // {kind:"system"} | {kind:"plugin", id, name}
+let activeNavSync = null;
+
+const PANES = ["today", "list", "detail", "changelog"];
 
 function $(role) { return win.querySelector(`[data-role="${role}"]`); }
 
@@ -52,6 +86,7 @@ function pic(src, alt, cls) {
     el.src = src;
     el.alt = alt || "";
     el.draggable = false;
+    el.addEventListener("error", () => { if (el.src !== PLACEHOLDER_ICON) el.src = PLACEHOLDER_ICON; }, { once: true });
     return el;
 }
 
@@ -65,8 +100,7 @@ function section(title, rows) {
 
 /**
  * 清单没写 `store` 时 store-api 返回 null（用来区分「没声明」与「声明了但为空」）。
- * 详情页按字段逐个判空，所以这里补一份全空骨架：不补的话读 `store.features.length`
- * 会在任何未声明 store 的插件上抛 undefined。
+ * 详情页按字段逐个判空，所以这里补一份全空骨架。
  */
 function normalizeStore(store) {
     return Object.assign(
@@ -75,22 +109,37 @@ function normalizeStore(store) {
     );
 }
 
+function setPane(which) {
+    PANES.forEach((role) => { $(role).hidden = role !== which; });
+}
+
+function setHeading(title, count) {
+    $("cat-title").textContent = title;
+    $("count").textContent = count || "";
+}
+
 function init() {
-    category = "all";
+    view = "today";
+    categoryKey = "all";
     keyword = "";
     currentId = null;
-    mode = "list";
+    logTarget = null;
 
     const search = $("search");
     search.value = "";
+    search.placeholder = t("as.sidebar.search", "搜索应用");
     search.addEventListener("input", () => {
         keyword = search.value.trim();
-        // 输入即回到结果列表：停在详情页/记录里改搜索词会「输了没反应」
+        // 输入即回到结果列表：停在详情页改搜索词会「输了没反应」
         showList();
     });
 
-    $("back").addEventListener("click", showList);
+    $("back").textContent = t("as.toolbar.back", "返回");
+    $("back").addEventListener("click", goBack);
+    $("catshead").textContent = t("as.sidebar.categories", "类别");
+    paintHistoryBtn();
     $("history").addEventListener("click", showHistory);
+    $("pick").textContent = t("as.toolbar.install", "安装 ZIP…");
 
     const file = $("file");
     $("pick").addEventListener("click", () => file.click());
@@ -117,7 +166,7 @@ function init() {
 
     win.addEventListener("keydown", onKeynav);
 
-    // 兜底：将来任何动态加的 img 也不许被拖出窗口（拖出去会变成浏览器在拖文件）
+    // 兜底：将来任何动态加的 img 也不许被拖出窗口
     win.addEventListener("dragstart", (ev) => {
         if (ev.target instanceof Element && ev.target.closest("img")) ev.preventDefault();
     });
@@ -125,37 +174,162 @@ function init() {
     // 窗口宽度变了，截图条的可滚范围跟着变
     const onResize = () => { if (activeNavSync) activeNavSync(); };
     window.addEventListener("resize", onResize);
-    const offResize = () => window.removeEventListener("resize", onResize);
     const prevCleanup = win._storeCleanup;
-    win._storeCleanup = () => { prevCleanup(); offResize(); };
+    win._storeCleanup = () => { prevCleanup(); window.removeEventListener("resize", onResize); };
 
+    // 切语言后重画当前视图：文案都在本模块的四语表里，不重画会停在旧语言
+    if (typeof i18n.onChange === "function") {
+        const offLang = i18n.onChange(() => {
+            search.placeholder = t("as.sidebar.search", "搜索应用");
+            $("back").textContent = t("as.toolbar.back", "返回");
+            $("catshead").textContent = t("as.sidebar.categories", "类别");
+            paintHistoryBtn();
+            $("pick").textContent = t("as.toolbar.install", "安装 ZIP…");
+            refresh();
+        });
+        const prev = win._storeCleanup;
+        win._storeCleanup = () => { prev(); if (typeof offLang === "function") offLang(); };
+    }
+
+    // 先把骨架画出来：插件注册表就绪前侧栏也不该是空的
+    renderNav();
+    renderCats();
     whenReady().then(refresh);
     renderSwStatus();
 }
 
 function refresh() {
+    renderNav();
     renderCats();
-    if (mode === "detail" && currentId) renderDetail(currentId);
-    else if (mode === "history") renderHistory();
-    else renderList();
+    if (view === "detail" && currentId) renderDetail(currentId);
+    else if (view === "history") renderHistory();
+    else if (view === "changelog" && logTarget) renderLog(logTarget);
+    else if (view === "list") renderList();
+    else renderToday();
 }
 
-/* ───────────────────────── 侧栏 ───────────────────────── */
+/* ───────────────────────── 边栏 ───────────────────────── */
 
-function renderCats() {
-    const box = $("cats");
+function showToday() {
+    closeLightbox();
+    activeNavSync = null;
+    view = "today";
+    currentId = null;
+    logTarget = null;
+    setPane("today");
+    $("back").hidden = true;
+    renderNav();
+    renderCats();
+    renderToday();
+}
+
+function showList() {
+    closeLightbox();
+    activeNavSync = null;
+    view = "list";
+    currentId = null;
+    logTarget = null;
+    setPane("list");
+    $("back").hidden = true;
+    renderNav();
+    renderCats();
+    renderList();
+}
+
+function showDetail(id) {
+    closeLightbox();
+    activeNavSync = null;
+    view = "detail";
+    currentId = id;
+    logTarget = null;
+    setPane("detail");
+    $("back").hidden = false;
+    renderNav();
+    renderCats();
+    renderDetail(id);
+}
+
+function showHistory() {
+    closeLightbox();
+    activeNavSync = null;
+    view = "history";
+    currentId = null;
+    logTarget = null;
+    setPane("detail");
+    $("back").hidden = false;
+    renderNav();
+    renderCats();
+    renderHistory();
+}
+
+/** 返回：日志回到它被打开的地方，详情 / 记录回到列表。 */
+function goBack() {
+    if (view === "changelog") {
+        if (logTarget && logTarget.kind === "plugin" && logTarget.id) showDetail(logTarget.id);
+        else showToday();
+        return;
+    }
+    if (view === "detail" || view === "history") {
+        showList();
+        return;
+    }
+    showToday();
+}
+
+/** 分组导航：Today / 应用 / 插件 / 新功能。图标统一从 phosphor-icons 取。 */
+function renderNav() {
+    const box = $("nav");
+    if (!box) return;
     box.innerHTML = "";
-    categories().forEach((c) => {
-        const btn = h("button", "cat" + (mode === "list" && c.key === category ? " active" : ""), c.label);
+    const items = [
+        { key: "today", icon: "star", label: t("as.tabs.today", "Today"), active: () => view === "today" },
+        { key: "builtin", icon: "squares-four", label: t("as.tabs.apps", "应用"), active: () => view === "list" && categoryKey === "builtin" },
+        { key: "installed", icon: "puzzle-piece", label: t("as.tabs.plugins", "插件"), active: () => view === "list" && categoryKey === "installed" },
+        { key: "log", icon: "sparkle", label: t("as.tabs.whatsNew", "新功能"), active: () => view === "changelog" && logTarget && logTarget.kind === "system" },
+    ];
+    items.forEach((it) => {
+        if (it.key === "log") box.appendChild(h("div", "as-navsep"));
+        const btn = h("button", "as-navitem" + (it.active() ? " active" : ""));
         btn.type = "button";
-        btn.appendChild(h("span", "n", String(c.count)));
-        btn.addEventListener("click", () => {
-            category = c.key;
-            showList();
-        });
+        const ico = iconEl(it.icon);
+        if (ico) btn.appendChild(ico);
+        btn.appendChild(h("span", "as-navitem__label", it.label));
+        if (it.key === "today") btn.addEventListener("click", showToday);
+        else if (it.key === "log") btn.addEventListener("click", showSystemLog);
+        else btn.addEventListener("click", () => { categoryKey = it.key; showList(); });
         box.appendChild(btn);
     });
-    $("history").classList.toggle("active", mode === "history");
+}
+
+/** 底部「安装记录」：文字会随语言重画，所以图标和文案一起重建，避免 textContent 把图标冲掉。 */
+function paintHistoryBtn() {
+    const btn = $("history");
+    if (!btn) return;
+    btn.textContent = "";
+    const ico = iconEl("clock-counter-clockwise");
+    if (ico) btn.appendChild(ico);
+    btn.appendChild(h("span", "as-sidebtn__label", t("as.sidebar.history", "安装记录")));
+}
+
+/** 类别组：只列真实存在的分类（来自各插件 manifest.store.category）+ 全部。 */
+function renderCats() {
+    const box = $("cats");
+    if (!box) return;
+    box.innerHTML = "";
+    categories()
+        .filter((c) => c.key === "all" || c.key.startsWith("cat:"))
+        .forEach((c) => {
+            const label = c.key === "all" ? t("as.sidebar.all", "全部") : c.label;
+            const btn = h("button", "cat" + (view === "list" && c.key === categoryKey ? " active" : ""), label);
+            btn.type = "button";
+            btn.appendChild(h("span", "n", String(c.count)));
+            btn.addEventListener("click", () => {
+                categoryKey = c.key;
+                showList();
+            });
+            box.appendChild(btn);
+        });
+    $("history").classList.toggle("active", view === "history");
 }
 
 /** 资源代理状态：ZIP 插件的资源全靠 SW 从 IndexedDB 回源，没接管就装不了。 */
@@ -163,6 +337,8 @@ async function renderSwStatus() {
     const foot = $("sw");
     foot.innerHTML = "";
     const { controlled, registered } = await swStatus();
+    const ico = iconEl("plugs-connected", { size: 14 });
+    if (ico) foot.appendChild(ico);
     const dot = h("i", "dot " + (controlled ? "on" : "off"));
     foot.appendChild(dot);
     foot.appendChild(h("span", null,
@@ -172,38 +348,126 @@ async function renderSwStatus() {
         : "页面未被 Service Worker 接管，ZIP 安装无法生效。刷新一次页面通常可恢复。";
 }
 
-/* ───────────────────────── 列表 ───────────────────────── */
+/* ───────────────────────── Today ───────────────────────── */
 
-function showList() {
-    closeLightbox();
-    activeNavSync = null;
-    mode = "list";
-    currentId = null;
-    $("detail").hidden = true;
-    $("list").hidden = false;
-    $("back").hidden = true;
-    renderCats();
-    renderList();
+function renderToday() {
+    const box = $("today");
+    box.innerHTML = "";
+    const wrap = h("div", "as-today");
+    box.appendChild(wrap);
+    const entries = listEntries();
+    setHeading(t("as.tabs.today", "Today"), "");
+
+    if (!entries.length) {
+        wrap.appendChild(h("p", "empty", t("as.today.empty", "这里还没有应用")));
+        return;
+    }
+
+    const withTag = entries.filter((e) => e.store && e.store.tagline);
+    const featured = withTag.find((e) => e.store.screenshots.length) || withTag[0] || entries[0];
+    const side = withTag.find((e) => e.id !== featured.id) || entries.find((e) => e.id !== featured.id) || null;
+
+    const row = h("div", "as-today__row");
+    row.appendChild(heroCard(featured));
+    if (side) row.appendChild(sideCard(side));
+    wrap.appendChild(row);
+
+    const shelf = h("div", "as-shelf");
+    shelf.appendChild(shelfColumn(t("as.today.weeklyApps", "本周热门应用"), entries.filter((e) => e.source === "builtin")));
+    shelf.appendChild(shelfColumn(t("as.today.weeklyPlugins", "本周热门插件"), entries.filter((e) => e.source === "installed"),
+        t("as.today.noPlugins", "还没有安装第三方插件")));
+    wrap.appendChild(shelf);
+
+    // 「新功能」：只取真实日志的最新一条，读不到就整块不渲染
+    getSystemChangelog().then((log) => {
+        if (view !== "today" || !wrap.isConnected) return;
+        const group = latestGroup(log);
+        if (!group) return;
+        wrap.appendChild(whatsNewBlock(t("cl.title", "新功能"), group, showSystemLog));
+    });
 }
 
+function heroCard(e) {
+    const card = h("article", "as-hero");
+    const text = h("div", "as-hero__text");
+    text.appendChild(h("p", "as-hero__kicker", t("as.today.cover", "编辑推荐")));
+    text.appendChild(h("h3", "as-hero__name", e.name));
+    const desc = (e.store && e.store.tagline) || e.description || "";
+    if (desc) text.appendChild(h("p", "as-hero__desc", desc));
+    const cta = h("button", "as-hero__cta", t("as.today.view", "查看"));
+    cta.type = "button";
+    cta.addEventListener("click", () => showDetail(e.id));
+    text.appendChild(cta);
+
+    const art = h("div", "as-hero__art");
+    art.appendChild(pic(e.icon || PLACEHOLDER_ICON, e.name));
+    art.appendChild(h("span", "as-hero__badge", t("as.today.cover", "编辑推荐")));
+
+    card.append(text, art);
+    return card;
+}
+
+function sideCard(e) {
+    const card = h("article", "as-today__side");
+    card.appendChild(pic(e.icon || PLACEHOLDER_ICON, e.name, "as-side__icon"));
+    card.appendChild(h("h3", null, e.name));
+    const desc = (e.store && e.store.tagline) || e.description || "";
+    if (desc) card.appendChild(h("p", "as-side__desc", desc));
+    const cta = h("button", "as-hero__cta", t("as.today.view", "查看"));
+    cta.type = "button";
+    cta.addEventListener("click", () => showDetail(e.id));
+    card.appendChild(cta);
+    return card;
+}
+
+function shelfColumn(title, list, emptyText) {
+    const col = h("section", "as-shelfcol");
+    col.appendChild(h("h3", null, title));
+    const rows = list.slice(0, 4);
+    if (!rows.length) {
+        col.appendChild(h("p", "as-shelf__empty", emptyText || t("as.today.empty", "这里还没有应用")));
+        return col;
+    }
+    rows.forEach((e) => col.appendChild(shelfItem(e)));
+    return col;
+}
+
+function shelfItem(e) {
+    const btn = h("button", "as-shelfitem");
+    btn.type = "button";
+    btn.appendChild(pic(e.icon || PLACEHOLDER_ICON, e.name));
+    const text = h("span", "as-shelfitem__text");
+    text.appendChild(h("span", "as-shelfitem__name", e.name));
+    const desc = (e.store && e.store.tagline) || e.description || "";
+    if (desc) text.appendChild(h("span", "as-shelfitem__desc", desc));
+    btn.appendChild(text);
+    btn.appendChild(h("span", "as-shelfitem__view", t("as.today.view", "查看")));
+    btn.addEventListener("click", () => showDetail(e.id));
+    return btn;
+}
+
+/* ───────────────────────── 列表 ───────────────────────── */
+
 function renderList() {
-    const list = filterEntries(category, keyword);
-    const cat = categories().find((c) => c.key === category);
-    setHeading(cat ? cat.label : "全部", list.length ? `${list.length} 个应用` : "");
+    const list = filterEntries(categoryKey, keyword);
+    const cat = categories().find((c) => c.key === categoryKey);
+    const title = categoryKey === "builtin"
+        ? t("as.tabs.apps", "应用")
+        : categoryKey === "installed"
+            ? t("as.tabs.plugins", "插件")
+            : categoryKey === "all"
+                ? t("as.sidebar.all", "全部")
+                : (cat ? cat.label : t("as.sidebar.all", "全部"));
+    setHeading(title, list.length ? `${list.length} ${t("as.count.apps", "个应用")}` : "");
 
     const grid = $("grid");
     grid.innerHTML = "";
     if (!list.length) {
-        grid.appendChild(h("div", "empty", keyword ? `没有匹配「${keyword}」的应用` : "这里还没有应用"));
+        grid.appendChild(h("div", "empty",
+            keyword ? `${t("as.list.noMatch", "没有匹配的应用")}：${keyword}` : t("as.today.empty", "这里还没有应用")));
         return;
     }
     list.forEach((e) => grid.appendChild(card(e)));
-}
-
-/** 工具条标题：列表显示分类名，详情 / 记录显示当前对象，避免「停在详情里还写着全部 14 个应用」 */
-function setHeading(title, count) {
-    $("cat-title").textContent = title;
-    $("count").textContent = count || "";
 }
 
 function card(e) {
@@ -211,20 +475,17 @@ function card(e) {
     el.dataset.id = e.id;
     el.tabIndex = 0;
 
-    const icon = pic(e.icon || PLACEHOLDER_ICON, e.name, "icon");
-    icon.addEventListener("error", () => { icon.src = PLACEHOLDER_ICON; }, { once: true });
-    el.appendChild(icon);
-
+    el.appendChild(pic(e.icon || PLACEHOLDER_ICON, e.name, "icon"));
     el.appendChild(h("h4", "name", e.name));
     el.appendChild(h("p", "tag", (e.store && e.store.tagline) || e.description || ""));
 
     const meta = h("p", "meta");
     meta.appendChild(h("span", "ver", e.version ? `v${e.version}` : "v—"));
-    meta.appendChild(h("span", "src", e.source === "installed" ? "已安装" : "内置"));
-    if (!e.enabled) meta.appendChild(h("span", "chip disabled", "已禁用"));
+    meta.appendChild(h("span", "src", e.source === "installed" ? t("as.detail.fromZip", "本地安装") : t("as.detail.builtin", "系统内置")));
+    if (!e.enabled) meta.appendChild(h("span", "chip disabled", t("as.detail.disable", "禁用")));
     el.appendChild(meta);
 
-    const btn = h("button", "cta", e.enabled ? "打开" : "启用");
+    const btn = h("button", "cta", e.enabled ? t("as.detail.open", "打开") : t("as.detail.enable", "启用"));
     btn.type = "button";
     btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -239,149 +500,251 @@ function card(e) {
 
 /* ───────────────────────── 详情 ───────────────────────── */
 
-function showDetail(id) {
-    closeLightbox();
-    mode = "detail";
-    currentId = id;
-    $("list").hidden = true;
-    $("detail").hidden = false;
-    $("back").hidden = false;
-    renderCats();
-    renderDetail(id);
-}
-
-function showHistory() {
-    closeLightbox();
-    activeNavSync = null;
-    mode = "history";
-    currentId = null;
-    // 记录与详情共用右侧同一块面板（data-role="detail"），切换视图即切它的内容
-    $("list").hidden = true;
-    $("detail").hidden = false;
-    $("back").hidden = false;
-    renderCats();
-    renderHistory();
-}
-
 function renderDetail(id) {
     const e = getEntry(id);
     const box = $("detail");
     box.innerHTML = "";
     if (!e) {
-        box.appendChild(h("p", "empty", "这个应用已经不在了。"));
+        box.appendChild(h("p", "empty", t("as.list.gone", "这个应用已经不在了")));
         return;
     }
     const store = normalizeStore(e.store);
-    setHeading(e.name, store.category || (e.source === "installed" ? "已安装" : "系统内置"));
+    setHeading(e.name, store.category || "");
 
-    // 头部：图标 + 名称 + 一句话 + 操作
-    const hero = h("header", "hero");
-    const icon = pic(e.icon || PLACEHOLDER_ICON, e.name, "heroicon");
-    icon.addEventListener("error", () => { icon.src = PLACEHOLDER_ICON; }, { once: true });
-    hero.appendChild(icon);
+    const head = h("header", "as-dhead");
+    head.appendChild(pic(e.icon || PLACEHOLDER_ICON, e.name, "as-dhead__icon"));
 
-    const info = h("div", "hero-info");
+    const info = h("div", "as-dhead__info");
     info.appendChild(h("h2", null, e.name));
-    info.appendChild(h("p", "tagline", store.tagline || e.description || ""));
-    const byline = h("p", "byline");
-    [
-        e.version ? `版本 ${e.version}` : "",
-        store.category || (e.source === "installed" ? "已安装" : "系统内置"),
-        store.author ? `开发者 ${store.author}` : "",
-        e.apps.length ? `${e.apps.length} 个应用` : "1 个应用",
-    ].filter(Boolean).forEach((t, i) => {
-        if (i) byline.appendChild(h("span", "sep", "·"));
-        byline.appendChild(h("span", null, t));
-    });
-    info.appendChild(byline);
-    hero.appendChild(info);
+    const tagline = store.tagline || e.description || "";
+    if (tagline) info.appendChild(h("p", "as-dhead__tagline", tagline));
+    head.appendChild(info);
 
-    const acts = h("div", "hero-acts");
-    const openBtn = h("button", "cta", e.enabled ? "打开" : "启用");
-    openBtn.type = "button";
-    openBtn.addEventListener("click", () => openEntry(e.id));
-    acts.appendChild(openBtn);
-    if (e.enabled) {
-        const off = h("button", "ghost", "禁用");
+    const acts = h("div", "as-dhead__acts");
+    acts.appendChild(h("span", "as-dstate", t("as.detail.installed", "已安装")));
+    const primary = h("button", "as-get", e.enabled ? t("as.detail.open", "打开") : t("as.detail.enable", "启用"));
+    primary.type = "button";
+    primary.addEventListener("click", () => {
+        if (e.enabled) openEntry(e.id);
+        else enable(e.id, true);
+    });
+    acts.appendChild(primary);
+    head.appendChild(acts);
+    box.appendChild(head);
+
+    // 元数据行：只列真实存在的项，没有的（年龄分级 / 排名 / 语言 / 评分）不占位
+    const meta = h("div", "as-meta");
+    const put = (k, v) => {
+        if (!v) return;
+        const item = h("div", "as-meta__item");
+        item.appendChild(h("span", "as-meta__k", k));
+        item.appendChild(h("span", "as-meta__v", v));
+        meta.appendChild(item);
+    };
+    put(t("as.detail.metaCategory", "类别"), store.category);
+    put(t("as.detail.metaDeveloper", "开发者"), store.author);
+    put(t("as.detail.metaVersion", "版本"), e.version);
+    put(t("as.detail.metaSize", "大小"), e.source === "installed" && e.bytes ? `${(e.bytes / 1024).toFixed(0)} KB` : "");
+    put(t("as.detail.metaSource", "来源"), e.source === "installed" ? t("as.detail.fromZip", "本地安装") : t("as.detail.builtin", "系统内置"));
+    box.appendChild(meta);
+
+    const more = h("div", "as-more");
+    if (e.enabled && e.disableable !== false) {
+        const off = h("button", "ghost", t("as.detail.disable", "禁用"));
         off.type = "button";
         off.addEventListener("click", () => enable(e.id, false));
-        acts.appendChild(off);
+        more.appendChild(off);
+    }
+    if (e.disableable === false && e.disableReason) {
+        more.appendChild(h("p", "as-note", e.disableReason));
     }
     if (e.source === "installed") {
-        const check = h("button", "ghost", "校验资源");
+        const check = h("button", "ghost", t("as.detail.verify", "校验资源"));
         check.type = "button";
         check.addEventListener("click", () => verify(e.id));
-        acts.appendChild(check);
-        const del = h("button", "danger", "卸载");
+        more.appendChild(check);
+        const del = h("button", "danger", t("as.detail.uninstall", "卸载"));
         del.type = "button";
         del.addEventListener("click", () => doUninstall(e.id));
-        acts.appendChild(del);
+        more.appendChild(del);
     }
-    hero.appendChild(acts);
-    box.appendChild(hero);
+    if (more.childElementCount) box.appendChild(more);
 
     // 截图：清单声明了才显示；某张取不到就把那一格摘掉（不摆占位图骗人）
-    if (e.screenshots.length) box.appendChild(section("界面", [shotsCarousel(e)]));
+    if (e.screenshots.length) box.appendChild(section(t("as.detail.shots", "界面截图"), [shotsCarousel(e)]));
 
+    // 简介：描述与清单声明的能力放在同一块，避免出现两个同名小节
     const summary = store.summary || e.description;
-    if (summary) box.appendChild(section("简介", [h("p", "para", summary)]));
+    const summaryRows = [];
+    if (summary) summaryRows.push(h("p", "para", summary));
     if (store.features.length) {
         const ul = h("ul", "feats");
         store.features.forEach((f) => ul.appendChild(h("li", null, f)));
-        box.appendChild(section("能力", [ul]));
+        summaryRows.push(ul);
     }
-    if (store.usage) box.appendChild(section("使用方法", [h("p", "para", store.usage)]));
+    if (summaryRows.length) box.appendChild(section(t("as.detail.summary", "简介"), summaryRows));
 
-    // 多应用套件：逐个列出可单独打开的应用
     if (e.apps.length) {
         const row = h("div", "apps");
         e.apps.forEach((a) => {
             const chip = h("button", "appchip");
             chip.type = "button";
-            const img = pic(a.icon || PLACEHOLDER_ICON, a.name);
-            img.addEventListener("error", () => { img.src = PLACEHOLDER_ICON; }, { once: true });
-            chip.append(img, h("span", null, a.name));
+            chip.appendChild(pic(a.icon || PLACEHOLDER_ICON, a.name));
+            chip.appendChild(h("span", null, a.name));
             chip.addEventListener("click", () => openApp(a.appId));
             row.appendChild(chip);
         });
-        box.appendChild(section("包含的应用", [row]));
+        box.appendChild(section(t("as.detail.included", "包含的应用"), [row]));
     }
 
-    // 权限取自 manifest.permissions（与授权账本同源），不是商店文案
-    const perms = h("ul", "perms");
-    if (!e.permissions.length) {
-        perms.appendChild(h("li", "none", "不需要任何额外能力"));
-    } else {
+    // 评分及评论：没有任何真实评分来源，只说明，不给数字
+    const ratingBox = section(t("as.detail.rating", "评分及评论"), [
+        h("p", "as-rating__none", t("as.detail.ratingNone", "暂无评分")),
+        h("p", "as-note", t("as.detail.ratingNote", "本机商店没有评分数据来源，这里不显示编造的分数。")),
+    ]);
+
+    // App 隐私：两张卡片，内容全部来自 manifest.permissions
+    const privacy = h("div", "as-privacy");
+    privacy.appendChild(privacyCard(
+        t("as.detail.privacyTrack", "用于追踪你的数据"),
+        t("as.detail.privacyTrackNone", "没有声明用于追踪的数据。"),
+    ));
+    const linked = h("div", "as-pcard");
+    linked.appendChild(h("h4", null, t("as.detail.privacyLinked", "与你关联的数据")));
+    if (e.permissions.length) {
+        const ul = h("ul", null);
         e.permissions.forEach((p) => {
             const li = h("li");
             li.appendChild(h("b", null, p.label));
-            li.appendChild(h("span", "hint", p.hint));
-            if (p.sensitive) li.appendChild(h("span", "chip sensitive", "敏感"));
-            perms.appendChild(li);
+            if (p.hint) li.appendChild(h("span", null, p.hint));
+            ul.appendChild(li);
         });
+        linked.appendChild(ul);
+    } else {
+        linked.appendChild(h("p", "none", t("as.detail.privacyLinkedNone", "不需要访问任何数据。")));
     }
-    box.appendChild(section("权限", [perms]));
+    privacy.appendChild(linked);
+    const privacyBox = section(t("as.detail.privacy", "App 隐私"), [
+        privacy,
+        h("p", "as-note", t("as.detail.privacyNote", "以上内容来自插件清单声明的能力，与安装时的授权记录一致。")),
+    ]);
 
-    const kv = h("dl", "kv");
-    const put = (k, v) => {
-        if (!v) return;
-        kv.appendChild(h("dt", null, k));
-        kv.appendChild(h("dd", null, v));
-    };
-    put("标识", e.id);
-    put("来源", e.source === "installed" ? `ZIP 安装（${e.from || "本地包"}）` : "系统内置");
-    if (e.installedAt) put("安装时间", new Date(e.installedAt).toLocaleString());
-    if (e.bytes) put("占用", `${(e.bytes / 1024).toFixed(0)} KB · ${e.fileCount} 个文件`);
-    if (store.updated) put("更新时间", store.updated);
-    box.appendChild(section("信息", [kv]));
+    // 顺序按参考图：简介 → 包含的应用 → 新功能 → 评分及评论 → App 隐私。
+    // 「新功能」行要等日志读完，三块统一放进回调，避免异步把它挤到页面最底部。
+    getPluginChangelog(e.id).catch(() => null).then((log) => {
+        if (view !== "detail" || currentId !== e.id) return;
+        const group = log ? latestGroup(log) : null;
+        if (group) {
+            box.appendChild(whatsNewBlock(t("as.detail.whatsNew", "新功能"), group, () => showPluginLog(e.id, e.name)));
+        }
+        box.appendChild(ratingBox);
+        box.appendChild(privacyBox);
+    });
+}
 
-    if (store.homepage) {
-        const a = h("a", "homepage", store.homepage);
-        a.href = store.homepage;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        box.appendChild(section("主页", [a]));
+function privacyCard(title, text) {
+    const card = h("div", "as-pcard");
+    card.appendChild(h("h4", null, title));
+    card.appendChild(h("p", "none", text));
+    return card;
+}
+
+/**
+ * 「新功能」板块：箭头跟标题同一行（点击标题整行进日志），下方只放一行摘要。
+ * 摘要里不再重复「新功能」字样，避免出现第二个入口。
+ */
+function whatsNewBlock(title, group, onOpen) {
+    const block = h("section", "dblock as-wnblock");
+    const head = h("button", "as-wnhead");
+    head.type = "button";
+    head.appendChild(h("span", "as-wnhead__title", title));
+    head.appendChild(h("span", "as-wnhead__chevron", "›"));
+    const right = h("span", "as-wnhead__meta");
+    right.appendChild(h("span", "as-wnhead__ver", `${t("cl.version", "版本")} ${versionLabel(group.version)}`));
+    right.appendChild(h("span", "as-wnhead__when", relativeTime(group.date)));
+    head.appendChild(right);
+    head.addEventListener("click", onOpen);
+    block.appendChild(head);
+    block.appendChild(h("p", "as-wnbody", summaryOf(group) || t("cl.empty", "暂无更新记录")));
+    return block;
+}
+
+/* ───────────────────────── 更新日志 ───────────────────────── */
+
+function showSystemLog() {
+    closeLightbox();
+    activeNavSync = null;
+    view = "changelog";
+    currentId = null;
+    logTarget = { kind: "system" };
+    setPane("changelog");
+    $("back").hidden = false;
+    renderNav();
+    renderCats();
+    setHeading(t("as.tabs.whatsNew", "新功能"), "");
+    renderLog(logTarget);
+}
+
+function showPluginLog(id, name) {
+    closeLightbox();
+    activeNavSync = null;
+    view = "changelog";
+    currentId = id;
+    logTarget = { kind: "plugin", id, name };
+    setPane("changelog");
+    $("back").hidden = false;
+    renderNav();
+    renderCats();
+    setHeading(name, t("as.detail.whatsNew", "新功能"));
+    renderLog(logTarget);
+}
+
+async function renderLog(target) {
+    const box = $("changelog");
+    box.innerHTML = "";
+    box.appendChild(h("p", "empty", t("as.log.loading", "正在读取…")));
+
+    const log = target.kind === "system"
+        ? await getSystemChangelog()
+        : await getPluginChangelog(target.id);
+
+    // 异步返回时视图可能已经切走：再写就把别的内容盖掉了
+    if (view !== "changelog" || !logTarget || logTarget.kind !== target.kind || logTarget.id !== target.id) return;
+
+    box.innerHTML = "";
+    if (!log) {
+        box.appendChild(h("p", "empty", t("as.log.failed", "更新日志暂时无法读取")));
+        return;
     }
+    const groups = versionGroups(log);
+    if (!groups.length) {
+        box.appendChild(h("p", "empty", t("cl.empty", "暂无更新记录")));
+        return;
+    }
+    groups.forEach((group) => box.appendChild(logBlock(group)));
+}
+
+const TYPE_LABELS = () => ({
+    added: t("cl.type.added", "新增"),
+    improved: t("cl.type.improved", "优化"),
+    fixed: t("cl.type.fixed", "修复"),
+});
+
+function logBlock(group) {
+    const block = h("section", "dblock");
+    const head = h("header", "as-loghead");
+    head.appendChild(h("h3", null, `${t("cl.version", "版本")} ${versionLabel(group.version)}`));
+    head.appendChild(h("span", null, `${group.date} · ${relativeTime(group.date)}`));
+    block.appendChild(head);
+
+    const labels = TYPE_LABELS();
+    group.types.forEach((bucket) => {
+        block.appendChild(h("h4", "as-logtype", labels[bucket.type] || bucket.type));
+        const ul = h("ul", "as-logitems");
+        bucket.items.forEach((text) => ul.appendChild(h("li", null, text)));
+        block.appendChild(ul);
+    });
+    return block;
 }
 
 /* ───────────────────────── 界面截图：翻页与大图 ───────────────────────── */
@@ -452,7 +815,6 @@ function shotsCarousel(entry) {
 
 let lightboxEl = null;
 let lightboxKeys = null;
-let activeNavSync = null;
 
 /** 大图查看：窗口内模态，Esc / 点背景 / 关闭键退出，←/→ 翻页。 */
 function openLightbox(row, name, target) {
@@ -522,7 +884,7 @@ function renderHistory() {
     const box = $("detail");
     box.innerHTML = "";
     const list = history();
-    setHeading("安装记录", list.length ? `${list.length} 条` : "");
+    setHeading(t("as.sidebar.history", "安装记录"), list.length ? `${list.length} ${t("as.count.entries", "条记录")}` : "");
     if (!list.length) {
         box.appendChild(h("p", "empty", "还没有安装过插件。把 .zip 拖到窗口里，或点右上角「安装 ZIP…」。"));
         return;
@@ -564,10 +926,10 @@ function enable(id, on) {
     const res = setEnabled(id, on);
     if (!res.ok) {
         const d = dialog();
-        if (d) d.alert("无法禁用", res.reason);
+        if (d) d.alert("操作未完成", res.reason);
         return;
     }
-    status(on ? "已启用" : "已禁用 —— 启动台与程序坞里不再出现，双击其格式的文件也不会打开它");
+    status(on ? "已启用" : "已禁用 —— 启动台与程序坞里不再出现，仍可在系统设置或 App Store 中重新启用");
     refresh();
 }
 
@@ -593,9 +955,9 @@ async function doUninstall(id) {
     const d = dialog();
     if (d) {
         const detail = prev.bytes
-            ? `将删除 ${prev.files} 个文件、约 ${(prev.bytes / 1024).toFixed(0)} KB。重装需要重新拖入安装包。`
-            : "将注销这个插件。重装需要重新拖入安装包。";
-        if (!(await d.confirm("卸载插件", `确定卸载「${prev.name}」吗？${detail}`))) return;
+            ? `将删除 ${prev.files} 个文件，约 ${(prev.bytes / 1024).toFixed(0)} KB。重新安装需要再次拖入安装包。`
+            : "将注销这个插件。重新安装需要再次拖入安装包。";
+        if (!(await d.confirm(`要卸载「${prev.name}」吗？`, detail, { danger: true, okText: "卸载", cancelText: "取消" }))) return;
     }
     status("正在卸载…");
     // 先关窗口再摘记录：关闭流程需要注册表还在（按 manifest 判断入口类型、拆外壳）
@@ -638,8 +1000,9 @@ async function install(file, overwrite) {
         const id = (res.detail && res.detail.id) || "";
         const diff = versionDiff(id, (res.detail && res.detail.nextVersion) || "");
         const name = (res.detail && res.detail.name) || id;
-        if (!d || !(await d.confirm("已安装过这个插件",
-            `「${name}」已在本地库里（当前 ${diff.current || "未知"} → 新包 ${diff.next || "未知"}）。用这个包覆盖安装吗？`))) {
+        if (!d || !(await d.confirm(`已经安装过「${name}」`,
+            `本地库里是 ${diff.current || "未知"}，这个包是 ${diff.next || "未知"}。覆盖安装会用新版本替换现有文件。`,
+            { danger: true, okText: "覆盖安装" }))) {
             return;
         }
         res = await installZip(file, { overwrite: true, onProgress: at });
@@ -704,10 +1067,10 @@ function bindDrop() {
 function onKeynav(e) {
     if (lightboxEl) return;   // 大图打开时键盘归浮层自己处理
     if (e.key === "Escape") {
-        if (mode !== "list") showList();
+        if (view !== "today" && view !== "list") goBack();
         return;
     }
-    if (mode !== "list") return;
+    if (view !== "list") return;
     const grid = $("grid");
     const cards = Array.from(grid.querySelectorAll(".card"));
     if (!cards.length) return;
@@ -731,18 +1094,20 @@ function onKeynav(e) {
 
 /* ───────────────────────── 顶栏菜单命令 ───────────────────────── */
 
-// manifest.menus 里声明的「显示」组靠这几个命令驱动（见 menuCommands.js：
-// 命令只能是 注册表键名 + 至多一个字符串实参，CSP 下不能求值任意代码）。
-const MENU_KEYS = ["storeShowCategory", "storeShowHistory", "storePickZip", "storeVerifyCurrent"];
+// manifest.menus 里声明的命令靠这几个入口驱动（见 menuCommands.js：
+// 命令只能是注册表键名 + 至多一个字符串实参，CSP 下不能求值任意代码）。
+const MENU_KEYS = ["storeShowToday", "storeShowCategory", "storeShowHistory", "storeShowWhatsNew", "storePickZip", "storeVerifyCurrent"];
 const menuCommands = {
+    storeShowToday() { showToday(); },
     storeShowCategory(key) {
-        category = key || "all";
+        categoryKey = key || "all";
         showList();
     },
     storeShowHistory() { showHistory(); },
+    storeShowWhatsNew() { showSystemLog(); },
     storePickZip() { $("file").click(); },
     storeVerifyCurrent() {
-        if (mode === "detail" && currentId) { verify(currentId); return; }
+        if (view === "detail" && currentId) { verify(currentId); return; }
         status("先打开某个应用的详情页，再校验它声明的资源");
     },
 };
@@ -762,7 +1127,7 @@ const onAppStoreUnload = (e) => {
 window.addEventListener("plugin-unload", onAppStoreUnload);
 
 /* ───────────────────────── 启动 ─────────────────────────
-   必须放在所有模块级状态与函数声明之后：init() 会给 category / mode 等 `let` 赋值，
+   必须放在所有模块级状态与函数声明之后：init() 会给 view / categoryKey 等 `let` 赋值，
    早于声明执行会撞 TDZ（ReferenceError），整个商店界面就不会初始化。 */
 if (!win) {
     console.warn("[app-store] 未找到窗口根元素，跳过初始化");

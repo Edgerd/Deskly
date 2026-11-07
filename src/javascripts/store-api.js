@@ -31,7 +31,7 @@ import {
     BUILTIN_IDS,
 } from "./plugin-manager.js";
 import { showPermissionChecklist, describe, isKnownPermission, isSensitive } from "./api-grants.js";
-import { displayNameFor } from "./app-registry.js";
+import { displayNameFor, isSystemApp } from "./app-registry.js";
 import { GENERIC_APP_ICON, modFile } from "./paths.js";
 import { ensureJSZip } from "./vendor.js";
 import { VERSION } from "./version.js";
@@ -45,7 +45,7 @@ const HISTORY_LIMIT = 50;
 /** SW 回源响应上的标记头（见 sw.js），用来证明「页面确实被 SW 接管」 */
 const SW_MARKER = "x-deskly-plugin";
 
-/* ───────────────────────── 持久化状态 ───────────────────────── */
+/* ── 持久化状态 ── */
 
 // 「禁用哪些插件」属于注册表层的用户意图（启动台、程序坞、加载器都要读），
 // 实现和 store.disabled 这项定义都在 app-registry.js，这里只转发，绝不再存第二份。
@@ -57,18 +57,18 @@ settings.define({ key: "store.history", type: "json", default: [], owner: "store
 
 /**
  * 启用 / 禁用一个插件（内置插件也可禁用，只是不能卸载）。
- * 商店自己不可禁用：把它关掉就再没有界面能把任何插件重新打开。
+ * 系统设置与 App Store 允许禁用（它们可从对方的 App 列表或苹果菜单重新启用）；
+ * 只有 manifest 标记 visibility.system 的系统应用会被拒绝。
  * @param {string} id 插件 id
  * @param {boolean} on 是否启用
  * @returns {{ok: boolean, enabled?: boolean, reason?: string}} 结果
  */
 export function setEnabled(id, on) {
-    if (id === SELF_ID) return { ok: false, reason: "应用商店自身不能被禁用" };
+    if (!on && isSystemApp(id)) {
+        return { ok: false, reason: "系统应用不能禁用，请从「应用」列表中直接打开它" };
+    }
     return { ok: true, enabled: setPluginEnabled(id, on) };
 }
-
-/** 商店自身的插件 id（禁用它的入口就在这个界面里，需要特判） */
-const SELF_ID = "app-store";
 
 const readJson = (key, fallback) => {
     const value = settings.get(key, fallback);
@@ -111,7 +111,7 @@ function pushHistory(entry) {
     writeJson("store.history", list);
 }
 
-/* ───────────────────────── 读取与聚合 ───────────────────────── */
+/* ── 读取与聚合 ── */
 
 /**
  * 取清单里自声明的商店元数据（`store` 块），并做字段清洗。
@@ -163,10 +163,10 @@ export function permissionsOf(manifest) {
  * @returns {Array<object>} 条目
  */
 export function listEntries() {
-    const disabled = new Set(disabledIds());
     return getPlugins().map((m) => {
         const meta = metaOf(m.id);
         const installedAt = meta ? meta.installedAt : 0;
+        const system = isSystemApp(m.id);
         const apps = listApps().filter((r) => r.id === m.id && r.app)
             .map((r) => ({ appId: r.appId, name: r.displayName || r.name, icon: getIconForApp(r, installedAt) }));
         return {
@@ -176,7 +176,9 @@ export function listEntries() {
             description: m.description || "",
             icon: stamp(getIcon(m.id), stampOf(m, installedAt)),
             source: m._installed ? "installed" : "builtin",
-            enabled: !disabled.has(m.id),
+            enabled: isPluginEnabled(m.id),
+            disableable: !system,
+            disableReason: system ? "系统应用不可禁用" : "",
             apps,
             store: storeMeta(m),
             screenshots: ((storeMeta(m) || {}).screenshots || []).map((f) => screenshotUrl(m.id, f)),
@@ -247,7 +249,7 @@ export function filterEntries(categoryKey = "all", keyword = "") {
     return entries.filter((e) => inCategory(e) && hit(e));
 }
 
-/* ───────────────────────── SW 接管探测 ───────────────────────── */
+/* ── SW 接管探测 ── */
 
 /**
  * 页面是否真的被 SW 接管（注册成功 ≠ 会被接管，未接管时 ZIP 插件取不到资源）。
@@ -318,7 +320,7 @@ export async function verifyInstall(id) {
     return { ok: problems.length === 0, problems, optionalMissing };
 }
 
-/* ───────────────────────── 安装 / 卸载 ───────────────────────── */
+/* ── 安装 / 卸载 ── */
 
 /**
  * 计算包内公共顶层目录前缀（仅当**所有**条目都在同一目录下时）。
@@ -340,6 +342,25 @@ function commonRoot(names) {
  *        overwrite=是否允许覆盖同 id 的已安装插件；onProgress=阶段回调，供界面显示进度
  * @returns {Promise<{ok: boolean, id?: string, name?: string, reason?: string, detail?: object}>} 结果
  */
+/** 同 id 安装的在途锁：并发两次 installZip 会互相覆盖落库、回滚时误删对方刚装好的记录（BUG-31）。 */
+const installing = new Map();
+
+/**
+ * 宿主版本区间校验（manifest.host，可选）：支持 "0.3.6" 精确、"0.3.x"/"0.3.*" 前缀、">=0.3.6" 下界。
+ * @param {string} range 声明的区间
+ * @param {string} version 当前宿主版本
+ * @returns {boolean}
+ */
+function hostSatisfies(range, version) {
+    const r = String(range || "").trim();
+    if (!r) return true;
+    const num = (s) => s.split(".").map((n) => parseInt(n, 10) || 0);
+    const cmp = (a, b) => { const x = num(a), y = num(b); for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] - y[i]; } return 0; };
+    if (r.startsWith(">=")) return cmp(version, r.slice(2).trim()) >= 0;
+    if (/[x*]$/.test(r)) { const prefix = r.slice(0, -1).replace(/\.$/, ""); return version === prefix || version.startsWith(prefix + "."); }
+    return cmp(version, r) === 0;
+}
+
 export async function installZip(file, opts = {}) {
     const fail = (reason, detail) => ({ ok: false, reason, detail: detail || null });
     const progress = typeof opts.onProgress === "function" ? opts.onProgress : () => {};
@@ -378,55 +399,65 @@ export async function installZip(file, opts = {}) {
     const id = manifest.id;
     if (!SAFE_PLUGIN_ID.test(id)) return fail("插件 id 不合法（仅字母/数字/-/_，不得含路径或 ..）", { id });
     if (BUILTIN_IDS.includes(id)) return fail(`插件 id「${id}」与内置插件同名，无法安装`, { id });
+    // 宿主版本协商（API-10）：manifest.host 不满足即拒装，杜绝 breaking change 后旧插件现场崩。
+    if (manifest.host != null && !hostSatisfies(manifest.host, VERSION)) {
+        return fail(`该插件需要 Deskly 宿主版本 ${manifest.host}，当前为 ${VERSION}`, { id, host: manifest.host });
+    }
+    if (installing.has(id)) return fail("同一插件正在安装中，请稍候", { id });
 
     const existed = !!getPlugin(id);
     if (existed && !opts.overwrite) {
         return fail("already-installed", { id, name: manifest.name || id, nextVersion: manifest.version || "" });
     }
 
-    const files = {};
-    let total = 0;
-    progress("unpack", "正在解包…");
-    for (const name of entries) {
-        const key = keyOf(name);
-        if (!key || /(^|\/)\.\.($|\/)/.test(key)) continue;
-        const blob = await zip.file(name).async("blob");
-        total += blob.size;
-        if (total > MAX_TOTAL_BYTES) return fail(`解包后 ${Math.round(total / 1024 / 1024)}MB 超过 10MB 上限`, { id });
-        files[key] = blob;
-    }
-    if (!files["manifest.json"]) return fail("manifest.json 未能写入包内文件表", { id });
-
-    // 权限清单必须在落库之前确认（设计决策：取消就整段终止）。半途注册会留下
-    // 「注册表里有、授权账本里没有」的插件，之后它每次调用能力都对不上账。
-    progress("grant", "等待确认权限…");
-    if (!(await showPermissionChecklist(manifest))) return fail("cancelled", { id, name: manifest.name || id });
-
-    progress("write", "正在写入本地插件库…");
-    let registered = false;
+    installing.set(id, true);
     try {
-        registered = await registerInstalledPlugin(manifest, files);
-    } catch (err) {
-        return fail("写入本地插件库失败", { message: (err && err.message) || String(err) });
-    }
-    if (!registered) return fail("注册失败：插件 id 不被注册表接受", { id });
+        const files = {};
+        let total = 0;
+        progress("unpack", "正在解包…");
+        for (const name of entries) {
+            const key = keyOf(name);
+            if (!key || /(^|\/)\.\.($|\/)/.test(key)) continue;
+            const blob = await zip.file(name).async("blob");
+            total += blob.size;
+            if (total > MAX_TOTAL_BYTES) return fail(`解包后 ${Math.round(total / 1024 / 1024)}MB 超过 10MB 上限`, { id });
+            files[key] = blob;
+        }
+        if (!files["manifest.json"]) return fail("manifest.json 未能写入包内文件表", { id });
 
-    progress("verify", "正在校验包内资源…");
-    const check = await verifyInstall(id);
-    if (!check.ok) {
-        // 回滚：装了就打不开的插件比装不上更糟
-        await unregisterInstalledPlugin(id).catch(() => {});
-        dropMeta(id);
-        return fail("包内资源不完整，已回滚", { id, problems: check.problems });
-    }
+        // 权限清单必须在落库之前确认（设计决策：取消就整段终止）。半途注册会留下
+        // 「注册表里有、授权账本里没有」的插件，之后它每次调用能力都对不上账。
+        progress("grant", "等待确认权限…");
+        if (!(await showPermissionChecklist(manifest))) return fail("cancelled", { id, name: manifest.name || id });
 
-    putMeta(id, { installedAt: Date.now(), bytes: total, files: Object.keys(files).length, from: file.name || "", version: manifest.version || "" });
-    pushHistory({ at: Date.now(), id, name: manifest.name || id, version: manifest.version || "", bytes: total, fileCount: Object.keys(files).length, from: file.name || "", replaced: existed });
-    return {
-        ok: true, id, name: manifest.name || id, version: manifest.version || "",
-        bytes: total, fileCount: Object.keys(files).length, replaced: existed,
-        warnings: check.optionalMissing,
-    };
+        progress("write", "正在写入本地插件库…");
+        let registered = false;
+        try {
+            registered = await registerInstalledPlugin(manifest, files);
+        } catch (err) {
+            return fail("写入本地插件库失败", { message: (err && err.message) || String(err) });
+        }
+        if (!registered) return fail("注册失败：插件 id 不被注册表接受", { id });
+
+        progress("verify", "正在校验包内资源…");
+        const check = await verifyInstall(id);
+        if (!check.ok) {
+            // 回滚：装了就打不开的插件比装不上更糟
+            await unregisterInstalledPlugin(id).catch(() => {});
+            dropMeta(id);
+            return fail("包内资源不完整，已回滚", { id, problems: check.problems });
+        }
+
+        putMeta(id, { installedAt: Date.now(), bytes: total, files: Object.keys(files).length, from: file.name || "", version: manifest.version || "" });
+        pushHistory({ at: Date.now(), id, name: manifest.name || id, version: manifest.version || "", bytes: total, fileCount: Object.keys(files).length, from: file.name || "", replaced: existed });
+        return {
+            ok: true, id, name: manifest.name || id, version: manifest.version || "",
+            bytes: total, fileCount: Object.keys(files).length, replaced: existed,
+            warnings: check.optionalMissing,
+        };
+    } finally {
+        installing.delete(id);
+    }
 }
 
 /**

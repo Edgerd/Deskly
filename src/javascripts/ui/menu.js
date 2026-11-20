@@ -6,20 +6,20 @@
  */
 import { closeAllMenus } from "../finderbar.js";
 import { dispatchMenuCommand } from "./menuCommands.js";
+import { pressMenuItem } from "./menuFeedback.js";
 
 /**
- * 点击菜单项：立即执行命令，同时播放一次短暂高亮作为反馈。
- * 旧实现把命令放在 6 次 60ms 闪烁之后执行，命令凭空延迟 360ms，
- * 且 `.menu p.clicked` 从来没有对应样式，闪烁根本看不见。
+ * 点击菜单项：先填强调色停留一小段，再收起菜单并执行命令。
+ * 旧实现先 closeAllMenus() 再给已脱离文档的项加 .clicked，高亮没有机会被绘制；
+ * 这里把高亮提前到关闭之前，时序由 ui/menuFeedback.js 统一负责。
  */
 export function clickMenuItem(item) {
-    if (item.hasAttribute("disabled")) return;
+    if (!item || item.hasAttribute("disabled")) return;
 
-    closeAllMenus();
+    pressMenuItem(item, () => {
+        closeAllMenus();
 
-    const cmd = item.getAttribute("cmd");
-    if (cmd) dispatchMenuCommand(cmd);
-
-    item.classList.add("clicked");
-    setTimeout(() => item.classList.remove("clicked"), 150);
+        const cmd = item.getAttribute("cmd");
+        if (cmd) dispatchMenuCommand(cmd);
+    });
 }

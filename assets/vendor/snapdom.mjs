@@ -2954,7 +2954,8 @@ async function inlineImages(clone, options = {}) {
     img.removeAttribute("sizes");
     const src = img.src || "";
     if (!src) return;
-    const r = await snapFetch(src, { as: "dataURL", useProxy: options.useProxy });
+    // silent：跨站 favicon/外链图抓不到时降级为占位或直显，不再逐条 console.error。
+    const r = await snapFetch(src, { as: "dataURL", useProxy: options.useProxy, silent: true });
     if (r.ok && typeof r.data === "string" && r.data.startsWith("data:")) {
       img.src = r.data;
       if (!img.width) img.width = img.naturalWidth || 100;
@@ -4075,7 +4076,7 @@ async function preCache(root = document, options = {}) {
     if (!src) continue;
     if (!cache.image.has(src)) {
       const p = Promise.resolve().then(async () => {
-        const res = await snapFetch(src, { as: "dataURL", useProxy });
+        const res = await snapFetch(src, { as: "dataURL", useProxy, silent: true });
         if (res?.ok && typeof res.data === "string") {
           cache.image.set(src, res.data);
         }

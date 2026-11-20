@@ -26,6 +26,7 @@ const STATE_KEYS = {
     default: { key: "ss.privacy.statePrompt", fallback: "未询问" },
     unsupported: { key: "ss.privacy.stateUnsupported", fallback: "不支持" },
     unknown: { key: "ss.privacy.stateUnknown", fallback: "未知" },
+    unavailable: { key: "ss.privacy.stateUnavailable", fallback: "无设备" },
     pending: { key: "ss.privacy.statePending", fallback: "正在查询" },
 };
 
@@ -77,6 +78,7 @@ export const messages = {
                 stateDenied: "已拒绝",
                 statePrompt: "未询问",
                 stateUnsupported: "不支持",
+                stateUnavailable: "无设备",
                 stateUnknown: "未知",
                 statePending: "正在查询",
             },
@@ -119,6 +121,7 @@ export const messages = {
                 stateDenied: "Denied",
                 statePrompt: "Not Asked",
                 stateUnsupported: "Unsupported",
+                stateUnavailable: "No device",
                 stateUnknown: "Unknown",
                 statePending: "Checking…",
             },
@@ -161,6 +164,7 @@ export const messages = {
                 stateDenied: "拒否",
                 statePrompt: "未確認",
                 stateUnsupported: "未対応",
+                stateUnavailable: "デバイスなし",
                 stateUnknown: "不明",
                 statePending: "確認中",
             },
@@ -203,6 +207,7 @@ export const messages = {
                 stateDenied: "被拒了",
                 statePrompt: "还没问过",
                 stateUnsupported: "浏览器不会",
+                stateUnavailable: "冇设备",
                 stateUnknown: "不太清楚",
                 statePending: "正在问喵",
             },
@@ -318,15 +323,6 @@ export function build() {
 
         group([storageRow, persistedRow], { title: t("ss.privacy.storageGroup", "存储") }),
 
-        group([
-            controlSwitch("debug.captureConsole", {
-                label: t("ss.privacy.captureConsole", "记录控制台输出"),
-            }),
-            controlSwitch("debug.persist", {
-                label: t("ss.privacy.persist", "保留运行记录"),
-            }),
-        ], { title: t("ss.privacy.diagnosticsGroup", "诊断数据") }),
-
         group([wipeRow], { title: t("ss.privacy.dangerGroup", "危险操作") })
     );
 }
@@ -360,7 +356,7 @@ function currentRows(skeleton, live) {
  */
 function buildRequestButton(row, live, repaint) {
     const info = live.get(row.name) || { state: "pending", supported: true };
-    const canAsk = info.supported && info.state !== "granted" && info.state !== "pending";
+    const canAsk = info.supported && info.state !== "granted" && info.state !== "pending" && info.state !== "unavailable";
     const button = el("button", {
         class: "ss-btn ss-btn--small",
         attrs: { type: "button", disabled: canAsk ? false : "" },

@@ -11,7 +11,7 @@
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "Calculatrice.png",
+  "icon": "Calculatrice.webp",
   "menus": {
     "显示": [
       { "label": "基础型", "shortcut": "⌘1", "cmd": "calcSetMode('basic')" },

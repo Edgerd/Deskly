@@ -45,6 +45,7 @@ import { initAppearance } from "./appearance.js";
 // surface.js 必须在 appearance 之后、首帧之前初始化：它按 data-theme 与壁纸主色推导
 // --surface-text（黑或白），晚一步就会有一帧「深色磨砂上是深灰字」的不可读文本。
 import { initSurface } from "./surface.js";
+import { initMenubarTint } from "./menubar-tint.js";
 import { initCursor } from "./cursor.js";
 // 权限账本与 API 命名空间必须在插件注册之前就绪：api-grants 通过 registerPlugin
 // 的注册表钩子做安装时授权（addLifecycleHook，不走开放 DOM 事件，防伪造），
@@ -125,7 +126,11 @@ window.moduleItems = {
 //    内联 onclick 又被 CSP 拦截，于是这些项目点了没有任何反应。
 document.querySelectorAll(".menu p").forEach((p) => {
     if (!p.hasAttribute("cmd")) return; // 由其它模块自绑的项（如「最近使用的项目」）不重复绑定
-    p.addEventListener("click", () => clickMenuItem(p));
+    // 阻止冒泡：finderbar 的 document click 会立刻 closeAllMenus，按下高亮就没机会停留。
+    p.addEventListener("click", (e) => {
+        e.stopPropagation();
+        clickMenuItem(p);
+    });
 });
 
 // 2.5 可访问性：为缺失 alt 的 <img> 补默认 alt=""（装饰性/图标图片语义正确）。
@@ -192,6 +197,7 @@ function ensureServiceWorker() {
     initAppearance();
     // 模糊等级与可读文字色令牌要在任何表面绘制前就位：晚一步就是深色磨砂配深灰字。
     initSurface();
+    initMenubarTint();
     // 壁纸必须紧跟外观/表面初始化：它是首屏第一层视觉，不能排在「等待插件注册表
     // + 读取已安装插件」之后。首帧本身由 head 里的 wallpaper-boot.js 用 CSS 变量兜住，
     // 这里负责把当前配置落到壁纸元素、算好着色令牌并释放引导覆盖。

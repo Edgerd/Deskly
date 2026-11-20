@@ -9,6 +9,7 @@ import { displayNameFor, getAppVisibility } from '../../src/javascripts/app-regi
 import { updateMenu } from '../../src/javascripts/finderbar.js';
 import { addToDock } from '../../src/javascripts/dock.js';
 import { slotToIndex } from '../../src/javascripts/core/visibleOrder.js';
+import { pressMenuItem } from '../../src/javascripts/ui/menuFeedback.js';
 
 // 取最后一个 .launchpad（最新注入的实例），避免 reopen 时 DOM 中仍残留旧实例导致引用错位
 const _allLaunchpads = document.querySelectorAll(".launchpad");
@@ -1044,7 +1045,7 @@ function openCtxMenu(x, y, item) {
         const b = document.createElement("div");
         b.className = "ctx-item";
         b.textContent = text;
-        b.addEventListener("click", () => { closeCtxMenu(); fn(); });
+        b.addEventListener("click", () => pressMenuItem(b, () => { closeCtxMenu(); fn(); }));
         return b;
     };
     // 添加到桌面 / 从桌面移除：快捷方式是 /桌面 下的真实 .webloc.json，可重命名可进废纸篓

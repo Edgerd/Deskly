@@ -10,8 +10,10 @@
   /* 曾是 blur(20px)：弱机渲染性能优化（原 50px 每帧采样开销大，20px 视觉差异极小）。
      现在糊到什么程度由系统按「模糊等级」分配，菜单栏固定取第 3 档；等级为 0 时自动归零。
      saturate(0.8) 是「降饱和」，不在 --surface-saturate 的替换区间内，照旧保留。 */
-  backdrop-filter: blur(var(--surface-blur-3)) saturate(0.8);
-  -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(0.8);
+  backdrop-filter: blur(calc(var(--surface-blur-3) * var(--menubar-blur-scale, 1))) saturate(0.8);
+  -webkit-backdrop-filter: blur(calc(var(--surface-blur-3) * var(--menubar-blur-scale, 1))) saturate(0.8);
+  /* 壁纸顶部取色的淡色底：色相来自当前壁纸，浓度由「不透明度」控制。 */
+  background-color: rgba(var(--menubar-tint-rgb, 107, 124, 147), var(--menubar-opacity, 0));
   /* 亚克力稳定层（0.2.74 固化）：菜单栏固定吸顶，下方有桌面图标、launchpad 背景、controlcenter 弹出元素。
      隔离后 backdrop-root 强制为本元素，毛玻璃不会受其他 stacking context 影响；
      overflow:hidden 保证边缘采样不跨界（出现矩形光斑） */
@@ -69,7 +71,7 @@ html[data-theme="dark"][data-transparency="off"] .finderbar .right .plugin-icon-
 .finderbar .left {
   display: inline-flex;
   align-items: center;
-  color: var(--surface-text-wallpaper);
+  color: var(--menubar-text-color, var(--surface-text-wallpaper));
   text-shadow: 1px 2px 10px rgba(0, 0, 0, 0.3333333333);
 }
 .finderbar .left .logo {
@@ -101,7 +103,7 @@ html[data-theme="dark"][data-transparency="off"] .finderbar .right .plugin-icon-
 .finderbar .right {
   display: inline-flex;
   flex-direction: row-reverse;
-  color: var(--surface-text-wallpaper);
+  color: var(--menubar-text-color, var(--surface-text-wallpaper));
   text-shadow: 1px 2px 10px rgba(0, 0, 0, 0.3333333333);
   align-items: center;
 }
@@ -116,6 +118,26 @@ html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .righ
 html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .right img,
 html[data-wallpaper-ink="black"]:not([data-transparency="off"]) .finderbar .right .plugin-icon-img {
   filter: invert(1);
+}
+/* 顶栏自己的墨色：自动取色或用户手选后，文字投影与单色图标一起翻。
+   与上面墙纸档同特殊度，写在后面，因此以这里为准。 */
+html[data-menubar-ink="black"]:not([data-transparency="off"]) .finderbar .left,
+html[data-menubar-ink="black"]:not([data-transparency="off"]) .finderbar .right {
+  text-shadow: none;
+}
+html[data-menubar-ink="black"]:not([data-transparency="off"]) .finderbar .right img,
+html[data-menubar-ink="black"]:not([data-transparency="off"]) .finderbar .right .plugin-icon-img {
+  filter: invert(1);
+}
+html[data-menubar-ink="white"]:not([data-transparency="off"]) .finderbar .right img,
+html[data-menubar-ink="white"]:not([data-transparency="off"]) .finderbar .right .plugin-icon-img {
+  filter: drop-shadow(1px 2px 10px rgba(0, 0, 0, 0.3333333333));
+}
+/* 完全不透明：底色由「背景颜色」决定，模糊没有意义，直接关掉。 */
+html[data-menubar-opaque="true"]:not([data-transparency="off"]) .finderbar {
+  background-color: rgb(var(--menubar-solid-rgb, 28, 28, 30));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .finderbar .right img {
   transform: scale(0.5);

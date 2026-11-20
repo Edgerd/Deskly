@@ -37,7 +37,7 @@ const ICON_WHATS_NEW = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/
 const LABELS = {
     "zh-CN": {
         ss: {
-            group: { account: "账户", general: "通用", personalize: "个性化", attention: "提醒", security: "安全", services: "服务", input: "输入", advanced: "高级" },
+            group: { account: "Edgerd 账户", connectivity: "网络与连接", alerts: "通知与专注", system: "通用与外观", desktop: "桌面与显示器", peripherals: "键盘与鼠标" },
             pane: {
                 account: "Edgerd 账户", general: "通用", storage: "存储", spotlight: "聚焦", search: "网络",
                 controlcenter: "控制中心", wallpaper: "墙纸", appearance: "外观", display: "显示器",
@@ -51,7 +51,7 @@ const LABELS = {
     },
     "en": {
         ss: {
-            group: { account: "Accounts", general: "General", personalize: "Personalization", attention: "Attention", security: "Security", services: "Services", input: "Input", advanced: "Advanced" },
+            group: { account: "Edgerd Account", connectivity: "Network & Connections", alerts: "Notifications & Focus", system: "General & Appearance", desktop: "Desktop & Displays", peripherals: "Keyboard & Mouse" },
             pane: {
                 account: "Edgerd Account", general: "General", storage: "Storage", spotlight: "Spotlight", search: "Network",
                 controlcenter: "Control Center", wallpaper: "Wallpaper", appearance: "Appearance", display: "Displays",
@@ -65,7 +65,7 @@ const LABELS = {
     },
     "ja-JP": {
         ss: {
-            group: { account: "アカウント", general: "一般", personalize: "個人設定", attention: "通知と集中", security: "セキュリティ", services: "サービス", input: "入力", advanced: "詳細" },
+            group: { account: "Edgerd アカウント", connectivity: "ネットワークと接続", alerts: "通知と集中モード", system: "一般と外観", desktop: "デスクトップとディスプレイ", peripherals: "キーボードとマウス" },
             pane: {
                 account: "Edgerd アカウント", general: "一般", storage: "ストレージ", spotlight: "Spotlight", search: "ネットワーク",
                 controlcenter: "コントロールセンター", wallpaper: "壁紙", appearance: "外観", display: "ディスプレイ",
@@ -79,7 +79,7 @@ const LABELS = {
     },
     cat: {
         ss: {
-            group: { account: "主人の账户喵", general: "通用喵", personalize: "个性化喵", attention: "提醒喵", security: "安全喵", services: "服务喵", input: "输入喵", advanced: "高级喵" },
+            group: { account: "Edgerd 账户喵", connectivity: "网络同连接喵", alerts: "通知同专注喵", system: "通用同外观喵", desktop: "桌面同显示器喵", peripherals: "键盘同鼠标喵" },
             pane: {
                 account: "Edgerd 账户喵", general: "通用喵", storage: "存东西的地方喵", spotlight: "聚焦喵", search: "网络喵",
                 controlcenter: "控制中心喵", wallpaper: "墙纸喵", appearance: "外观喵", display: "显示器喵",
@@ -93,155 +93,175 @@ const LABELS = {
     },
 };
 
-/** 侧栏分组顺序（沿用 macOS 偏好设置的归类逻辑）。 */
+/**
+ * 侧栏分组：照 macOS 15 系统设置的簇划分，不再按「先外观、再输入」自拟顺序。
+ * 苹果自上而下的五簇是：连接（Wi‑Fi / 蓝牙 / 网络）→ 通知与专注（通知 / 声音 / 专注 /
+ * 屏幕使用时间）→ 通用与外观（通用 / 外观 / 辅助功能 / 控制中心 / Siri 与聚焦 /
+ * 隐私与安全性）→ 桌面与显示器（桌面与程序坞 / 显示器 / 墙纸 / 电池 / 锁屏 /
+ * 触控 ID 与密码 / 用户与群组 / 互联网账户 / 游戏中心 / 钱包）→ 键盘与鼠标
+ * （键盘 / 触控板 / 鼠标 / 打印机与扫描仪）。
+ * 账户行在苹果那里独立于所有分组，压在最上面，这里同样单独成组（未实现，不占位置）。
+ * 本机没有可用面板的簇整簇省略（sidebarGroups 会滤掉空组），不留空档。
+ */
 const PANE_GROUPS = [
-    { id: "account", label: "账户", i18nKey: "ss.group.account" },
-    { id: "general", label: "通用", i18nKey: "ss.group.general" },
-    { id: "personalize", label: "个性化", i18nKey: "ss.group.personalize" },
-    { id: "attention", label: "提醒", i18nKey: "ss.group.attention" },
-    { id: "security", label: "安全", i18nKey: "ss.group.security" },
-    { id: "services", label: "服务", i18nKey: "ss.group.services" },
-    { id: "input", label: "输入", i18nKey: "ss.group.input" },
-    { id: "advanced", label: "高级", i18nKey: "ss.group.advanced" },
+    { id: "account", label: "Edgerd 账户", i18nKey: "ss.group.account" },
+    { id: "connectivity", label: "网络与连接", i18nKey: "ss.group.connectivity" },
+    { id: "alerts", label: "通知与专注", i18nKey: "ss.group.alerts" },
+    { id: "system", label: "通用与外观", i18nKey: "ss.group.system" },
+    { id: "desktop", label: "桌面与显示器", i18nKey: "ss.group.desktop" },
+    { id: "peripherals", label: "键盘与鼠标", i18nKey: "ss.group.peripherals" },
 ];
 
 /**
- * 全部面板条目。
+ * 全部面板条目，数组顺序即侧栏显示顺序（分组内再按 `order` 排）。
+ * 相对位置对齐 macOS 15 系统设置；苹果有而本机没有的面板不占位，本机独有的条目
+ * 插在语义最近的邻居旁（见各项 `inserted` 说明）。
  * `keywords` 供侧栏搜索框与「聚焦」统一搜索命中（中文同义词写在这里，不进译文表）。
  */
 const PANES = [
     {
         id: "account", group: "account", module: "account", implemented: false,
-        icon: assetPath("images/author.jpeg"), label: "Edgerd 账户", i18nKey: "ss.pane.account",
+        icon: assetPath("images/author.webp"), label: "Edgerd 账户", i18nKey: "ss.pane.account",
         reason: "账户体系需要服务端登录态，纯前端扩展内没有可对接的身份源；只保留条目与跳转接口。",
         keywords: ["账户", "apple", "id", "登录"],
     },
     {
-        id: "general", group: "general", module: "general", implemented: true,
-        icon: glyph("gear"), label: "通用", i18nKey: "ss.pane.general",
-        keywords: ["语言", "时间", "日期", "通用", "启动", "备份", "恢复"],
-    },
-    {
-        id: "whats-new", group: "general", module: "whats-new", implemented: true,
-        icon: ICON_WHATS_NEW, label: "新功能", i18nKey: "ss.pane.whatsNew",
-        keywords: ["新功能", "更新", "日志", "版本", "changelog"],
-    },
-    {
-        id: "storage", group: "general", module: "storage", implemented: true,
-        icon: ICON_STORAGE, label: "存储", i18nKey: "ss.pane.storage",
-        keywords: ["存储", "根目录", "文件夹", "授权", "下载", "文档", "图片", "空间"],
-    },
-    {
-        id: "spotlight", group: "general", module: "spotlight", implemented: true,
-        icon: glyph("magnifyingglass"), label: "聚焦", i18nKey: "ss.pane.spotlight",
-        keywords: ["搜索", "聚焦", "spotlight", "快捷键"],
-    },
-    {
-        id: "default-apps", group: "general", module: "default-apps", implemented: true,
-        icon: glyph("document.blue"), label: "默认应用", i18nKey: "ss.pane.defaultApps",
-        keywords: ["默认应用", "打开方式", "文件类型", "扩展名", "协议", "http", "关联"],
-    },
-    {
-        id: "search", group: "general", module: "search", implemented: false,
+        // 苹果把它放在「Wi‑Fi / 蓝牙」同一簇，本机没有那两项，这条也未实现，因此整簇不上架。
+        id: "search", group: "connectivity", module: "search", implemented: false,
         icon: glyph("network"), label: "网络", i18nKey: "ss.pane.search",
         reason: "与「聚焦」是同一能力的两个入口，0.2.37 把「网络」改名「搜索」后一直空置；合并进聚焦，不再单列。",
         keywords: ["搜索", "网络"],
     },
     {
-        id: "controlcenter", group: "general", module: "controlcenter", implemented: true,
-        icon: glyph("switch.2"), label: "控制中心", i18nKey: "ss.pane.controlcenter",
-        keywords: ["控制中心", "菜单", "图标", "开关", "wi-fi", "蓝牙"],
-    },
-    {
-        id: "wallpaper", group: "personalize", module: "wallpaper", implemented: true,
-        icon: glyph("photo.circle"), label: "墙纸", i18nKey: "ss.pane.wallpaper",
-        keywords: ["壁纸", "墙纸", "背景", "bing", "上传"],
-    },
-    {
-        id: "appearance", group: "personalize", module: "appearance", implemented: true,
-        icon: glyph("moonphase.last.quarter.inverse"), label: "外观", i18nKey: "ss.pane.appearance",
-        keywords: ["浅色", "深色", "自动", "强调色", "高亮", "滚动条", "透明度", "动画"],
-    },
-    {
-        id: "display", group: "personalize", module: "display", implemented: true,
-        icon: glyph("sun.max.fill"), label: "显示器", i18nKey: "ss.pane.display",
-        keywords: ["亮度", "护眼", "夜间", "对比度", "显示器"],
-    },
-    {
-        id: "dock", group: "personalize", module: "dock", implemented: true,
-        icon: glyph("menubar.dock.rectangle"), label: "桌面与程序坞", i18nKey: "ss.pane.dock",
-        keywords: ["程序坞", "dock", "放大", "位置", "废纸篓", "右键菜单", "指示灯"],
-    },
-    {
-        id: "siri", group: "personalize", module: "siri", implemented: true,
-        icon: ICON_SIRI, label: "Siri", i18nKey: "ss.pane.siri",
-        keywords: ["siri", "光球", "语音"],
-    },
-    {
-        id: "notifications", group: "attention", module: "notifications", implemented: true,
+        id: "notifications", group: "alerts", module: "notifications", implemented: true, order: 1,
         icon: glyph("bell.badge.fill"), label: "通知", i18nKey: "ss.pane.notifications",
         keywords: ["通知", "横幅", "权限", "时长", "提示音"],
     },
     {
-        id: "sound", group: "attention", module: "sound", implemented: true,
+        id: "sound", group: "alerts", module: "sound", implemented: true, order: 2,
         icon: glyph("speaker.wave.3.fill"), label: "声音", i18nKey: "ss.pane.sound",
         keywords: ["音量", "静音", "提示音", "声音"],
     },
     {
-        id: "focus", group: "attention", module: "focus", implemented: true,
+        id: "focus", group: "alerts", module: "focus", implemented: true, order: 3,
         icon: glyph("moon.fill"), label: "专注模式", i18nKey: "ss.pane.focus",
         keywords: ["专注", "免打扰", "勿扰", "静音时段"],
     },
     {
-        id: "screenTime", group: "attention", module: "screen-time", implemented: false,
+        id: "screenTime", group: "alerts", module: "screen-time", implemented: false,
         icon: glyph("hourglass"), label: "屏幕使用时间", i18nKey: "ss.pane.screenTime",
         reason: "统计需要跨会话的窗口前台时长归集与报表，当前只有窗口事件没有时长账本；接口保留待接。",
         keywords: ["屏幕时间", "使用统计"],
     },
     {
-        id: "lock-screen", group: "security", module: "lock-screen", implemented: true,
-        icon: glyph("lock.fill"), label: "锁定屏幕", i18nKey: "ss.pane.lock-screen",
-        keywords: ["锁屏", "空闲", "自动锁定", "会话"],
+        id: "general", group: "system", module: "general", implemented: true, order: 4,
+        icon: glyph("gear"), label: "通用", i18nKey: "ss.pane.general",
+        keywords: ["语言", "时间", "日期", "通用", "启动", "备份", "恢复"],
     },
     {
-        id: "password", group: "security", module: "password", implemented: true,
-        icon: glyph("at"), label: "密码", i18nKey: "ss.pane.password",
-        keywords: ["密码", "登录密码", "解锁", "口令"],
+        id: "whats-new", group: "system", module: "whats-new", implemented: false,
+        reason: "新功能说明已并入「通用」面板底部，不再单独占一栏。",
+        icon: ICON_WHATS_NEW, label: "新功能", i18nKey: "ss.pane.whatsNew",
+        keywords: ["新功能", "更新", "日志", "版本", "changelog"],
     },
     {
-        id: "privacy", group: "security", module: "privacy", implemented: true,
+        id: "storage", group: "system", module: "storage", implemented: false,
+        reason: "存储占用与备份已并入「通用」面板，不再单独占一栏。",
+        icon: ICON_STORAGE, label: "存储", i18nKey: "ss.pane.storage",
+        keywords: ["存储", "根目录", "文件夹", "授权", "下载", "文档", "图片", "空间"],
+    },
+    {
+        id: "appearance", group: "system", module: "appearance", implemented: true, order: 5,
+        icon: glyph("moonphase.last.quarter.inverse"), label: "外观", i18nKey: "ss.pane.appearance",
+        keywords: ["浅色", "深色", "自动", "强调色", "高亮", "滚动条", "透明度", "动画"],
+    },
+    {
+        id: "controlcenter", group: "system", module: "controlcenter", implemented: true, order: 6,
+        icon: glyph("switch.2"), label: "控制中心", i18nKey: "ss.pane.controlcenter",
+        keywords: ["控制中心", "菜单", "图标", "开关", "wi-fi", "蓝牙"],
+    },
+    {
+        id: "siri", group: "system", module: "siri", implemented: true, order: 7,
+        icon: ICON_SIRI, label: "Siri", i18nKey: "ss.pane.siri",
+        keywords: ["siri", "光球", "语音"],
+    },
+    {
+        // 苹果把「Siri」与「Spotlight」合成一项「Siri 与聚焦」；本机是两个独立面板，按苹果顺序相邻摆。
+        id: "spotlight", group: "system", module: "spotlight", implemented: true, order: 8,
+        icon: glyph("magnifyingglass"), label: "聚焦", i18nKey: "ss.pane.spotlight",
+        keywords: ["搜索", "聚焦", "spotlight", "快捷键"],
+    },
+    {
+        id: "privacy", group: "system", module: "privacy", implemented: true, order: 9,
         icon: glyph("hand.raised.fill"), label: "隐私与安全性", i18nKey: "ss.pane.privacy",
         keywords: ["隐私", "权限", "麦克风", "相机", "定位", "通知授权", "清除数据"],
     },
     {
-        id: "users", group: "security", module: "users", implemented: false,
+        id: "dock", group: "desktop", module: "dock", implemented: true, order: 10,
+        icon: glyph("menubar.dock.rectangle"), label: "桌面与程序坞", i18nKey: "ss.pane.dock",
+        keywords: ["程序坞", "dock", "放大", "位置", "废纸篓", "右键菜单", "指示灯"],
+    },
+    {
+        // 苹果没有独立条目：默认浏览器就放在「桌面与程序坞」里，文件关联走访达。
+        // 本机把它做成独立面板，因此紧跟「桌面与程序坞」，不另起一簇。
+        id: "default-apps", group: "desktop", module: "default-apps", implemented: true, order: 11,
+        icon: glyph("document.blue"), label: "默认应用", i18nKey: "ss.pane.defaultApps",
+        keywords: ["默认应用", "打开方式", "文件类型", "扩展名", "协议", "http", "关联"],
+    },
+    {
+        id: "display", group: "desktop", module: "display", implemented: true, order: 12,
+        icon: glyph("sun.max.fill"), label: "显示器", i18nKey: "ss.pane.display",
+        keywords: ["亮度", "护眼", "夜间", "对比度", "显示器"],
+    },
+    {
+        id: "wallpaper", group: "desktop", module: "wallpaper", implemented: true, order: 13,
+        icon: glyph("photo.circle"), label: "墙纸", i18nKey: "ss.pane.wallpaper",
+        keywords: ["壁纸", "墙纸", "背景", "bing", "上传"],
+    },
+    {
+        // 苹果的「锁屏」与「触控 ID 与密码」在「电池」之后、同一簇；本机把两者合成一个面板。
+        id: "lock-screen", group: "desktop", module: "lock-screen", implemented: true, order: 14,
+        icon: glyph("lock.fill"), label: "锁定屏幕", i18nKey: "ss.pane.lock-screen",
+        keywords: ["锁屏", "空闲", "自动锁定", "会话", "密码", "解锁", "口令"],
+    },
+    {
+        id: "password", group: "desktop", module: "password", implemented: false,
+        reason: "锁屏密码与自动锁定已并入「锁定屏幕」面板，不再单独占一栏。",
+        icon: glyph("at"), label: "密码", i18nKey: "ss.pane.password",
+        keywords: ["密码", "登录密码", "解锁", "口令"],
+    },
+    {
+        id: "users", group: "desktop", module: "users", implemented: false,
         icon: glyph("person.2.fill"), label: "用户与群组", i18nKey: "ss.pane.users",
         reason: "多用户需要各自隔离的存储命名空间，而现在所有设置共用一套 localStorage 槽；接口保留待接。",
         keywords: ["用户", "群组", "账户"],
     },
     {
-        id: "icloud", group: "services", module: "icloud", implemented: false,
-        icon: assetPath("images/icloud.png"), label: "iCloud", i18nKey: "ss.pane.icloud",
+        id: "icloud", group: "desktop", module: "icloud", implemented: false,
+        icon: assetPath("images/icloud.webp"), label: "iCloud", i18nKey: "ss.pane.icloud",
         reason: "同步需要远端账户与服务器；扩展只申请了书签权限，无可用的云存储通道。",
         keywords: ["icloud", "同步", "备份"],
     },
     {
-        id: "keyboard", group: "input", module: "keyboard", implemented: true,
+        id: "keyboard", group: "peripherals", module: "keyboard", implemented: true, order: 15,
         icon: glyph("keyboard.fill"), label: "键盘", i18nKey: "ss.pane.keyboard",
         keywords: ["键盘", "快捷键", "按键", "修饰键"],
     },
     {
-        id: "mouse", group: "input", module: "mouse", implemented: true,
+        id: "mouse", group: "peripherals", module: "mouse", implemented: true, order: 16,
         icon: glyph("magicmouse.fill"), label: "鼠标", i18nKey: "ss.pane.mouse",
         keywords: ["鼠标", "光标", "阴影", "大小"],
     },
     {
-        id: "plugins", group: "advanced", module: "plugins", implemented: true,
+        // 苹果没有对应项：第三方应用的设置入口。苹果没有可插入的系统位置，
+        // 因此作为附录挂在最末一簇的尾部，紧跟「鼠标」之后，不另立「高级」分组。
+        id: "plugins", group: "peripherals", module: "plugins", implemented: true, order: 17,
         icon: ICON_PLUGINS, label: "App", i18nKey: "ss.pane.plugins",
         keywords: ["App", "apps", "应用", "扩展", "插件", "第三方设置", "应用设置"],
     },
     {
-        id: "debug", group: "advanced", module: "debug", implemented: true,
+        // 同上：苹果没有开发者面板，排在整条侧栏最后。
+        id: "debug", group: "peripherals", module: "debug", implemented: true, order: 18,
         icon: ICON_DEBUG, label: "开发者", i18nKey: "ss.pane.debug",
         keywords: ["开发者", "调试", "日志", "运行记录", "诊断", "console"],
     },
@@ -253,7 +273,9 @@ const PANES = [
  * @returns {Array<object>} 面板条目
  */
 function implementedPanes(groupId) {
-    return PANES.filter((p) => p.implemented && (!groupId || p.group === groupId));
+    return PANES
+        .filter((p) => p.implemented && (!groupId || p.group === groupId))
+        .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 }
 
 /**

@@ -10,7 +10,7 @@
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "Launchpad.png",
+  "icon": "Launchpad.webp",
   "visibility": {
     "system": true
   }

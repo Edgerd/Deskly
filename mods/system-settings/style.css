@@ -380,6 +380,7 @@ html[data-transparency="off"] .settings > .ss-sidebar {
 }
 
 .settings .ss-item__icon[src$=".png"],
+.settings .ss-item__icon[src$=".webp"],
 .settings .ss-item__icon[src$=".jpeg"] {
     -webkit-filter: none;
     filter: none;
@@ -393,6 +394,7 @@ html[data-transparency="off"] .settings > .ss-sidebar {
 }
 
 .settings .ss-item--on .ss-item__icon[src$=".png"],
+.settings .ss-item--on .ss-item__icon[src$=".webp"],
 .settings .ss-item--on .ss-item__icon[src$=".jpeg"] {
     -webkit-filter: none;
     filter: none;
@@ -1116,6 +1118,43 @@ html[data-sidebar-size="large"] .settings .ss-item {
 .settings .ss-input:focus-visible {
     border-color: rgba(var(--accent-rgb), 0.55);
     box-shadow: 0 0 0 3px var(--ss-ring);
+}
+
+/* 颜色选择：原生 <input type="color"> 只剥掉浏览器默认的圆角方框外观，
+   仍由浏览器弹取色面板（不做第三套自绘色盘）；右边跟一行十六进制读数。 */
+.settings .ss-color__wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.settings .ss-color {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 30px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--ss-control-border);
+    border-radius: 5px;
+    background: var(--ss-control-bg);
+    cursor: pointer;
+}
+
+.settings .ss-color::-webkit-color-swatch-wrapper { padding: 2px; }
+.settings .ss-color::-webkit-color-swatch { border: none; border-radius: 3px; }
+.settings .ss-color::-moz-color-swatch { border: none; border-radius: 3px; }
+
+.settings .ss-color__value {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.3px;
+    color: var(--ss-text-secondary);
+}
+
+.settings .ss-color:focus-visible {
+    border-color: rgba(var(--accent-rgb), 0.55);
+    box-shadow: 0 0 0 3px var(--ss-ring);
+    outline: none;
 }
 
 /* 下拉触发钮的聚焦与输入控件同规则（此前只有 hover，键盘聚焦毫无反馈） */

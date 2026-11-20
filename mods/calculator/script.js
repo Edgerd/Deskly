@@ -2,6 +2,7 @@
 
 import { settings } from '../../src/javascripts/settings.js';
 import { openPopover } from '../../src/javascripts/ui/popover.js';
+import { pressMenuItem } from '../../src/javascripts/ui/menuFeedback.js';
 import * as Engine from './engine.js';
 import * as Rpn from './rpn.js';
 import * as History from './history.js';
@@ -19,7 +20,7 @@ settings.defineMany([
         key: "calculator.background", type: "string", default: "glass",
         values: ["glass", "solid"], valuesLabel: ["深色毛玻璃", "深色不透明"],
         label: "计算器背景", hint: "计算器恒为深色，只有磨砂与实底两档；系统「降低透明度」打开时自动落到实底",
-        control: "dropdown", owner: "calculator", pane: "plugins", order: 10,
+        control: "segmented", owner: "calculator", pane: "plugins", order: 10,
     },
     {
         key: "calculator.thousands", type: "boolean", default: true,
@@ -824,7 +825,10 @@ function openModeMenu(anchor) {
         row.appendChild(el("span", "calc-menu-check", on ? "✓" : ""));
         row.appendChild(el("span", "calc-menu-label", label));
         if (hint) row.appendChild(el("kbd", "calc-menu-key", hint));
-        row.addEventListener("click", () => { onClick(); closePopover(); });
+        row.addEventListener("click", () => {
+            // 菜单项统一按下反馈：先亮一帧再收浮层，避免点完立刻消失。
+            pressMenuItem(row, () => { closePopover(); onClick(); });
+        });
         return row;
     };
     menu.append(
@@ -858,18 +862,20 @@ function openUnitMenu(anchor, which) {
             row.appendChild(el("span", "calc-menu-label", unit.name));
             row.appendChild(el("span", "calc-menu-sym", unit.symbol));
             row.addEventListener("click", () => {
-                if (which === "top") convertTop = unit.id;
-                else convertBottom = unit.id;
-                if (!Conv.categoryOfUnit(convertTop) || !Conv.categoryOfUnit(convertBottom)
-                    || Conv.isCrossCategory(convertTop, convertBottom)) {
-                    // 跨类别没有意义：把另一边拉到同一类别里，缺省用该类别第二个单位
-                    const other = Conv.unitsOf(category.id).find((u) => u.id !== (which === "top" ? convertTop : convertBottom));
-                    if (which === "top") convertBottom = other ? other.id : convertBottom;
-                    else convertTop = other ? other.id : convertTop;
-                }
-                saveUnits();
-                closePopover();
-                renderConvert();
+                pressMenuItem(row, () => {
+                    if (which === "top") convertTop = unit.id;
+                    else convertBottom = unit.id;
+                    if (!Conv.categoryOfUnit(convertTop) || !Conv.categoryOfUnit(convertBottom)
+                        || Conv.isCrossCategory(convertTop, convertBottom)) {
+                        // 跨类别没有意义：把另一边拉到同一类别里，缺省用该类别第二个单位
+                        const other = Conv.unitsOf(category.id).find((u) => u.id !== (which === "top" ? convertTop : convertBottom));
+                        if (which === "top") convertBottom = other ? other.id : convertBottom;
+                        else convertTop = other ? other.id : convertTop;
+                    }
+                    saveUnits();
+                    closePopover();
+                    renderConvert();
+                });
             });
             list.appendChild(row);
         });

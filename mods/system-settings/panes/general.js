@@ -14,11 +14,25 @@ import {
     el, t, group, note, statusRow, actionRow,
     controlSwitch, controlSegmented, controlDropdown, usePaneStyle, track,
 } from "../ui.js";
+import { build as buildStorage, messages as storageMessages } from "../sections/storage.js";
+import { build as buildWhatsNew, messages as whatsNewMessages } from "../sections/whats-new.js";
 
 export const paneId = "general";
 
+/** 四语言词典按 ss 顶层合并，供同一面板里并入了多个模块的场景使用。 */
+function mergedMessages(...dicts) {
+    const out = {};
+    for (const dict of dicts) {
+        for (const [lang, values] of Object.entries(dict || {})) {
+            out[lang] = out[lang] || { ss: {} };
+            out[lang].ss = { ...out[lang].ss, ...(values.ss || {}) };
+        }
+    }
+    return out;
+}
+
 /** 面板语言包：四种语言都给全；注册失败时每个调用点还有中文回退。 */
-export const messages = {
+const ownMessages = {
     "zh-CN": {
         ss: {
             general: {
@@ -128,6 +142,9 @@ export const messages = {
         },
     },
 };
+
+/** 通用面板并入了存储与新功能两块，语言包一起注册。 */
+export const messages = mergedMessages(ownMessages, storageMessages, whatsNewMessages);
 
 /** 面板私有样式：只影响本面板；样式节点由 ui.usePaneStyle 按面板 id 复用。 */
 const PANE_CSS = `
@@ -347,7 +364,7 @@ export function build(ctx) {
                 label: t("ss.general.language", "语言"),
                 options: languageOptions,
             }),
-        ]),
+        ], { title: t("ss.general.languageGroup", "语言") }),
 
         group([
             controlSegmented("general.timeFormat", {
@@ -369,11 +386,16 @@ export function build(ctx) {
             }),
         ], { title: t("ss.general.time", "日期与时间") }),
 
-        group([keysRow, bytesRow, quotaRow, lastRow], { title: t("ss.general.storage", "存储") }),
+        // 用量读数只留两条；根目录、配额比例与 App 数据的明细紧跟其后。
+        group([keysRow, bytesRow], { title: t("ss.general.storage", "存储") }),
         degradedNote,
 
-        group([backupRow, restoreRow, resetRow], { title: t("ss.general.backup", "备份与恢复") }),
+        buildStorage(ctx),
+
+        group([backupRow, restoreRow, resetRow, lastRow], { title: t("ss.general.backup", "备份与恢复") }),
         fileInput,
+
+        buildWhatsNew(),
     );
 
     return root;

@@ -150,7 +150,7 @@ const root = document.querySelector('#我的应用');
 
 ## 六、放入图标
 
-规则见 [插件包格式](plugin-format.md) 的「图标规则（硬性）」：**应用图标只用 PNG，不准 SVG**。
+规则见 [插件包格式](plugin-format.md) 的「图标规则（硬性）」：**应用图标只用 WebP，不准 SVG**。
 从 `assets/icons/`（含 `dock/`、`folder/`）挑一枚合适的，**复制**进 `mods/{id}/`，
 `manifest.icon` 写裸文件名；库里没有对得上的就**不要写 `icon` 字段**，
 系统会回退占位图（`plugin-manager.js` 的 `GENERIC_APP_ICON`）。
@@ -231,7 +231,7 @@ node dev/calc-convert-check.mjs
 
 | 问题 | 解决 |
 |------|------|
-| 图标不显示 | 看 `manifest.icon` 是否被解析成越界路径（只允许 `mods/<id>/` 或 `assets/` 内），以及该 PNG 是否真在插件目录里；两者都没有则显示 `GENERIC_APP_ICON` 占位图 |
+| 图标不显示 | 看 `manifest.icon` 是否被解析成越界路径（只允许 `mods/<id>/` 或 `assets/` 内），以及该图标文件是否真在插件目录里；两者都没有则显示 `GENERIC_APP_ICON` 占位图 |
 | 图片 404 | 运行时 URL（`<img src>`、`fetch()`、通知图标）相对**文档**解析，插件里同样写站点根相对形式 `./assets/…`，或直接 import `assetPath()` / `assetIcon()`（`src/javascripts/paths.js:13`、`:16`）；`../../assets/…` 只是越过根目录后被浏览器截断回同一处才碰巧能用（`paths.js:41`–`:48`）。只有 `style.css` 里的 `url()` 必须写 `../../assets/…`（相对 CSS 文件自身解析）。缺文件的现场记录在运行记录里，来源 `kernel/loader`（`src/javascripts/log.js:306`） |
 | 窗口无法拖动 | 确认 html 根元素带 `window` 类 |
 | 二次打开没反应 | 入口脚本每次都是新实例，`init()` 必须复位状态；子模块只有一份实例，订阅要先摘再挂 |

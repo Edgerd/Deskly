@@ -2,6 +2,7 @@
 
 import { app } from "./app.js";
 import { escapeHtml, icon } from "./utils.js";
+import { pressMenuItem } from "../../../src/javascripts/ui/menuFeedback.js";
 
 export function isMenuOpen(element) {
     return !!element && !element.hidden;
@@ -56,7 +57,7 @@ export function makeMenuRow({ iconName, label, key, checked, danger, disabled, o
         `<span class="safari-menu-label">${escapeHtml(label)}</span>` +
         (checked ? `<span class="safari-menu-check">${icon("check")}</span>` : "") +
         (key ? `<span class="safari-menu-key">${escapeHtml(key)}</span>` : "");
-    if (onClick) row.addEventListener("click", onClick);
+    if (onClick) row.addEventListener("click", () => pressMenuItem(row, onClick));
     return row;
 }
 

@@ -352,18 +352,26 @@ const i18n = {
         rebuildDict(lang);
         // 只有注册进当前语言时才需要立刻重刷界面文案
         if (lang === currentLang) applyTranslations();
-        if (merged) writeLog("info", `插件文案已注册：${lang} 新增/覆盖 ${merged} 个键`);
+        if (merged) writeLog("debug", `插件文案已注册：${lang} 新增/覆盖 ${merged} 个键`);
         return merged;
     },
 
     /**
      * 一次注册多语言文案的便捷入口。
+     * 四种语言各记一条会让运行记录被同一件事刷四次，这里只汇总一条。
      * @param {Record<string, Object>} byLang 形如 { "zh-CN": {…}, "en": {…}, "ja-JP": {…}, "cat": {…} }
      * @returns {number} 全部语言并入的叶子键总数
      */
     registerMessagesAll(byLang) {
         if (!byLang || typeof byLang !== "object") return 0;
-        return Object.keys(byLang).reduce((total, lang) => total + i18n.registerMessages(lang, byLang[lang]), 0);
+        let langs = 0;
+        const total = Object.keys(byLang).reduce((sum, lang) => {
+            const added = i18n.registerMessages(lang, byLang[lang]);
+            if (added) langs += 1;
+            return sum + added;
+        }, 0);
+        if (total) writeLog("info", `插件文案注册完成：${langs} 个语言，共 ${total} 个键`);
+        return total;
     },
 
     /**

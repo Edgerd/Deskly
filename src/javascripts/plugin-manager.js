@@ -78,6 +78,7 @@ const BUILTIN_IDS = [
     "system-settings",
     "about",
     "app-store",
+    "developers",
     "notepad",
     "photos",
     "vs_code",
@@ -211,7 +212,7 @@ function sanitizePluginHtml(html) {
  * 规则（按仓库既有约定消歧，避免同一份声明被解析成两个不同文件）：
  *   - `assets/…`（可带 `./` 前缀）一律视为站点根相对；
  *   - 其它值相对插件目录 `./mods/<id>/` 解析（兼容文档规定的裸文件名与历史的
- *     `../../assets/icons/X.png` 写法）；
+ *     `../../assets/icons/X.webp` 写法）；
  *   - 只接受最终落在 `./mods/<id>/` 或 `./assets/` 内的结果，其它一律回退。
  * @param {object} manifest 插件清单
  * @param {string} id 插件 id
@@ -530,7 +531,11 @@ export function getIcon(id) {
     // 拼 ./mods/<id>/icon.png 是一张必然 404 的图，还会先闪一下占位再被换回真图标。
     // 清单就绪后 dock 的 refreshIconsFromRegistry() 会用正确的 src 重新校准。
     if (!manifest) return GENERIC_APP_ICON;
-    return resolveManifestIcon(manifest, id) || modFile(id, "icon.png");
+    const declared = resolveManifestIcon(manifest, id);
+    if (declared) return declared;
+    // 只有 ZIP 安装的插件保证自带目录与 icon.png；内置系统应用（如 quicklook）
+    // 没有 mods/<id>/ 目录，拼目录图标是一张必然 404 的图，直接给占位。
+    return manifest._installed ? modFile(id, "icon.png") : GENERIC_APP_ICON;
 }
 
 /**

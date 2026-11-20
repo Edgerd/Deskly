@@ -10,7 +10,7 @@
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "Safari.png",
+  "icon": "Safari.webp",
   "window": {
     "width": 1120,
     "height": 700,

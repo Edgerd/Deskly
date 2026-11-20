@@ -14,6 +14,7 @@ import {
 import { listTypes, resolve, set as setBinding, reset, resetAll } from "../../../src/javascripts/default-apps.js";
 import { listApps } from "../../../src/javascripts/app-registry.js";
 import { closeAllPopovers } from "../../../src/javascripts/ui/popover.js";
+import { pressMenuItem } from "../../../src/javascripts/ui/menuFeedback.js";
 
 export const paneId = "default-apps";
 
@@ -125,14 +126,16 @@ function picker(key, options, current) {
             class: "ss-menu__item", attrs: { type: "button", role: "option" }, dataset: { value: value ?? "" },
         }, el("span", { text: label }));
         node.addEventListener("click", () => {
-            dropdown.close();
-            // 写入走内核的 default-apps 模块：本页是系统设置自己的界面，
-            // 不弹「允许 system-settings 修改默认应用」这种确认框（内核调用者免弹窗）。
-            if (value === null) reset(key);
-            else setBinding(key, value);
-            // 绑定变了，整页要重画：行内的「当前应用/来源」两列都是从 resolve() 现算的，
-            // 只重画这一个下拉的话，同一行另一侧与其余行会停在旧值上。
-            render();
+            pressMenuItem(node, () => {
+                dropdown.close();
+                // 写入走内核的 default-apps 模块：本页是系统设置自己的界面，
+                // 不弹「允许 system-settings 修改默认应用」这种确认框（内核调用者免弹窗）。
+                if (value === null) reset(key);
+                else setBinding(key, value);
+                // 绑定变了，整页要重画：行内的「当前应用/来源」两列都是从 resolve() 现算的，
+                // 只重画这一个下拉的话，同一行另一侧与其余行会停在旧值上。
+                render();
+            });
         });
         list.append(node);
         return node;

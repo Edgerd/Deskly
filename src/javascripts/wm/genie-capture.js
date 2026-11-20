@@ -206,6 +206,21 @@ async function nativeCapture(el, rect) {
   }
 }
 
+/**
+ * 跨域资源代理（默认关闭）。留空时 snapdom 直接抓取，失败降级为占位图；
+ * 需要抓各站 favicon 时把后端转发地址写进 localStorage["deskly.snapProxy"]，
+ * 支持 `{url}` 占位或 `?url=` 前缀两种形式（snapdom 的 useProxy 语义）。
+ * @returns {string} 代理前缀；未配置或格式不对时为空串
+ */
+function snapProxy() {
+  try {
+    const value = localStorage.getItem("deskly.snapProxy") || "";
+    return /^https?:\/\//i.test(value) ? value : "";
+  } catch {
+    return "";
+  }
+}
+
 async function domCapture(el, rect) {
   try {
     const { snapdom } = await import("../../../assets/vendor/snapdom.mjs");
@@ -217,6 +232,7 @@ async function domCapture(el, rect) {
       embedFonts: false,
       noShadows: true,
       backgroundColor: null,
+      useProxy: snapProxy(),
     });
     return snap && snap.width > 0 && snap.height > 0 ? snap : null;
   } catch {

@@ -49,9 +49,24 @@ export function firstLetter(title) {
     return Array.from(text)[0].toUpperCase();
 }
 
+/** 占位/保留域名：这些站点不会提供真实 favicon，请求只会换来 404 噪声。 */
+const PLACEHOLDER_HOSTS = ["example.com", "example.org", "example.net"];
+
+/** 是否属于占位域（含其子域）。 */
+function isPlaceholderHost(hostname) {
+    const host = String(hostname || "").toLowerCase();
+    return PLACEHOLDER_HOSTS.some((base) => host === base || host.endsWith(`.${base}`));
+}
+
 export function faviconUrl(url) {
     const origin = originOf(url);
-    return origin ? `${origin}/favicon.ico` : "";
+    if (!origin) return "";
+    try {
+        if (isPlaceholderHost(new URL(origin).hostname)) return "";
+    } catch {
+        return "";
+    }
+    return `${origin}/favicon.ico`;
 }
 
 export function searchQueryOfUrl(url) {

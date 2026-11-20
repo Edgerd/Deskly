@@ -174,15 +174,10 @@ export function build() {
         options: hotkeyValues.map((value, index) => ({ value, label: hotkeyLabelFor(value, hotkeyLabels[index]) })),
     };
 
-    return el("div", { class: "ss-pane ss-spotlight" },
-        group([
-            controlSwitch("spotlight.apps", { label: t("ss.spotlight.apps", "应用程序") }),
-            controlSwitch("spotlight.settings", { label: t("ss.spotlight.settingsLabel", "系统设置项") }),
-            controlSwitch("spotlight.files", { label: t("ss.spotlight.files", "本地文件") }),
-            controlSwitch("spotlight.commands", { label: t("ss.spotlight.commands", "系统命令") }),
-            controlSwitch("spotlight.manual", { label: t("ss.spotlight.manual", "使用手册") }),
-        ], { title: t("ss.spotlight.scope", "搜索范围") }),
+    /** 定义不存在的来源直接跳过，避免留下一个改了没反应的开关。 */
+    const scopeRow = (key, label) => (settings.has(key) ? controlSwitch(key, { label }) : null);
 
+    return el("div", { class: "ss-pane ss-spotlight" },
         group([
             controlDropdown("spotlight.hotkey", hotkeySpec),
             controlSlider("spotlight.maxResults", {
@@ -192,6 +187,18 @@ export function build() {
             }),
             controlSwitch("spotlight.keepHistory", { label: t("ss.spotlight.keepHistory", "保留搜索历史") }),
         ], { title: t("ss.spotlight.resultGroup", "结果与历史") }),
+
+        group([
+            scopeRow("spotlight.apps", t("ss.spotlight.apps", "应用程序")),
+            scopeRow("spotlight.settings", t("ss.spotlight.settingsLabel", "系统设置项")),
+            scopeRow("spotlight.files", t("ss.spotlight.files", "本地文件")),
+            scopeRow("spotlight.commands", t("ss.spotlight.commands", "系统命令")),
+            scopeRow("spotlight.manual", t("ss.spotlight.manual", "使用手册")),
+            scopeRow("spotlight.bookmarks", t("ss.spotlight.bookmarks", "浏览器书签")),
+            scopeRow("spotlight.datetime", t("ss.spotlight.datetime", "日期换算")),
+            scopeRow("spotlight.convert", t("ss.spotlight.convert", "计算与换算")),
+            scopeRow("spotlight.websearch", t("ss.spotlight.websearch", "网页搜索回退")),
+        ].filter(Boolean), { title: t("ss.spotlight.scope", "搜索范围") }),
 
         group([
             actionRow({

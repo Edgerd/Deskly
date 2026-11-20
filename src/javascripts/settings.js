@@ -276,6 +276,42 @@ function short(value) {
     return text.length > 60 ? `${text.slice(0, 60)}…(${text.length})` : text;
 }
 
+/** 滑块类设置的日志尾随去抖（毫秒）：拖动过程中只记最终值。 */
+const SLIDER_LOG_DEBOUNCE = 400;
+/** key -> {timer, payload}：等待写日志的滑块最终值。 */
+const pendingChangeLogs = new Map();
+
+/**
+ * 写设置变更日志。
+ * 滑块（带 step 的数值项）在拖动时会连续触发 set，逐条 INFO 会把运行记录刷满；
+ * 这类键改为尾随去抖，只保留停手后的最终值。持久化本身仍是即时的。
+ * @param {string} key 设置键
+ * @param {object|undefined} def 设置定义
+ * @param {*} next 新值
+ * @param {*} previous 旧值
+ * @param {boolean} persisted 是否落盘成功
+ * @param {string} source 变更来源
+ */
+function logChange(key, def, next, previous, persisted, source) {
+    const slider = Boolean(def) && (def.control === "slider" || Number.isFinite(def.step));
+    const write = (payload) => {
+        const log = logger();
+        if (log) log.info("kernel/settings", `${key} = ${short(payload.next)}`, { previous: short(payload.previous), persisted: payload.persisted, source: payload.source });
+    };
+    if (!slider) {
+        write({ next, previous, persisted, source });
+        return;
+    }
+    const pending = pendingChangeLogs.get(key);
+    if (pending) clearTimeout(pending.timer);
+    const payload = { next, previous, persisted, source };
+    const timer = setTimeout(() => {
+        pendingChangeLogs.delete(key);
+        write(payload);
+    }, SLIDER_LOG_DEBOUNCE);
+    pendingChangeLogs.set(key, { timer, payload });
+}
+
 /** 读未注册键的原始值：先按推导槽找，再按原名找。 */
 function readRawForUndefined(key) {
     return readSlot(key.split(".").join("-")) ?? readSlot(key);
@@ -471,8 +507,7 @@ const settings = {
 
         if (!opts.silent && !unchanged) {
             emit(def, key, next, previous, persisted);
-            const log = logger();
-            if (log) log.info("kernel/settings", `${key} = ${short(next)}`, { previous: short(previous), persisted, source: opts.source || "api" });
+            logChange(key, def, next, previous, persisted, opts.source || "api");
         }
         return { ok: true, key, value: next, persisted, changed: !unchanged };
     },

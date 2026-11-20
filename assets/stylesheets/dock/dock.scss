@@ -1,21 +1,98 @@
+﻿/* 程序坞弹跳：1.35s 内连续 3 次 hop（约 0.55s / 0.50s / 0.30s）。
+   每次 hop 独立走「快起 → 顶点减速悬停 → 加速下落 → 压扁吸震 → 轻微回弹 → 复位」，
+   每段单独声明 animation-timing-function，不用一个 ease-in-out 从头贯到尾。
+   位移只作用在 <img> 上，不会碰 .dock 的亚克力 transform 禁令。 */
 @keyframes parabola {
+    /* Hop 1：主跳 0–41%（约 0.55s），幅度 100% */
     0% {
-        transform: translateY(0);
-        animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        transform: translate(0, 0) scale(1, 1);
+        animation-timing-function: cubic-bezier(0.12, 0.8, 0.22, 1);
     }
 
-    50% {
-        transform: translateY(-20px);
-        animation-timing-function: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+    7% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.62), calc(var(--dock-bounce-y, -17px) * 0.62)) scale(0.975, 1.05);
+        animation-timing-function: cubic-bezier(0.22, 0.55, 0.3, 1);
     }
 
-    90% {
-        transform: translateY(-4px);
-        animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    15% {
+        transform: translate(var(--dock-bounce-x, 0px), var(--dock-bounce-y, -17px)) scale(0.97, 1.055);
+        animation-timing-function: cubic-bezier(0.25, 0.1, 0.35, 1);
+    }
+
+    23% {
+        transform: translate(var(--dock-bounce-x, 0px), var(--dock-bounce-y, -17px)) scale(1, 1.005);
+        animation-timing-function: cubic-bezier(0.5, 0.02, 0.72, 0.6);
+    }
+
+    33% {
+        transform: translate(0, 0) scale(1.045, 0.94);
+        animation-timing-function: cubic-bezier(0.2, 0.7, 0.35, 1);
+    }
+
+    36% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.12), calc(var(--dock-bounce-y, -17px) * 0.12)) scale(1.008, 1.015);
+        animation-timing-function: ease-out;
+    }
+
+    41% {
+        transform: translate(0, 0) scale(1, 1);
+        animation-timing-function: cubic-bezier(0.15, 0.8, 0.3, 1);
+    }
+
+    /* Hop 2：次跳 41–78%（约 0.50s），幅度 84% */
+    47% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.42), calc(var(--dock-bounce-y, -17px) * 0.42)) scale(0.983, 1.038);
+        animation-timing-function: cubic-bezier(0.24, 0.5, 0.32, 1);
+    }
+
+    54% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.84), calc(var(--dock-bounce-y, -17px) * 0.84)) scale(0.977, 1.045);
+        animation-timing-function: ease-out;
+    }
+
+    60% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.84), calc(var(--dock-bounce-y, -17px) * 0.84)) scale(1, 1.002);
+        animation-timing-function: cubic-bezier(0.5, 0.02, 0.72, 0.6);
+    }
+
+    69% {
+        transform: translate(0, 0) scale(1.035, 0.948);
+        animation-timing-function: ease-out;
+    }
+
+    72% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.1), calc(var(--dock-bounce-y, -17px) * 0.1)) scale(1.006, 1.014);
+        animation-timing-function: ease-out;
+    }
+
+    78% {
+        transform: translate(0, 0) scale(1, 1);
+        animation-timing-function: cubic-bezier(0.12, 0.8, 0.22, 1);
+    }
+
+    /* Hop 3：第三下极轻 78–100%（约 0.30s），幅度 34% */
+    85% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.34), calc(var(--dock-bounce-y, -17px) * 0.34)) scale(0.992, 1.025);
+        animation-timing-function: ease-out;
+    }
+
+    88% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.34), calc(var(--dock-bounce-y, -17px) * 0.34)) scale(1, 1.003);
+        animation-timing-function: cubic-bezier(0.5, 0.02, 0.72, 0.6);
+    }
+
+    94% {
+        transform: translate(0, 0) scale(1.02, 0.972);
+        animation-timing-function: ease-out;
+    }
+
+    97% {
+        transform: translate(calc(var(--dock-bounce-x, 0px) * 0.05), calc(var(--dock-bounce-y, -17px) * 0.05)) scale(1.003, 1.006);
+        animation-timing-function: ease-out;
     }
 
     100% {
-        transform: translateY(0);
+        transform: translate(0, 0) scale(1, 1);
     }
 }
 
@@ -120,6 +197,11 @@
        层级表见 src/javascripts/zindex.js（Dock 9500 / 堆栈 9510 / 启动台 9600 /
        弹窗 9610 / 右键菜单 9620 / 面板 9630 / 菜单栏 9999） */
     z-index: 9500;
+    /* 弹跳位移令牌：默认底部程序坞向上弹；侧边程序坞在 .pos-left/.pos-right 里改轴。
+       幅度随图标基准尺寸缩放，避免改大小后弹跳看起来过大或过小。 */
+    --dock-bounce-x: 0px;
+    --dock-bounce-y: calc(var(--dock-size, 50px) * -0.34);
+    --dock-bounce-duration: 1.35s;
     /* 亚克力稳定层（0.2.74 固化）：isolation: isolate 让本元素独立成 stacking context，
        ::before 的 backdrop-filter 采样边界由 ::before 自身的圆角盒子收住，
        因此 .dock 可以放开裁剪而不会出现矩形光斑。
@@ -184,12 +266,20 @@
             //     transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
             // }
             &.opening {
-                /* 单次弹跳：旧值是 infinite，冷加载占住主线程时会连弹多轮。 */
-                animation: parabola 0.9s 1;
+                /* 启动反馈：默认一次 = 连蹦 3 下；.opening-loop 时按同一节律循环，
+                   窗口真正可见由 syncRunningApps 摘类停止。
+                   transform-origin 钉到底边，拉长/压扁才像从地面发力。 */
+                transform-origin: 50% 100%;
+                animation: parabola var(--dock-bounce-duration, 1.35s) 1;
+            }
+
+            &.opening.opening-loop {
+                animation-iteration-count: infinite;
             }
 
             &.openingwithscale {
-                animation: parabola 0.9s 1, scale 0.9s ease forwards;
+                transform-origin: 50% 100%;
+                animation: parabola var(--dock-bounce-duration, 1.35s) 1, scale 0.9s ease forwards;
             }
             /* 加载态：不画通用占位图，先给低对比骨架，真实图片到达后淡入 */
             &.is-loading,
@@ -207,6 +297,17 @@
 
             &:active {
                 filter: brightness(0.5);
+            }
+        }
+
+        /* 减少动态效果的等价反馈：不位移，只给图标压暗 + 容器高亮。
+           由 dock.js 在一次激活后短暂挂上，作为「点击已生效」的静态确认。 */
+        &.dock-press {
+            background: rgba(var(--accent-rgb, 0, 122, 255), 0.16);
+            border-radius: 12px;
+
+            img {
+                filter: brightness(0.62);
             }
         }
 
@@ -306,6 +407,15 @@
     min-width: 64px;
     margin-bottom: 0;
     margin-left: 5px;
+}
+/* 侧边程序坞：弹跳沿垂直轴改为水平轴，朝屏幕内侧弹起 */
+.dock.pos-left {
+    --dock-bounce-x: calc(var(--dock-size, 50px) * 0.34);
+    --dock-bounce-y: 0px;
+}
+.dock.pos-right {
+    --dock-bounce-x: calc(var(--dock-size, 50px) * -0.34);
+    --dock-bounce-y: 0px;
 }
 .dockcontainer.pos-left {
     left: 0;
@@ -467,9 +577,10 @@ html[data-theme="dark"] .dock .container img.is-pending {
     0% { transform: translate(0, 0) scale(1); opacity: 0.95; }
     100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
 }
-/* 减少动态效果：不做骨架脉冲与噗散粒子 */
+/* 减少动态效果：不做骨架脉冲、程序坞弹跳与噗散粒子 */
 html[data-reduce-motion="on"] .dock .container img.is-loading,
-html[data-reduce-motion="on"] .dock .container img.is-pending {
+html[data-reduce-motion="on"] .dock .container img.is-pending,
+html[data-reduce-motion="on"] .dock .container img.opening {
     animation: none;
 }
 html[data-reduce-motion="on"] .dock-poof {
@@ -478,6 +589,7 @@ html[data-reduce-motion="on"] .dock-poof {
 @media (prefers-reduced-motion: reduce) {
     .dock .container img.is-loading,
     .dock .container img.is-pending,
+    .dock .container img.opening,
     .dock-poof i {
         animation: none;
     }

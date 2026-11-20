@@ -471,7 +471,7 @@ const off = i18n.onChange(() => rebuildMyOptionList());   // plugin-unload 里�
 | `getPlugins / openApp / load / unload` | 注册表查询与冷加载入口：`openApp(显示名|id|appId, opts)` 是统一入口 | `app-registry.js:95`（经 `plugin-manager.js:45` re-export）、`plugin-manager.js:358`、`:315`、`:621` |
 | `Z`（`zindex.js`） | 全站唯一浮层层级表，插件的 `z-index` 只能取自它 | `src/javascripts/zindex.js:22`–`:39`，见 [层级表](z-layers.md) |
 | `window.__surface` | 亚克力表面的**模糊等级与可读文字色**（文字色只有面板档 / 墙纸档两套）：样式表引用令牌即可，全局对象只做登记与自检 | `src/javascripts/surface.js:543`（模块另导出 `surface` / `BLUR_LEVELS` `:541`、`initSurface` `:532`），见 §五 |
-| `paths.js` 的 `assetPath / assetIcon / glyph / modFile / modUrl / modDateUrl` | 站内资源路径唯一来源；`glyph(name)` 取 `assets/images/<name>.svg` 界面字形（应用图标仍只用 PNG） | `src/javascripts/paths.js:13`、`:16`、`:23`、`:29`、`:36`、`:39`；图标规则 [插件包格式](plugin-format.md) |
+| `paths.js` 的 `assetPath / assetIcon / glyph / modFile / modUrl / modDateUrl` | 站内资源路径唯一来源；`glyph(name)` 取 `assets/images/<name>.svg` 界面字形（应用图标仍只用 WebP） | `src/javascripts/paths.js:13`、`:16`、`:23`、`:29`、`:36`、`:39`；图标规则 [插件包格式](plugin-format.md) |
 | 解析钩子 `window.__getPluginByName / __getAppByName / __pluginManagerReady` | 按显示名解析插件/应用记录、等注册表就绪 | `src/javascripts/app-registry.js:27`–`:29` |
 | `window.__settings` / `window.__log` / `__sound` / `__display` / `__lock` / `__permissions` / `__spotlight` | 本文「一」「二」与各自模块的 owner 接口 | `settings.js:602`、`log.js:593`、`sound.js:193`、`display.js:202`、`lock.js:582`、`permissions.js:332`、`spotlight.js:770` |
 

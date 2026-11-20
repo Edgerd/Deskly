@@ -17,7 +17,7 @@
 ├── index.html      # 界面片段（恰好一个 .window 根元素）
 ├── style.css       # 样式
 ├── script.js       # 逻辑（ES Module）
-└── icon.png        # 图标（程序坞 / 启动台 / 商店共用）</code></pre>
+└── icon.webp       # 图标（程序坞 / 启动台 / 商店共用）</code></pre>
 <p><b>id 命名</b>：小写蛇形（如 <code>vs_code</code>、<code>system-settings</code>）。合法字符集 <code>[A-Za-z0-9][A-Za-z0-9._-]*</code> 且不含 <code>..</code>——
 id 会被拼进 <code>./mods/&lt;id&gt;/</code> 路径和 <code>[data-plugin-id]</code> 选择器，非法即拒绝注册。资源文件名（main/style/script/icon）由
 <code>safeAssetName()</code> 校验：只允许单层文件名，防止 <code>../../x.html</code> 这种跳出插件目录的写法。</p>
@@ -61,10 +61,10 @@ id 会被拼进 <code>./mods/&lt;id&gt;/</code> 路径和 <code>[data-plugin-id]
 
 <h2>图标（硬性四条）</h2>
 <ol>
-<li>应用图标<b>一律 PNG，禁 SVG</b>（程序坞 / 启动台 / 商店共用位图；菜单栏单色字形不受此限，那是 assets/images 里的 SVG glyph，另一套）。</li>
+<li>应用图标<b>一律位图（优先 WebP），禁 SVG</b>（程序坞 / 启动台 / 商店共用位图；菜单栏单色字形不受此限，那是 assets/images 里的 SVG glyph，另一套）。</li>
 <li>新应用图标<b>先到 <code>assets/icons/</code> 找</b>（含 <code>dock/</code>、<code>folder/</code> 子目录）。</li>
 <li>找到就<b>复制</b>进插件目录，manifest 只写裸文件名——ZIP 要求自包含；<b>库里原文件不要移走</b>（dock.js 的 iconMap 按名字兜底引用整个库）。</li>
-<li>没有合适的就<b>不声明 icon</b>：系统自动落占位图 <code>assets/icons/dock/Launcher.png</code>，界面里所有 <code>img.onerror</code> 也回退它。占位图只有这一个出处，别在别处再写死路径。</li>
+<li>没有合适的就<b>不声明 icon</b>：系统自动落占位图 <code>assets/icons/dock/Launcher.webp</code>，界面里所有 <code>img.onerror</code> 也回退它。占位图只有这一个出处，别在别处再写死路径。</li>
 </ol>
 <p>解析顺序：<code>apps[].icon</code>（多应用时优先）→ <code>manifest.icon</code> → <code>./mods/&lt;id&gt;/icon.png</code>（目录约定兜底）→ 占位图。
 套件里的应用缺图标时显示套件图标，不是占位图。</p>
@@ -76,7 +76,7 @@ id 会被拼进 <code>./mods/&lt;id&gt;/</code> 路径和 <code>[data-plugin-id]
 <tr><td>CSS 里的 <code>url()</code></td><td><code>url(../../assets/…)</code>（相对样式表自身）</td><td>同上</td></tr>
 <tr><td>JS 运行时 URL（<code>&lt;img src&gt;</code>、<code>fetch()</code>、<code>Notification.icon</code>）</td><td>用 <code>paths.js</code>：<code>assetPath("icons/x.png")</code>、<code>modFile(id, "x.png")</code> 等，产出站点根相对路径（<code>./assets/…</code>、<code>./mods/&lt;id&gt;/…</code>）</td><td>运行时 URL 的解析基准是<b>文档</b>（index.html），写 <code>../../assets/…</code> 只是越过根被浏览器截断回来「碰巧能用」，属于巧合不是契约</td></tr>
 </table>
-<p>paths.js 常用导出：<code>assetPath(rel)</code>、<code>assetIcon(name)</code>（icons/ 下 PNG）、<code>glyph(name)</code>（images/ 下 SVG 字形）、
+<p>paths.js 常用导出：<code>assetPath(rel)</code>、<code>assetIcon(name)</code>（icons/ 下 WebP）、<code>glyph(name)</code>（images/ 下 SVG 字形）、
 <code>modDir(id)</code>、<code>modFile(id, file)</code>、<code>modUrl(id, file, stamp)</code>、<code>GENERIC_APP_ICON</code>（占位图）。</p>
 
 <h2>商店自声明（store 区块）</h2>

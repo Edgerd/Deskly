@@ -11,5 +11,5 @@
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "./Photos.png"
+  "icon": "./Photos.webp"
 }

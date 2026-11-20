@@ -279,6 +279,9 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   transition: background 0.1s ease;
 }
 .pop-item:hover { background: var(--finder-hover); }
+/* 按下反馈：填充访达自己的强调色，和系统强调色解耦 */
+.pop-item.menu-pressed { background: var(--finder-accent) !important; }
+.pop-item.menu-pressed .pop-check { color: #fff; }
 .pop-item .pop-check { margin-left: auto; color: var(--finder-accent); display: none; }
 .pop-item.active .pop-check { display: inline-flex; }
 .pop-sep { height: 1px; background: var(--finder-separator); margin: 4px 6px; }

@@ -349,11 +349,11 @@ export function build(ctx) {
             }),
         ], { title: t("ss.mouse.cursor", "光标") }),
 
-        shakeGroup(),
-
         group(
             getCursorRoles().map((item) => roleRow(item.role, roleLabels[item.role] || item.label)),
             { title: t("ss.mouse.customGroup", "自定义光标") }),
+
+        shakeGroup(),
     );
 
     paint();

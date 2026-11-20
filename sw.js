@@ -32,7 +32,7 @@ self.addEventListener("fetch", (event) => {
     if (!fileName) return;
 
     // URL 路径是百分号编码的，而 IndexedDB 里的键是 ZIP 内的原始名（含空格/非 ASCII 时
-    // 两者不等：`Microsoft%20Word.png` 查不到 `Microsoft Word.png`，直接漏到网络变 404）。
+    // 两者不等：`Microsoft%20Word.webp` 查不到 `Microsoft Word.webp`，直接漏到网络变 404）。
     event.respondWith(serveFromDb(event.request, id, decodeName(fileName)));
 });
 

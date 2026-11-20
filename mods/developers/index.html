@@ -1,0 +1,62 @@
+<!--
+    index.html — 开发者外壳。只保留窗口骨架：侧栏、工具条、四个面板容器、模态与提示。
+    面板内容由 script.js 依据本地插件库渲染；根元素的 .window / .wintools / data-titlebar
+    是 window.js 驱动红绿灯、拖拽与缩放的约定，不能改名。
+-->
+<div class="developers window" id="开发者" data-window="size:1020x680 min:800x560 centered">
+    <header class="dv-titlebar" data-titlebar>
+        <deskly-traffic-lights class="wintools"></deskly-traffic-lights>
+    </header>
+
+    <nav class="dv-sidebar" aria-label="开发者边栏">
+        <div class="dv-brand">
+            <img src="Developers.webp" alt="" width="28" height="28" draggable="false" />
+            <span class="dv-brand__text" data-role="brand"></span>
+        </div>
+
+        <div class="dv-nav" data-role="nav"></div>
+
+        <div class="dv-side-spacer"></div>
+        <p class="dv-storage" data-role="storage-line"></p>
+        <button class="dv-navitem dv-navitem--settings" type="button" data-nav="settings"></button>
+    </nav>
+
+    <div class="dv-edge" aria-hidden="true"></div>
+
+    <main class="dv-content">
+        <header class="dv-toolbar">
+            <button class="dv-back" type="button" data-role="back" hidden></button>
+            <div class="dv-headings">
+                <h2 class="dv-heading" data-role="heading"></h2>
+                <p class="dv-subheading" data-role="subheading"></p>
+            </div>
+            <span class="dv-spacer"></span>
+            <div class="dv-actions" data-role="actions"></div>
+        </header>
+
+        <div class="dv-pane dv-pane--home" data-pane="home"></div>
+        <div class="dv-pane dv-pane--form" data-pane="form" hidden></div>
+        <div class="dv-pane dv-pane--manage" data-pane="manage" hidden></div>
+        <div class="dv-pane dv-pane--settings" data-pane="settings" hidden></div>
+    </main>
+
+    <div class="dv-toast" data-role="toast" role="status" aria-live="polite" hidden></div>
+
+    <div class="dv-modal" data-role="modal" hidden>
+        <div class="dv-modal__card" role="dialog" aria-modal="true" aria-labelledby="dv-modal-title">
+            <header class="dv-modal__head">
+                <h3 class="dv-modal__title" id="dv-modal-title" data-role="modal-title"></h3>
+                <button class="dv-iconbtn" type="button" data-role="modal-close" aria-label="关闭">
+                    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                        <path d="M3.6 3.6 12.4 12.4M12.4 3.6 3.6 12.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </header>
+            <div class="dv-modal__body" data-role="modal-body"></div>
+            <footer class="dv-modal__foot" data-role="modal-foot"></footer>
+        </div>
+    </div>
+
+    <input type="file" accept="image/*" data-role="icon-file" hidden />
+    <input type="file" accept=".json,.devplugin,application/json" data-role="import-file" hidden />
+</div>

@@ -34,6 +34,9 @@
     --as-control-bg: #fff;
     --as-control-border: rgba(0, 0, 0, 0.16);
     --as-chip-bg: rgba(0, 0, 0, 0.06);
+    /* 侧栏控件底（搜索框）：半透明药丸，与系统设置侧栏的 --ss-field-bg 同档，
+       与 --as-control-bg（不透明白底 + 描边，内容区控件用）分两档，混用会失去层次。 */
+    --as-field-bg: rgba(0, 0, 0, 0.06);
     --as-danger: #d93d33;
     --as-danger-bg: rgba(217, 61, 51, 0.1);
     --as-ok: #1c9e2d;
@@ -64,6 +67,7 @@ html[data-theme="dark"] .appstore.window {
     --as-control-bg: #2a2a2c;
     --as-control-border: rgba(255, 255, 255, 0.2);
     --as-chip-bg: rgba(255, 255, 255, 0.12);
+    --as-field-bg: rgba(255, 255, 255, 0.1);
     --as-danger: #ff6961;
     --as-danger-bg: rgba(255, 105, 97, 0.16);
     --as-ok: #4cd964;
@@ -198,30 +202,46 @@ html[data-transparency="off"] .appstore > .as-sidebar {
 }
 
 /* ===== 侧栏内容 ===== */
+/* 搜索框：亚克力表面上的半透明药丸（与 mods/system-settings/style.css 的 .ss-search 同一档）。
+   刻意不给它上 backdrop-filter —— 侧栏本身已经是带模糊的那一层，再叠一层只会多一次采样；
+   更要紧的是本项目铁律：带 backdrop-filter 的元素绝不能挂 transform，少一层就少一处坑。 */
 .as-search__wrap {
-    padding: 0 12px 8px;
+    flex: 0 0 auto;
+    margin: 2px 12px 8px;
 }
 .as-search {
     width: 100%;
-    height: 26px;
+    height: 28px;
     padding: 0 10px;
-    font-size: 12.5px;
-    color: var(--as-text-solid);
-    background: var(--as-control-bg);
-    border: 1px solid var(--as-control-border);
+    font: inherit;
+    font-size: 13px;
+    color: var(--as-text);
+    background: var(--as-field-bg);
+    /* 原版侧栏搜索框是无边框的浅色药丸：带描边会「浮」成一个盒子，与下面的条目抢层次 */
+    border: 1px solid transparent;
     border-radius: 7px;
     outline: none;
-    /* 搜索框是不透明控件，文字用主题色而不是亚克力推导色 */
+    user-select: text;
+    -webkit-user-select: text;
+    /* 内阴影给一点「凹进去」的手感，深浅壁纸上都不至于像贴了一块平色片 */
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
 }
+.as-search::placeholder {
+    color: var(--as-text-tertiary);
+}
+/* 聚焦反馈收敛：不切实心底，只加一道强调色描边 + 外环 + 更深一点的极浅内阴影 */
 .as-search:focus {
-    border-color: var(--accent, #0a82ff);
-    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 10, 130, 255), 0.22);
+    border-color: rgba(var(--accent-rgb, 10, 130, 255), 0.55);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb, 10, 130, 255), 0.22), inset 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 .as-search::-webkit-search-cancel-button {
     -webkit-appearance: none;
 }
 
-/* 分组导航：Today / 应用 / 插件 / 新功能。与分类组同一套观感，只靠一条分隔线断开。 */
+/* 分组导航：Today / 应用 / 插件 / 新功能。与分类组同一套观感，只靠一条分隔线断开。
+   图标来自 src/javascripts/ui/phosphor-icons.js（16px 默认、currentColor），
+   间距/尺寸与系统设置侧栏的 .ss-item 同一档：gap 7px、行高 28px 量级。 */
 .as-nav {
     flex: 0 0 auto;
     display: flex;
@@ -232,8 +252,9 @@ html[data-transparency="off"] .appstore > .as-sidebar {
 .as-navitem {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     width: 100%;
+    min-width: 0;
     padding: 6px 9px;
     font: inherit;
     font-size: 13px;
@@ -292,8 +313,9 @@ html[data-transparency="off"] .appstore > .as-sidebar {
 .as-cats .cat {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
     width: 100%;
+    min-width: 0;
     padding: 6px 9px;
     font: inherit;
     font-size: 13px;
@@ -303,6 +325,15 @@ html[data-transparency="off"] .appstore > .as-sidebar {
     border: none;
     border-radius: 7px;
     cursor: var(--deskly-cursor, default);
+}
+/* 分类名长短不一（「系统」到将来的长分类名）：必须走省略号而不是把计数挤出去，
+   窗口收窄时侧栏是定宽 214px，这里不省略就会横向溢出被 overflow:hidden 切掉。 */
+.as-cats .cat__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .as-cats .cat:hover { background: var(--as-hover); }
 .as-cats .cat:active { background: var(--as-pressed); }
@@ -1246,14 +1277,11 @@ html[data-transparency="off"] .appstore > .as-sidebar {
     }
 }
 
-/* 品牌展示位：侧栏顶部只放 Deskly 标记，不承载文案与交互；
-   尺寸写死 26px，避免被卡片图规则（.as-sidebar img 若未来加宽）牵连。 */
-.as-brand {
-    display: flex;
-    padding: 0 12px 10px;
-}
-.as-brand img {
-    width: 26px;
-    height: 26px;
-    display: block;
+/* 侧栏图标尺寸跟随系统「边栏图标大小」设置（与 mods/system-settings 同一条链：data-sidebar-size）。
+   默认 16px 由图标封装写在 svg 的 width/height 属性上，这里用 CSS 覆盖大号档。 */
+html[data-sidebar-size="large"] .appstore .as-navitem .ui-icon,
+html[data-sidebar-size="large"] .appstore .as-cats .cat .ui-icon,
+html[data-sidebar-size="large"] .appstore .as-sidebtn .ui-icon {
+    width: 20px;
+    height: 20px;
 }

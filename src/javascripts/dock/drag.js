@@ -135,6 +135,9 @@ export function createDockDrag(options) {
         ghost.classList.add("dock-drag-ghost");
         ghost.classList.remove("dock-dragging");
         ghost.querySelectorAll(".light").forEach((node) => node.remove());
+        // 拖拽不是点击：影子与源图标都不能带弹跳，漂移的克隆会跟着一起跳。
+        ghost.querySelectorAll("img.opening").forEach((node) => node.classList.remove("opening", "opening-loop"));
+        container.querySelectorAll("img.opening").forEach((node) => node.classList.remove("opening", "opening-loop"));
         ghost.style.left = `${rect.left}px`;
         ghost.style.top = `${rect.top}px`;
         ghost.style.width = `${rect.width}px`;

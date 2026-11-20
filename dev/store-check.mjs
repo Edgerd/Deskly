@@ -168,7 +168,7 @@ const pmMocks = {
     listApps: registry.listApps,
     getIcon: (id) => {
         const m = registry.getPlugin(id);
-        return m ? `./mods/${id}/${m.icon || "icon.png"}` : "./assets/icons/dock/Launcher.png";
+        return m ? `./mods/${id}/${m.icon || "icon.png"}` : "./assets/icons/dock/Launcher.webp";
     },
     registerInstalledPlugin: async (manifest, files) => {
         idb.set(manifest.id, { ...manifest, files });

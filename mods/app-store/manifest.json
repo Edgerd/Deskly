@@ -10,7 +10,7 @@
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "App Store.png",
+  "icon": "App Store.webp",
   "menus": {
     "显示": [
       { "label": "Today", "cmd": "storeShowToday()" },

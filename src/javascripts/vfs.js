@@ -192,7 +192,7 @@ async function listRoot() {
     }
     items.push({
         name: BOOKMARKS_PATH.slice(1), type: "folder", path: BOOKMARKS_PATH,
-        modified: null, size: null, icon: "folder/Mac OS.png", top: true, internal: false, bookmarkRoot: true,
+        modified: null, size: null, icon: "folder/Mac OS.webp", top: true, internal: false, bookmarkRoot: true,
     });
     items.push({
         name: RECENT_PATH.slice(1), type: "folder", path: RECENT_PATH,

@@ -218,6 +218,81 @@ let renderScheduled = false;
 let renderPendingWhileDragging = false;
 // 废纸篓是否非空（决定满/空图标）
 let trashFull = false;
+
+// ===== 点击 / 启动弹跳 =====
+// 启动期的循环弹跳必须在数据层独立记账：只靠 .opening 类名开会挡住重复点击，
+// 但重复点击又需要重播动画；只靠 appStatus 则会把 N 次点击排成 N 次 launchApp。
+const LAUNCH_BOUNCE_MAX_MS = 30000;
+const launchPending = new Map(); // 应用名 → 兜底定时器
+const bounceTimers = new WeakMap();
+const pressTimers = new WeakMap();
+
+/** 「减少动态效果」：站内开关与系统偏好任一开启都算。 */
+function prefersReducedMotion() {
+    if (document.documentElement.getAttribute("data-reduce-motion") === "on") return true;
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+/** 减少动态效果时的静态反馈：容器高亮 + 图标压暗，不产生位移。 */
+function playStaticPress(container) {
+    if (!container) return;
+    container.classList.add("dock-press");
+    clearTimeout(pressTimers.get(container));
+    pressTimers.set(container, setTimeout(() => {
+        container.classList.remove("dock-press");
+        pressTimers.delete(container);
+    }, 240));
+}
+
+/**
+ * 播放（或重新播放）弹跳。
+ * 先摘类再强制重排，动画才会从 0% 重新开始；只判断类名在不在不会重触发。
+ * @param {HTMLElement} container 图标容器
+ * @param {HTMLImageElement} img 图标
+ * @param {boolean} loop true = 启动期循环，窗口可见后由 syncRunningApps 停止
+ */
+function playDockBounce(container, img, loop) {
+    if (!img) return;
+    if (prefersReducedMotion()) {
+        stopDockBounce(img);
+        playStaticPress(container);
+        return;
+    }
+    img.classList.remove("opening", "opening-loop");
+    void img.offsetWidth; // 强制重排，保证同一类名摘下后立刻挂回也能重播
+    img.classList.add("opening");
+    clearTimeout(bounceTimers.get(img));
+    bounceTimers.delete(img);
+    if (!loop) return;
+    img.classList.add("opening-loop");
+    // 兜底上限：插件永久挂起时也不能让图标无限跳动。
+    bounceTimers.set(img, setTimeout(() => {
+        img.classList.remove("opening-loop");
+        bounceTimers.delete(img);
+    }, LAUNCH_BOUNCE_MAX_MS));
+}
+
+/** 停止弹跳并清掉兜底定时器。 */
+function stopDockBounce(img) {
+    if (!img) return;
+    img.classList.remove("opening", "opening-loop");
+    clearTimeout(bounceTimers.get(img));
+    bounceTimers.delete(img);
+}
+
+/** 标记应用进入启动期；超时自动解除，避免一次失败的启动永久挡住重试。 */
+function markLaunchPending(app) {
+    const prev = launchPending.get(app);
+    if (prev) clearTimeout(prev);
+    launchPending.set(app, setTimeout(() => launchPending.delete(app), LAUNCH_BOUNCE_MAX_MS));
+}
+
+/** 结束启动期。 */
+function clearLaunchPending(app) {
+    const timer = launchPending.get(app);
+    if (timer) clearTimeout(timer);
+    launchPending.delete(app);
+}
 // 刷新程序坞图标列表；原实现无限递归自身，每次调用直接栈溢出，
 // 导致 init() 中断、放大动画与悬浮提示均未注册。现改为收集存活图标。
 function refreshIconList() {
@@ -386,7 +461,7 @@ function navigateFinderTo(path) {
     setTimeout(send, 0);
 }
 
-function openApp(img, light, app) {
+function openApp(img, light, app, bounce = true) {
     // 文件夹栈（下载）：右键「打开」与左键点击走同一条展开逻辑，
     // 不能把它当普通应用交给 launchApp，否则会去加载不存在的旧模板。
     if (img && img.dataset && img.dataset.folder) {
@@ -422,17 +497,25 @@ function openApp(img, light, app) {
         if (!doClose.includes(img.alt)) {
             const win = document.getElementById(img.alt);
             if (win && !win.classList.contains("closing")) {
+                // 窗口已在：启动期结束，顺手清掉可能残留的启动弹跳；
+                // 再给一次单次弹跳作点击确认（不再循环）。
+                clearLaunchPending(img.alt);
+                stopDockBounce(img);
+                if (bounce && !noAnimation.includes(img.alt)) playDockBounce(img.parentElement, img, false);
                 if (isMinimized(win) && window.__dock && window.__dock.restoreFromDock) {
                     window.__dock.restoreFromDock(win, img.alt);
                 } else {
                     bringToFront(win, img.alt);
                 }
+            } else if (launchPending.has(img.alt)) {
+                // 已在启动、窗口还没出现：重复点击只重播循环弹跳，不再排一次 launchApp。
+                if (bounce && !noAnimation.includes(img.alt)) playDockBounce(img.parentElement, img, true);
             } else {
                 // 标记为运行但窗口已不存在 / 正在关闭（加载失败，或关闭动画里又点一次）：
                 // 复位状态并按「重新打开」处理，避免对 null 或垂死窗口调用 bringToFront 把应用钉死。
                 if (light) light.classList.remove("on");
                 appStatus[img.alt] = false;
-                launchApp(img, light, app);
+                startLaunch(img, light, app, bounce);
             }
         } else {
             try {
@@ -452,34 +535,31 @@ function openApp(img, light, app) {
             syncRunningApps();
         }
     } else {
-        if (!noAnimation.includes(img.alt)) {
-            if (img.classList.contains("opening")) return; // 弹跳进行中：忽略重复点击，避免 N 次点击排入 N 个 launchApp
-            img.classList.add("opening");
-            // macOS 语义：立刻启动 + 同时弹跳作反馈（旧写法等 2980ms 才启动，像「点了没反应」）。
-            // 动画单次播放；animationend 与超时双兜底摘类，syncRunningApps 在窗口出现时还会提前摘一次。
-            let openingTimer = 0;
-            const stopOpening = () => {
-                img.classList.remove("opening");
-                img.removeEventListener("animationend", onOpeningEnd);
-                clearTimeout(openingTimer);
-            };
-            const onOpeningEnd = (e) => {
-                if (e.animationName === "parabola") stopOpening();
-            };
-            img.addEventListener("animationend", onOpeningEnd);
-            openingTimer = setTimeout(stopOpening, 1100);
-            launchApp(img, light, app);
-        } else {
-            launchApp(img, light, app);
-        }
+        startLaunch(img, light, app, bounce);
         // 点击即清空白 Badge
         if (window.__dock) window.__dock.setBadge(img.alt, 0);
     }
 }
 
+/**
+ * 一次启动的统一入口：先给反馈，再真正加载。
+ * 反馈只在允许动画的应用上出现（访达 / 启动台保持 noAnimation 现状）。
+ * @param {HTMLImageElement} img 图标
+ * @param {HTMLElement|null} light 运行指示灯
+ * @param {string} app 应用名
+ * @param {boolean} bounce false = 由拖放等非点击操作触发，不弹
+ */
+function startLaunch(img, light, app, bounce = true) {
+    if (bounce && !noAnimation.includes(img.alt)) playDockBounce(img.parentElement, img, true);
+    launchApp(img, light, app);
+}
+
 // 真正创建并启动应用：写状态、点亮指示灯、刷新菜单与运行区（动画分支与即时分支共用）
 function launchApp(img, light, app) {
     const altName = img.alt;
+    // 同一应用的启动只能有一份在途：重复点击已经由上面的分支重播弹跳，不再排新的加载。
+    if (launchPending.has(altName)) return;
+    markLaunchPending(altName);
     appStatus[altName] = true;
     if (light) light.classList.add("on");
     if (!noMenuChanging.includes(altName)) updateMenu(app);
@@ -490,7 +570,8 @@ function launchApp(img, light, app) {
     scheduleRender();
 
     const resetOpening = () => {
-        img.classList.remove("opening");
+        clearLaunchPending(altName);
+        stopDockBounce(img);
         if (light) light.classList.remove("on");
         appStatus[altName] = false;
         syncRunningApps();
@@ -512,6 +593,9 @@ function launchApp(img, light, app) {
 
 // 应用关闭后的联动：运行区移除
 function onAppClosed(altName) {
+    clearLaunchPending(altName);
+    const container = iconNodes.get(altName);
+    stopDockBounce(container?.querySelector("img"));
     runningOrder = runningOrder.filter((name) => name !== altName);
     scheduleRender();
 }
@@ -920,7 +1004,8 @@ function bindDropOpen(container, app) {
         if (!label) return;
         // 打开对应应用，并提示带入的文件（演示性：文件未真正交给应用，P1-16 再接）
         const img = container.querySelector("img");
-        if (img) openApp(img, img.parentElement.querySelector(".light"), app);
+        // 拖放打开不是点击：只启动，不弹跳。
+        if (img) openApp(img, img.parentElement.querySelector(".light"), app, false);
         if (tip) {
             tip.textContent = i18n.t("dock.openWith", "用 {app} 打开 {name}（演示：文件尚未真正交给应用）")
                 .replace("{app}", app).replace("{name}", label);
@@ -1278,12 +1363,14 @@ export function syncRunningApps() {
 
     // 窗口真正显示（摘掉 wm-preparing）后才停止加载弹跳：窗口还在隐藏着量尺寸时
     // 继续跳是用户能看到的唯一「正在打开」反馈。显示时 window-manager 会再调一次
-    // syncRunningApps，因此这里不会漏掉；动画本身的单次上限仍是失败兜底。
+    // syncRunningApps，因此这里不会漏掉；30s 上限只用于插件永久挂起时兜底。
     const shownIds = new Set(openWins
         .filter(w => !w.classList.contains("wm-preparing"))
         .map(baseId));
-    dock.querySelectorAll(".container img.opening").forEach(img => {
-        if (shownIds.has(img.alt)) img.classList.remove("opening");
+    shownIds.forEach((name) => {
+        clearLaunchPending(name);
+        const container = iconNodes.get(name);
+        if (container) stopDockBounce(container.querySelector("img"));
     });
 
     // 1) 收藏项运行状态：窗口存在即运行

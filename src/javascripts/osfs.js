@@ -25,12 +25,12 @@ const DECLINE_KEY = "webstartos_vfs_mount_declined";
 
 /** 根下的顶层目录：路径字面量的唯一来源，别处不要再拼 "/文档" 这种串。 */
 const TOP = {
-    documents: { path: "/文档", icon: "folder/Documents.png" },
-    downloads: { path: "/下载", icon: "folder/Download.png" },
-    pictures: { path: "/图片", icon: "folder/Pictures.png" },
-    desktop: { path: "/桌面", icon: "folder/Desktop.png" },
-    appdata: { path: "/AppData", icon: "folder/Folder.png", internal: true },
-    trash: { path: "/废纸篓", icon: "trash/trash_light.png", internal: true },
+    documents: { path: "/文档", icon: "folder/Documents.webp" },
+    downloads: { path: "/下载", icon: "folder/Download.webp" },
+    pictures: { path: "/图片", icon: "folder/Pictures.webp" },
+    desktop: { path: "/桌面", icon: "folder/Desktop.webp" },
+    appdata: { path: "/AppData", icon: "folder/Folder.webp", internal: true },
+    trash: { path: "/废纸篓", icon: "trash/trash_light.webp", internal: true },
 };
 /**
  * 顶层夹与根的守卫不能做严格字符串比较：Windows / APFS 大小写不敏感，`/appdata` 与

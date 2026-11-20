@@ -10,7 +10,7 @@
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "Manual.png",
+  "icon": "Manual.webp",
   "store": {
     "category": "系统",
     "tagline": "离线可查的 iMac 与 macOS 使用手册",

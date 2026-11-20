@@ -108,7 +108,7 @@ export function resetPendingCount() {
 /**
  * 弹出一条系统通知。
  * @param {object} opts 通知参数
- * @param {string} [opts.icon] 图标路径（如 ./assets/icons/Finder.png）
+ * @param {string} [opts.icon] 图标路径（如 ./assets/icons/Finder.webp）
  * @param {string} [opts.title] 标题
  * @param {string} [opts.text] 正文
  * @param {string} [opts.time] 右侧时间文案，默认「刚刚」

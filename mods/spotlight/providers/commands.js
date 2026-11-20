@@ -57,7 +57,7 @@ const BUILTIN_ACTIONS = [
     { id: "restart", label: "重新启动", aliases: ["restart", "重启桌面"], sub: "会话命令 · 重新加载页面", group: "session", icon: glyph("arrow.up.left.and.arrow.down.right") },
     { id: "forceQuit", label: "强制退出全部应用", aliases: ["force quit"], sub: "会话命令", group: "session", icon: glyph("hand.raised.fill") },
     { id: "logOut", label: "退出登录", aliases: ["log out"], sub: "会话命令", group: "session", icon: glyph("person.2.fill") },
-    { id: "emptyTrash", label: "清倒废纸篓", aliases: ["empty trash"], sub: "桌面", group: "desktop", icon: assetPath("icons/trash/trash_light.png") },
+    { id: "emptyTrash", label: "清倒废纸篓", aliases: ["empty trash"], sub: "桌面", group: "desktop", icon: assetPath("icons/trash/trash_light.webp") },
     { id: "hideActiveApp", label: "隐藏当前应用", aliases: ["hide"], sub: "窗口", group: "window", icon: glyph("chevron.down"), needsWindow: true },
     { id: "showAll", label: "显示全部窗口", aliases: ["show all"], sub: "窗口", group: "window", icon: glyph("menubar.dock.rectangle"), needsWindow: true },
     { id: "aboutThisMac", label: "关于本机", aliases: ["about"], sub: "会话命令", group: "session", icon: glyph("gear") },

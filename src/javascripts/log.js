@@ -33,6 +33,29 @@ const DATA_MAX_CHARS = 500;
 const MSG_MAX_CHARS = 400;
 const PERSIST_DEBOUNCE = 900;
 
+/** 资源加载失败 / 第三方库跨域抓取的日志去重窗口（同一域名/同一消息只记一次）。 */
+const NOISE_DEDUPE_MS = 5 * 60 * 1000;
+/** 去重键 -> 上次入档时间；超过窗口才允许再次记录。 */
+const noiseSeen = new Map();
+
+/**
+ * 噪声去重：同一键在窗口内只返回一次 true。
+ * 只用于「同域 favicon 404」「snapDOM 跨域抓图失败」这类可重复且已降级的场景，
+ * 有业务价值的错误日志不走这里。
+ * @param {string} key 去重键
+ * @returns {boolean} 是否应记录
+ */
+function shouldRecordOnce(key) {
+    const now = Date.now();
+    const last = noiseSeen.get(key);
+    if (last !== undefined && now - last < NOISE_DEDUPE_MS) return false;
+    noiseSeen.set(key, now);
+    if (noiseSeen.size > 200) {
+        for (const [item, time] of noiseSeen) if (now - time >= NOISE_DEDUPE_MS) noiseSeen.delete(item);
+    }
+    return true;
+}
+
 /** 内存环形缓冲（按时间正序）与统计。 */
 let entries = [];
 let seq = 0;
@@ -274,7 +297,15 @@ const originalError = console.error.bind(console);
 function patchConsole(methodName, native, level) {
     console[methodName] = (...args) => {
         if (config.captureConsole) {
-            logEntry(level, sourceFromArgs(args), consoleText(args), args.find(isLikelyError), "console");
+            const text = consoleText(args);
+            // snapDOM 抓跨域 favicon 失败已降级为占位图；同一消息窗口内只记一次，
+            // 避免 sogou / bilibili / so.com 每站刷一条 ERROR。
+            const snapCors = level === "error" && text.includes("[snapDOM]") && text.includes("dataURL");
+            if (snapCors && !shouldRecordOnce(`snapdom:${text.slice(0, 120)}`)) {
+                native(...args);
+                return;
+            }
+            logEntry(level, sourceFromArgs(args), text, args.find(isLikelyError), "console");
         }
         native(...args);
     };
@@ -317,7 +348,12 @@ function installErrorCapture() {
         const target = event.target;
         if (target && target !== window && target.tagName) {
             const url = target.src || target.href || "";
-            logEntry("error", "kernel/loader", `资源加载失败：<${target.tagName.toLowerCase()}> ${String(url).slice(0, 160)}`, { via: "error-event" }, "resource");
+            // 按域名去重：同一站点的 favicon 反复 404 只留第一条，避免 7 次图标失败刷屏。
+            let host = "";
+            try { host = new URL(url, location.href).host; } catch { host = String(url).slice(0, 80); }
+            const key = `resource:${target.tagName.toLowerCase()}:${host}`;
+            if (!shouldRecordOnce(key)) return;
+            logEntry("error", "kernel/loader", `资源加载失败：<${target.tagName.toLowerCase()}> ${String(url).slice(0, 160)}`, { via: "error-event", host }, "resource");
             return;
         }
         logEntry("error", "kernel/global", `未捕获异常：${event.message}`, { file: event.filename, line: event.lineno, col: event.colno, error: event.error }, "error");
@@ -485,15 +521,26 @@ const log = {
         logEntry("info", "kernel/log", "运行记录已清空");
     },
 
-    /** 导出为纯文本（每行一条）。 */
+    /**
+     * 导出为纯文本（每行一条）。
+     * 头部按级别分别计数：过去只写「共 N 条」，用户在导出文件里会把 INFO 也当成
+     * 「error 150 条」，统计口径必须与实际级别一致。
+     */
     exportText(opts = {}) {
-        const header = `# Deskly 运行日志 · 导出时间 ${stamp(Date.now())} · 门槛 ${config.level} · 共 ${filter(opts).length} 条`;
-        return [header, ...filter(opts).map(lineOf)].join("\n");
+        const list = filter(opts);
+        const counts = { error: 0, warn: 0, info: 0, debug: 0 };
+        list.forEach((entry) => { counts[entry.level] = (counts[entry.level] || 0) + 1; });
+        const header = `# Deskly 运行日志 · 导出时间 ${stamp(Date.now())} · 门槛 ${config.level} · ` +
+            `共 ${list.length} 条（ERROR ${counts.error} / WARN ${counts.warn} / INFO ${counts.info} / DEBUG ${counts.debug}）`;
+        return [header, ...list.map(lineOf)].join("\n");
     },
 
-    /** 导出为 JSON 文本。 */
+    /** 导出为 JSON 文本（头部同样带分级统计）。 */
     exportJSON(opts = {}) {
-        return JSON.stringify({ exportedAt: Date.now(), level: config.level, entries: filter(opts) }, null, 2);
+        const list = filter(opts);
+        const counts = { error: 0, warn: 0, info: 0, debug: 0 };
+        list.forEach((entry) => { counts[entry.level] = (counts[entry.level] || 0) + 1; });
+        return JSON.stringify({ exportedAt: Date.now(), level: config.level, total: list.length, counts, entries: list }, null, 2);
     },
 
     /**

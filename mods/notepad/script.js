@@ -21,6 +21,7 @@ import { initFormatToolbar } from './features/toolbar-format.js';
 import { initViewSwitch } from './features/toolbar-view.js';
 import { i18n } from '../../src/javascripts/i18n.js';
 import { openPopover } from '../../src/javascripts/ui/popover.js';
+import { pressMenuItem } from '../../src/javascripts/ui/menuFeedback.js';
 
 const notepadWindow = document.querySelector('.notepad');
 
@@ -421,14 +422,17 @@ function init(root) {
             const item = e.target && e.target.closest ? e.target.closest('.menu-item') : null;
             if (!item) return;
             const action = item.dataset.action;
-            if (action === 'new') newNote();
-            else if (action === 'open') openFile();
-            else if (action === 'search') search.toggle();
-            else if (action === 'save') saveFile();
-            else if (action === 'download') downloadFile();
-            else if (action === 'clear') clearContent();
-            else if (action === 'toggle-md') store.setMarkdown(!store.markdown);
-            close();
+            // 先亮一帧，再收起菜单并执行：动作里可能弹对话框，菜单必须等按下态画出来再消失。
+            pressMenuItem(item, () => {
+                close();
+                if (action === 'new') newNote();
+                else if (action === 'open') openFile();
+                else if (action === 'search') search.toggle();
+                else if (action === 'save') saveFile();
+                else if (action === 'download') downloadFile();
+                else if (action === 'clear') clearContent();
+                else if (action === 'toggle-md') store.setMarkdown(!store.markdown);
+            });
         });
         // 「点菜单外部关闭」与 Esc 由 popover.js 统一负责（旧的 document mousedown 写法只判 .menu-dropdown，菜单搬出窗口后失效）。
         return { close, isOpen };

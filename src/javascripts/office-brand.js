@@ -6,10 +6,10 @@
  *   - iwork（默认）：维持现有 i18n 名称与 Pages/Numbers/Keynote 图标；
  *   - ms：Word / Excel / PowerPoint 名称与对应图标。
  *
- * 图标由用户后续补齐（遵循项目规则：图标只用 PNG、不自绘）：
- *   assets/icons/Microsoft Word.png
- *   assets/icons/Microsoft Excel.png
- *   assets/icons/Microsoft PowerPoint.png
+ * 图标由用户后续补齐（遵循项目规则：图标只用 WebP、不自绘）：
+ *   assets/icons/Microsoft Word.webp
+ *   assets/icons/Microsoft Excel.webp
+ *   assets/icons/Microsoft PowerPoint.webp
  * 缺任何一张时该项自动回退到 iWork 同名图标，不会出现裂图；补齐后刷新即生效。
  *
  * 切换入口：系统设置 › App ›「办公套件名称与图标」。
@@ -27,14 +27,14 @@ export const BRAND_SETTING = "office.brandPack";
  */
 const PACKS = {
     iwork: {
-        word: { label: null, icon: "Pages.png" },
-        excel: { label: null, icon: "Numbers.png" },
-        ppt: { label: null, icon: "Keynote.png" },
+        word: { label: null, icon: "Pages.webp" },
+        excel: { label: null, icon: "Numbers.webp" },
+        ppt: { label: null, icon: "Keynote.webp" },
     },
     ms: {
-        word: { label: "Word", icon: "Microsoft Word.png" },
-        excel: { label: "Excel", icon: "Microsoft Excel.png" },
-        ppt: { label: "PowerPoint", icon: "Microsoft PowerPoint.png" },
+        word: { label: "Word", icon: "Microsoft Word.webp" },
+        excel: { label: "Excel", icon: "Microsoft Excel.webp" },
+        ppt: { label: "PowerPoint", icon: "Microsoft PowerPoint.webp" },
     },
 };
 

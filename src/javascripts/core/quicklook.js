@@ -25,12 +25,15 @@
 import { FS } from "../fs/index.js";
 import { registerPlugin } from "../app-registry.js";
 import { i18n } from "../i18n.js";
-import { FOLDER_ICON, GENERIC_DOC_ICON } from "../paths.js";
+import { FOLDER_ICON, GENERIC_DOC_ICON, glyph } from "../paths.js";
 
 /* 系统应用登记：只做可见性声明，没有窗口入口（openApp 到它会安全落空）。 */
+// 没有 mods/quicklook/ 目录，必须显式声明图标；否则 getIcon 会兜底拼
+// ./mods/quicklook/icon.png，启动台/系统设置每次渲染都 404。
 registerPlugin({
     id: "quicklook",
     name: "快速查看",
+    icon: glyph("magnifyingglass"),
     visibility: { launchpad: false, settings: true, finder: false, system: true, uninstallable: false },
 });
 

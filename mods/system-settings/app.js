@@ -58,8 +58,8 @@ const SHELL_MESSAGES = {
                 unknownPane: "没有这个面板", retry: "重试",
             },
             group: {
-                account: "账户", general: "通用", personalize: "个性化", attention: "提醒",
-                security: "安全", services: "服务", input: "输入", advanced: "高级",
+                account: "Edgerd 账户", connectivity: "网络与连接", alerts: "通知与专注",
+                system: "通用与外观", desktop: "桌面与显示器", peripherals: "键盘与鼠标",
             },
         },
     },
@@ -75,8 +75,8 @@ const SHELL_MESSAGES = {
                 unknownPane: "Unknown pane", retry: "Try again",
             },
             group: {
-                account: "Account", general: "General", personalize: "Personalization", attention: "Alerts",
-                security: "Security", services: "Services", input: "Input", advanced: "Advanced",
+                account: "Edgerd Account", connectivity: "Network & Connections", alerts: "Notifications & Focus",
+                system: "General & Appearance", desktop: "Desktop & Displays", peripherals: "Keyboard & Mouse",
             },
         },
     },
@@ -92,8 +92,8 @@ const SHELL_MESSAGES = {
                 unknownPane: "パネルが見つかりません", retry: "再試行",
             },
             group: {
-                account: "アカウント", general: "一般", personalize: "個人設定", attention: "通知",
-                security: "セキュリティ", services: "サービス", input: "入力", advanced: "詳細",
+                account: "Edgerd アカウント", connectivity: "ネットワークと接続", alerts: "通知と集中モード",
+                system: "一般と外観", desktop: "デスクトップとディスプレイ", peripherals: "キーボードとマウス",
             },
         },
     },
@@ -109,8 +109,8 @@ const SHELL_MESSAGES = {
                 unknownPane: "找不到這個面板喵~", retry: "再來一次喵~",
             },
             group: {
-                account: "主人帳戶喵", general: "通用喵", personalize: "個性化喵", attention: "提醒喵",
-                security: "安全喵", services: "服務喵", input: "輸入喵", advanced: "進階喵",
+                account: "Edgerd 账户喵", connectivity: "网络同连接喵", alerts: "通知同专注喵",
+                system: "通用同外观喵", desktop: "桌面同显示器喵", peripherals: "键盘同鼠标喵",
             },
         },
     },
@@ -171,6 +171,30 @@ function detachGlobals() {
 }
 
 /**
+ * 侧栏键盘切换：上下方向键在「当前可见条目」里移动焦点并选中，Home / End 跳到首尾。
+ * 顺序一律读 DOM 里实际的条目（renderSidebar 按注册表生成，搜索过滤只改 hidden），
+ * 所以侧栏重排后这里什么都不用改，也没有任何写死的下标。
+ * @param {KeyboardEvent} e 键盘事件
+ * @returns {void}
+ */
+function onSidebarKeydown(e) {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") return;
+    if (!shell.list) return;
+    const items = Array.from(shell.list.querySelectorAll(".ss-item")).filter((row) => !row.hidden);
+    if (!items.length) return;
+    e.preventDefault();
+    const current = e.target instanceof Element ? e.target.closest(".ss-item") : null;
+    const index = items.indexOf(current);
+    let next = 0;
+    if (e.key === "End") next = items.length - 1;
+    else if (e.key === "ArrowUp") next = index < 0 ? items.length - 1 : Math.max(0, index - 1);
+    else if (e.key === "ArrowDown") next = index < 0 ? 0 : Math.min(items.length - 1, index + 1);
+    const target = items[next];
+    target.focus();
+    selectPane(target.dataset.pane);
+}
+
+/**
  * 挂载外壳级监听：卸载通知、深链跳转、语言变更。
  * 每次都先 detachGlobals()，所以重复 boot（重复打开窗口）不会叠加监听。
  * @returns {void}
@@ -197,6 +221,12 @@ function attachGlobals() {
     };
     document.addEventListener("system-settings-open-pane", onOpenPane);
     shellDisposers.push(() => document.removeEventListener("system-settings-open-pane", onOpenPane));
+
+    // 侧栏方向键切换：挂在容器上（委派），条目随 renderSidebar 重建也不会丢监听。
+    if (shell.list) {
+        shell.list.addEventListener("keydown", onSidebarKeydown);
+        shellDisposers.push(() => shell.list.removeEventListener("keydown", onSidebarKeydown));
+    }
 
     const onLanguage = () => scheduleLanguageRebuild();
     if (typeof i18n.onChange === "function") {

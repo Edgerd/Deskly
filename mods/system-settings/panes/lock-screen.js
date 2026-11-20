@@ -14,10 +14,23 @@ import { settings } from "../../../src/javascripts/settings.js";
 import {
     t, el, group, bind, controlSlider, controlSwitch, actionRow, statusRow, usePaneStyle,
 } from "../ui.js";
+import { build as buildPassword, messages as passwordMessages } from "../sections/password.js";
 
 export const paneId = "lock-screen";
 
-export const messages = {
+/** 四语言词典按 ss 顶层合并，供同一面板里并入了多个模块的场景使用。 */
+function mergedMessages(...dicts) {
+    const out = {};
+    for (const dict of dicts) {
+        for (const [lang, values] of Object.entries(dict || {})) {
+            out[lang] = out[lang] || { ss: {} };
+            out[lang].ss = { ...out[lang].ss, ...(values.ss || {}) };
+        }
+    }
+    return out;
+}
+
+const ownMessages = {
     "zh-CN": {
         ss: {
             "lock-screen": {
@@ -124,6 +137,9 @@ export const messages = {
     },
 };
 
+/** 锁定屏幕并入了登录密码一块，语言包一起注册。 */
+export const messages = mergedMessages(ownMessages, passwordMessages);
+
 const CSS = `
 .ss-lock-screen .ss-status__value { font-variant-numeric: tabular-nums; }
 .ss-lock-screen .ss-row--warn { background: rgba(255,204,0,.16); }
@@ -169,7 +185,7 @@ export function build() {
         hint: tt("goto", "锁屏后任何人都能进入。"),
         buttonText: t("ss.lock-screen.gotoBtn", "去设置"),
         tone: "accent",
-        onAction: () => { if (typeof openSettingsPane === "function") openSettingsPane("password"); },
+        onAction: () => { if (typeof openSettingsPane === "function") openSettingsPane("lock-screen"); },
     });
     warnRow.hidden = true;
 
@@ -185,9 +201,12 @@ export function build() {
     bind("lock.requirePassword", repaintState);
     repaintState();
 
-    return el("div", { class: "ss-pane ss-lock-screen" },
+    const root = el("div", { class: "ss-pane ss-lock-screen" },
         group([
             autoRowEl,
+            controlSwitch("lock.requirePassword", {
+                label: tt("requireSwitch", "解锁需要密码"),
+            }),
             controlSwitch("lock.lockAtBoot", {
                 label: t("ss.lock-screen.bootLock", "启动时锁定"),
                 hint: t("ss.lock-screen.bootLockHint", "打开新标签页时先进入锁定屏幕。"),
@@ -198,6 +217,16 @@ export function build() {
             requiresRow,
             passwordRow,
             warnRow,
+            actionRow({
+                label: tt("setPassword", "设置密码"),
+                buttonText: t("ss.lock-screen.gotoBtn", "去设置"),
+                onAction: () => {
+                    const input = root.querySelector(".ss-password input");
+                    if (!input) return;
+                    input.scrollIntoView({ block: "nearest" });
+                    input.focus();
+                },
+            }),
         ], { title: t("ss.lock-screen.stateGroup", "当前状态") }),
 
         group([
@@ -209,8 +238,11 @@ export function build() {
                     lock.lockNow("manual");
                 },
             }),
-        ], { title: t("ss.lock-screen.lockNowGroup", "锁定") })
+        ], { title: t("ss.lock-screen.lockNowGroup", "锁定") }),
+
+        buildPassword()
     );
+    return root;
 }
 
 /** 锁定屏幕面板不持有全局资源；订阅由 ui.js 的 disposeAll() 释放。 */

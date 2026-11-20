@@ -10,7 +10,7 @@
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "TextEdit.png",
+  "icon": "TextEdit.webp",
   "formats": ["txt", "md"],
   "store": {
     "category": "效率",

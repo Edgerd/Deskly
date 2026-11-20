@@ -16,7 +16,7 @@ import { assetPath } from "../../../src/javascripts/paths.js";
 import {
     el, t, group, statusRow,
     controlCards, controlSwatches, controlDropdown, controlRadio, controlSwitch,
-    controlSegmented, controlSlider, track,
+    controlSegmented, controlSlider, controlColor, track,
     usePaneStyle,
 } from "../ui.js";
 
@@ -55,6 +55,15 @@ export const messages = {
                 small: "小", medium: "中", large: "大",
                 blur: "模糊等级",
                 blurLevels: { 0: "关闭", 1: "极轻", 2: "轻柔", 3: "标准", 4: "浓重" },
+                menubar: {
+                    group: "菜单栏",
+                    text: "顶栏文字颜色",
+                    auto: "自动", light: "浅色", dark: "深色", custom: "自定义",
+                    textCustom: "文字颜色",
+                    blur: "亚克力模糊",
+                    opacity: "不透明度",
+                    background: "背景颜色",
+                },
                 surfaceSecondary: "次要文字",
                 tint: "允许墙纸为窗口着色",
                 strength: "着色浓度",
@@ -83,6 +92,15 @@ export const messages = {
                 small: "Small", medium: "Medium", large: "Large",
                 blur: "Blur level",
                 blurLevels: { 0: "Off", 1: "Barely", 2: "Light", 3: "Standard", 4: "Heavy" },
+                menubar: {
+                    group: "Menu bar",
+                    text: "Menu bar text colour",
+                    auto: "Automatic", light: "Light", dark: "Dark", custom: "Custom",
+                    textCustom: "Text colour",
+                    blur: "Acrylic blur",
+                    opacity: "Opacity",
+                    background: "Background colour",
+                },
                 surfaceSecondary: "Secondary text",
                 tint: "Tint windows with wallpaper",
                 strength: "Tint strength",
@@ -111,6 +129,15 @@ export const messages = {
                 small: "小", medium: "中", large: "大",
                 blur: "ぼかしレベル",
                 blurLevels: { 0: "オフ", 1: "ごく薄く", 2: "軽く", 3: "標準", 4: "濃く" },
+                menubar: {
+                    group: "メニューバー",
+                    text: "メニューバーの文字色",
+                    auto: "自動", light: "ライト", dark: "ダーク", custom: "カスタム",
+                    textCustom: "文字色",
+                    blur: "アクリルぼかし",
+                    opacity: "不透明度",
+                    background: "背景色",
+                },
                 surfaceSecondary: "補助テキスト",
                 tint: "壁紙でウィンドウを着色",
                 strength: "着色の濃さ",
@@ -139,6 +166,15 @@ export const messages = {
                 small: "小喵", medium: "中等喵", large: "大喵",
                 blur: "糊糊等級喵",
                 blurLevels: { 0: "不糊喵", 1: "一點點喵", 2: "輕輕糊喵", 3: "剛剛好喵", 4: "濃濃糊喵" },
+                menubar: {
+                    group: "選單列喵",
+                    text: "頂欄文字色喵",
+                    auto: "自動喵", light: "淺色喵", dark: "深色喵", custom: "自己揀喵",
+                    textCustom: "文字色喵",
+                    blur: "亞克力糊糊喵",
+                    opacity: "唔透明度喵",
+                    background: "背景色喵",
+                },
                 surfaceSecondary: "次要文字喵",
                 tint: "讓窗戶跟著壁紙變色喵",
                 strength: "調多少色喵",
@@ -221,6 +257,26 @@ html[data-wallpaper-tint="on"][data-theme="dark"] .settings .ss-pane-appearance 
     font-size: 11.5px; color: var(--surface-text-secondary);
 }
 `;
+
+/**
+ * 按条件禁用一行。
+ *
+ * `wireRequires` 只认定义里的布尔 `requires`；菜单栏这几项联动条件是「某个枚举值」
+ * 与「某个阈值」（自定义文字色 / 完全不透明），套不进去，因此在这里单算。
+ * 禁用手感与 requires 一致：加 ss-row--disabled 并真正置 disabled，不做假灰。
+ * @param {HTMLElement} rowEl 行元素
+ * @param {Function} enabled 返回该行此刻是否可用
+ * @returns {void}
+ */
+function gateRow(rowEl, enabled) {
+    const apply = () => {
+        const on = Boolean(enabled());
+        rowEl.classList.toggle("ss-row--disabled", !on);
+        rowEl.querySelectorAll("input, button, select").forEach((control) => { control.disabled = !on; });
+    };
+    apply();
+    track(settings.subscribe(apply));
+}
 
 /**
  * 取某个颜色键的显示名。
@@ -341,6 +397,43 @@ export function build(ctx) {
     const hueDefinition = settings.info("appearance.tintHue") || {};
     const surfacePreviewRow = surfaceStrip();
 
+    // 菜单栏：跟随壁纸取色的五个设置项。档位表与范围全部读定义（menubar-tint.js 注册），
+    // 面板只排位置、给译文，不另抄一份 0–100。
+    const textColorDefinition = settings.info("menubar.textColor") || {};
+    const textColorLabels = {
+        auto: t("ss.appearance.menubar.auto", "自动"),
+        light: t("ss.appearance.menubar.light", "浅色"),
+        dark: t("ss.appearance.menubar.dark", "深色"),
+        custom: t("ss.appearance.menubar.custom", "自定义"),
+    };
+    const textColorOptions = (textColorDefinition.values || ["auto", "light", "dark", "custom"])
+        .map((value) => ({ value, label: textColorLabels[value] || value }));
+
+    const textColorRow = controlSegmented("menubar.textColor", {
+        label: t("ss.appearance.menubar.text", "顶栏文字颜色"),
+        options: textColorOptions,
+    });
+    const customTextRow = controlColor("menubar.textColor.custom", {
+        label: t("ss.appearance.menubar.textCustom", "文字颜色"),
+    });
+    const menubarBlurRow = controlSlider("menubar.blur", {
+        label: t("ss.appearance.menubar.blur", "亚克力模糊"),
+        units: "%",
+    });
+    const menubarOpacityRow = controlSlider("menubar.opacity", {
+        label: t("ss.appearance.menubar.opacity", "不透明度"),
+        units: "%",
+    });
+    const menubarBackgroundRow = controlColor("menubar.backgroundColor", {
+        label: t("ss.appearance.menubar.background", "背景颜色"),
+    });
+
+    // 三处联动：自定义文字色只在「自定义」档可改；完全不透明时模糊没有意义，
+    // 背景色也只在完全不透明时才看得见。都按当前值实时启用/禁用。
+    gateRow(customTextRow, () => settings.get("menubar.textColor", "auto") === "custom");
+    gateRow(menubarBlurRow, () => Number(settings.get("menubar.opacity", 0)) < 100);
+    gateRow(menubarBackgroundRow, () => Number(settings.get("menubar.opacity", 0)) >= 100);
+
     // 「自动」到底解析成了哪一档，由 appearance.js 写在 <html data-theme-resolved> 上；
     // 订阅它广播的事件，面板里的读数就永远和真实生效值一致（包括系统明暗变化的时候）。
     const resolvedRow = statusRow({
@@ -373,17 +466,31 @@ export function build(ctx) {
                 label: t("ss.appearance.highlight", "高亮颜色"),
                 options: highlightOptions,
             }),
-            controlDropdown("appearance.sidebar.size", {
+            // 只有三档，分段控件比下拉少一次点按。
+            controlSegmented("appearance.sidebar.size", {
                 label: t("ss.appearance.sidebar", "边栏图标大小"),
                 options: sidebarOptions,
             }),
-            // 顺序沿用定义里的 order（边栏 40 -> 模糊等级 45 -> 着色开关 50 -> 浓度 51 -> 色相 52），
-            // 小样紧跟在模糊等级后面：滑块拨的是令牌，小样就在下面一行，不用来回找。
             controlSegmented("appearance.blurLevel", {
                 label: t("ss.appearance.blur", "模糊等级"),
                 options: blurOptions(),
             }),
             surfacePreviewRow,
+        ]),
+
+        // 同一组键的快捷副本：主入口在「桌面与程序坞」，这里改的是同一个值。
+        group([
+            controlSlider("dock.size", {
+                label: t("ss.appearance.dockSizeShortcut", "程序坞图标大小"),
+                units: "px",
+            }),
+            controlSlider("launchpad.icon.size", {
+                label: t("ss.appearance.lpSizeShortcut", "启动台图标大小"),
+                units: "px",
+            }),
+        ], { title: t("ss.appearance.desktopItems", "桌面元素") }),
+
+        group([
             controlSwitch("appearance.wallpaper.tint", {
                 label: t("ss.appearance.tint", "允许墙纸为窗口着色"),
             }),
@@ -391,8 +498,6 @@ export function build(ctx) {
             // ui.js 的 wireRequires 据此给整行加 ss-row--disabled 并禁用控件，开关拨回自动恢复。
             controlSlider("appearance.tintStrength", {
                 label: t("ss.appearance.strength", "着色浓度"),
-                // min/max/step 由 controlSlider 自己从定义取；format / units 它只认调用方传的，
-                // 所以把定义里的原值转交过来，不在面板里重写。
                 format: strengthDefinition.format,
                 units: strengthDefinition.units,
             }),
@@ -401,23 +506,28 @@ export function build(ctx) {
                 format: hueDefinition.format,
                 units: hueDefinition.units,
             }),
-        ]),
+        ], { title: t("ss.appearance.tintGroup", "窗口着色") }),
 
         group([
-            controlRadio("appearance.scrollbars", {
+            textColorRow,
+            customTextRow,
+            menubarBlurRow,
+            menubarOpacityRow,
+            menubarBackgroundRow,
+        ], { title: t("ss.appearance.menubar.group", "菜单栏") }),
+
+        group([
+            controlSegmented("appearance.scrollbars", {
                 label: t("ss.appearance.scrollbars", "显示滚动条"),
                 options: scrollbarOptions,
             }),
-        ]),
-
-        group([
             controlSwitch("appearance.reduceMotion", {
                 label: t("ss.appearance.motion", "减少动态效果"),
             }),
             controlSwitch("appearance.transparency", {
                 label: t("ss.appearance.transparency", "降低透明度时关闭毛玻璃"),
             }),
-        ]),
+        ], { title: t("ss.appearance.scrollGroup", "滚动与动效") }),
     );
 
     return root;

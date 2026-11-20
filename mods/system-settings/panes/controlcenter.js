@@ -131,16 +131,23 @@ export function build() {
     // 它们只会翻转一个没人消费的布尔，属于「看起来能用其实不能用」（F-20）。
     const defs = allDefs.filter((def) => !def.unavailable);
     const unavailableDefs = allDefs.filter((def) => def.unavailable);
-    const switches = [];
-    const sliders = [];
-    const others = [];
-    defs.forEach((def) => {
-        const row = autoRow(def);
-        if (!row) return;
-        if (def.control === "slider") sliders.push(row);
-        else if (def.control === "switch") switches.push(row);
-        else others.push(row);
-    });
+    const defByKey = new Map(defs.map((def) => [def.key, def]));
+    const menubarByKey = new Map(menubarDefs.map((def) => [def.key, def]));
+
+    /** 按指定键取行；定义不存在时返回 null，不占位。 */
+    const rowFor = (key, labelOverride) => {
+        const def = defByKey.get(key);
+        if (!def) return null;
+        return autoRow(labelOverride ? { ...def, label: labelOverride } : def);
+    };
+
+    /** 菜单栏状态项按固定顺序取行，标签优先走全局语言包。 */
+    const menubarRowFor = (key) => {
+        const def = menubarByKey.get(key);
+        if (!def) return null;
+        const pair = MENUBAR_LABEL_KEYS[key];
+        return autoRow(pair ? { ...def, label: t(pair[0], pair[1]) } : def);
+    };
 
     const liveRow = statusRow({
         label: t("ss.controlcenter.live", "当前状态"),
@@ -155,20 +162,23 @@ export function build() {
 
     const menubarRow = buildMenubarRow();
 
+    // 只摆放方案里列出的项；浏览器控制不了的字段单独落到「不可用」，不做成开关。
+    const controlRows = [
+        menubarRow,
+        rowFor("controlcenter.focus"),
+        rowFor("controlcenter.stage"),
+    ].filter(Boolean);
+    const menubarRows = [
+        "menubar.showBattery",
+        "menubar.showVolume",
+        "menubar.showBluetooth",
+        "controlcenter.stageInMenuBar",
+    ].map(menubarRowFor).filter(Boolean);
+
     const sections = [];
-    if (switches.length) sections.push(group(switches, { title: t("ss.controlcenter.switches", "开关") }));
-    if (sliders.length) sections.push(group(sliders, { title: t("ss.controlcenter.sliders", "滑块") }));
-    if (others.length) sections.push(group(others, { title: t("ss.controlcenter.others", "其它") }));
-    if (menubarRow) sections.push(group([menubarRow]));
-    if (menubarDefs.length) {
-        const rowsForMenubar = menubarDefs.map((def) => {
-            const pair = MENUBAR_LABEL_KEYS[def.key];
-            return autoRow(pair ? { ...def, label: t(pair[0], pair[1]) } : def);
-        });
-        sections.push(group(
-            rowsForMenubar.filter(Boolean),
-            { title: t("ss.controlcenter.menubarGroup", "菜单栏状态项") },
-        ));
+    if (controlRows.length) sections.push(group(controlRows, { title: t("ss.controlcenter.switches", "控制中心") }));
+    if (menubarRows.length) {
+        sections.push(group(menubarRows, { title: t("ss.controlcenter.menubarGroup", "菜单栏状态项") }));
     }
 
     sections.push(group([
@@ -181,9 +191,15 @@ export function build() {
     ], { title: t("ss.controlcenter.liveGroup", "实时状态") }));
 
     if (unavailableDefs.length) {
+        const order = ["wifi", "bluetooth", "airdrop", "airplane", "mirroring"];
+        const sorted = [...unavailableDefs].sort((a, b) => {
+            const ai = order.indexOf(String(a.key).replace(/^controlcenter\./, ""));
+            const bi = order.indexOf(String(b.key).replace(/^controlcenter\./, ""));
+            return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+        });
         sections.push(group([
-            note("ss.controlcenter.unavailableNote", "以下项目由系统控制，浏览器扩展无法切换："),
-            ...unavailableDefs.map((def) => statusRow({ label: def.label, value: t("ss.controlcenter.unavailableValue", "不可用") })),
+            note("ss.controlcenter.unavailableNote", "以下项目由系统控制，浏览器扩展无法切换"),
+            ...sorted.map((def) => statusRow({ label: def.label, value: t("ss.controlcenter.unavailableValue", "不可用") })),
         ], { title: t("ss.controlcenter.unavailableTitle", "不可用") }));
     }
 

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>九年级化学上册 化学反应汇总</title>
+<style>
+  :root{
+    --ink:#1a1f24;
+    --accent:#1b5e93;
+    --rule:#d5dbe2;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{
+    margin:0;
+    padding:28px 20px 48px;
+    background:#fff;
+    color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+    font-size:15px;
+    line-height:1.55;
+  }
+  .sheet{max-width:760px;margin:0 auto}
+
+  header{border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:6px}
+  h1{
+    margin:0;
+    font-family:"Songti SC","SimSun",serif;
+    font-size:25px;
+    letter-spacing:.06em;
+    font-weight:700;
+  }
+  .meta{
+    display:flex;justify-content:space-between;gap:16px;
+    font-size:12px;color:#5c6b7a;margin-top:6px;letter-spacing:.03em;
+  }
+
+  .unit{margin-top:26px;break-inside:auto}
+  .unit > h2{
+    margin:0 0 12px;
+    padding-left:9px;
+    border-left:4px solid var(--accent);
+    font-family:"Songti SC","SimSun",serif;
+    font-size:17px;
+    font-weight:700;
+    letter-spacing:.05em;
+    line-height:1.2;
+    break-after:avoid;
+  }
+  .unit > h2 small{
+    font-family:inherit;font-size:13px;font-weight:400;color:#5c6b7a;
+    margin-left:8px;letter-spacing:0;
+  }
+
+  .items{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:0;
+  }
+
+  .eq{
+    padding:5px 0 7px 13px;
+    border-bottom:1px dotted var(--rule);
+    break-inside:avoid;
+  }
+  .eq:last-child{border-bottom:0}
+  .name{font-size:13.5px;font-weight:600;letter-spacing:.02em}
+  .name em{font-style:normal;font-weight:400;color:#5c6b7a;font-size:12.5px}
+  .word{margin-top:3px;font-size:14px}
+  .formula{
+    margin-top:2px;
+    font-size:15px;
+    font-weight:600;
+    letter-spacing:.02em;
+  }
+  .formula sub{font-size:.72em;font-weight:600}
+
+  /* reaction condition printed above the arrow / bar */
+  .arw{
+    display:inline-flex;flex-direction:column;align-items:center;
+    vertical-align:middle;margin:0 .42em;line-height:1;font-weight:400;
+  }
+  .arw .c{
+    font-size:.6em;line-height:1;color:var(--accent);
+    white-space:nowrap;margin-bottom:2px;
+  }
+  .arw .l{display:block;font-size:.95em}
+  /* textbook style equals sign: condition over a long bar */
+  .arw .l.bar{
+    width:2.7em;height:1.5px;background:currentColor;
+    margin-top:1px;margin-bottom:.55em;
+  }
+
+  .note{
+    margin-top:4px;
+    font-size:12.5px;
+    color:#3d4b58;
+    padding-left:10px;
+    border-left:2px solid var(--rule);
+  }
+  .note b{color:var(--accent);font-weight:600}
+
+  footer{
+    margin-top:26px;padding-top:8px;border-top:1px solid var(--rule);
+    font-size:11.5px;color:#6b7783;display:flex;justify-content:space-between;
+  }
+
+  .print-btn{
+    position:fixed;right:20px;bottom:20px;
+    padding:9px 18px;border:0;border-radius:2px;
+    background:var(--accent);color:#fff;font-size:13px;
+    font-family:inherit;cursor:pointer;letter-spacing:.05em;
+  }
+  .print-btn:hover{background:#164a74}
+
+  @page{size:A4;margin:15mm 14mm}
+  @media print{
+    body{padding:0;font-size:10.5pt;line-height:1.5}
+    .sheet{max-width:none}
+    h1{font-size:19pt}
+    .unit{margin-top:14px}
+    .unit > h2{font-size:13pt;margin-bottom:8px}
+    .eq{padding:3px 0 4px 11px}
+    .name{font-size:10pt}
+    .name em{font-size:9pt}
+    .word{font-size:10pt}
+    .formula{font-size:11pt;margin-top:1px}
+    .note{font-size:9pt}
+    .print-btn{display:none}
+    .unit > h2{break-after:avoid}
+    .eq{break-inside:avoid}
+  }
+  @media print and (min-width:0){
+    /* two columns per unit to keep the handout compact */
+    .unit{display:grid;grid-template-columns:1fr}
+    .unit > h2{grid-column:1 / -1}
+    .items{grid-column:1 / -1;gap:0 8mm}
+    .items.two{grid-template-columns:1fr 1fr}
+    .unit.pb{break-before:page}
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <h1>九年级化学上册 化学反应汇总</h1>
+  <div class="meta">
+    <span>共七个单元 · 26 个反应</span>
+    <span>文字表达式 + 化学方程式对照</span>
+  </div>
+</header>
+
+<section class="unit">
+  <h2>第一单元</h2>
+  <div class="items">
+    <div class="eq">
+      <div class="name">1. 石蜡燃烧</div>
+      <div class="word">石蜡 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>二氧化碳 + 水</div>
+      <div class="note"><b>注：</b>石蜡无固定化学式，考试一般只要求书写文字表达式。</div>
+    </div>
+  </div>
+</section>
+
+<section class="unit">
+  <h2>第二单元<small>我们周围的空气</small></h2>
+  <div class="items two">
+    <div class="eq">
+      <div class="name">1. 红磷在空气中燃烧<em>（测定空气中氧气含量）</em></div>
+      <div class="word">红磷 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>五氧化二磷</div>
+      <div class="formula">4P + 5O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>2P<sub>2</sub>O<sub>5</sub></div>
+    </div>
+    <div class="eq">
+      <div class="name">2. 硫在空气、氧气中燃烧</div>
+      <div class="word">硫 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>二氧化硫</div>
+      <div class="formula">S + O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>SO<sub>2</sub></div>
+    </div>
+    <div class="eq">
+      <div class="name">3. 木炭充分燃烧</div>
+      <div class="word">碳 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>二氧化碳</div>
+      <div class="formula">C + O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>CO<sub>2</sub></div>
+    </div>
+    <div class="eq">
+      <div class="name">4. 铁丝在氧气中燃烧</div>
+      <div class="word">铁 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>四氧化三铁</div>
+      <div class="formula">3Fe + 2O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>Fe<sub>3</sub>O<sub>4</sub></div>
+    </div>
+    <div class="eq">
+      <div class="name">5. 加热高锰酸钾制取氧气</div>
+      <div class="word">高锰酸钾<span class="arw"><span class="c">加热</span><span class="l">→</span></span>锰酸钾 + 二氧化锰 + 氧气</div>
+      <div class="formula">2KMnO<sub>4</sub> <span class="arw"><span class="c">△</span><span class="l bar"></span></span>K<sub>2</sub>MnO<sub>4</sub> + MnO<sub>2</sub> + O<sub>2</sub>↑</div>
+    </div>
+    <div class="eq">
+      <div class="name">6. 过氧化氢分解制取氧气</div>
+      <div class="word">过氧化氢<span class="arw"><span class="c">二氧化锰</span><span class="l">→</span></span>水 + 氧气</div>
+      <div class="formula">2H<sub>2</sub>O<sub>2</sub> <span class="arw"><span class="c">MnO<sub>2</sub></span><span class="l bar"></span></span>2H<sub>2</sub>O + O<sub>2</sub>↑</div>
+    </div>
+  </div>
+</section>
+
+<section class="unit">
+  <h2>第四单元<small>自然界的水</small></h2>
+  <div class="items">
+    <div class="eq">
+      <div class="name">1. 电解水</div>
+      <div class="word">水<span class="arw"><span class="c">通电</span><span class="l">→</span></span>氢气 + 氧气</div>
+      <div class="formula">2H<sub>2</sub>O <span class="arw"><span class="c">通电</span><span class="l bar"></span></span>2H<sub>2</sub>↑ + O<sub>2</sub>↑</div>
+    </div>
+    <div class="eq">
+      <div class="name">2. 氢气燃烧</div>
+      <div class="word">氢气 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>水</div>
+      <div class="formula">2H<sub>2</sub> + O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>2H<sub>2</sub>O</div>
+    </div>
+  </div>
+</section>
+
+<section class="unit">
+  <h2>第五单元<small>化学方程式</small></h2>
+  <div class="items two">
+    <div class="eq">
+      <div class="name">1. 镁条燃烧</div>
+      <div class="word">镁 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>氧化镁</div>
+      <div class="formula">2Mg + O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>2MgO</div>
+    </div>
+    <div class="eq">
+      <div class="name">2. 铁与硫酸铜溶液反应</div>
+      <div class="word">铁 + 硫酸铜<span class="arw"><span class="c"></span><span class="l">→</span></span>硫酸亚铁 + 铜</div>
+      <div class="formula">Fe + CuSO<sub>4</sub> = FeSO<sub>4</sub> + Cu</div>
+    </div>
+    <div class="eq">
+      <div class="name">3. 碳酸钠与稀盐酸反应</div>
+      <div class="word">碳酸钠 + 盐酸<span class="arw"><span class="c"></span><span class="l">→</span></span>氯化钠 + 水 + 二氧化碳</div>
+      <div class="formula">Na<sub>2</sub>CO<sub>3</sub> + 2HCl = 2NaCl + H<sub>2</sub>O + CO<sub>2</sub>↑</div>
+    </div>
+    <div class="eq">
+      <div class="name">4. 氢气还原氧化铜</div>
+      <div class="word">氢气 + 氧化铜<span class="arw"><span class="c">加热</span><span class="l">→</span></span>铜 + 水</div>
+      <div class="formula">H<sub>2</sub> + CuO <span class="arw"><span class="c">△</span><span class="l bar"></span></span>Cu + H<sub>2</sub>O</div>
+    </div>
+  </div>
+</section>
+
+<section class="unit pb">
+  <h2>第六单元<small>碳和碳的氧化物</small></h2>
+  <div class="items two">
+    <div class="eq">
+      <div class="name">1. 碳不充分燃烧</div>
+      <div class="word">碳 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>一氧化碳</div>
+      <div class="formula">2C + O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>2CO</div>
+    </div>
+    <div class="eq">
+      <div class="name">2. 木炭还原氧化铜</div>
+      <div class="word">碳 + 氧化铜<span class="arw"><span class="c">高温</span><span class="l">→</span></span>铜 + 二氧化碳</div>
+      <div class="formula">C + 2CuO <span class="arw"><span class="c">高温</span><span class="l bar"></span></span>2Cu + CO<sub>2</sub>↑</div>
+    </div>
+    <div class="eq">
+      <div class="name">3. 木炭还原氧化铁</div>
+      <div class="word">碳 + 氧化铁<span class="arw"><span class="c">高温</span><span class="l">→</span></span>铁 + 二氧化碳</div>
+      <div class="formula">3C + 2Fe<sub>2</sub>O<sub>3</sub> <span class="arw"><span class="c">高温</span><span class="l bar"></span></span>4Fe + 3CO<sub>2</sub>↑</div>
+    </div>
+    <div class="eq">
+      <div class="name">4. 二氧化碳与碳高温反应</div>
+      <div class="word">二氧化碳 + 碳<span class="arw"><span class="c">高温</span><span class="l">→</span></span>一氧化碳</div>
+      <div class="formula">CO<sub>2</sub> + C <span class="arw"><span class="c">高温</span><span class="l bar"></span></span>2CO</div>
+    </div>
+    <div class="eq">
+      <div class="name">5. 实验室制取二氧化碳</div>
+      <div class="word">碳酸钙 + 稀盐酸<span class="arw"><span class="c"></span><span class="l">→</span></span>氯化钙 + 水 + 二氧化碳</div>
+      <div class="formula">CaCO<sub>3</sub> + 2HCl = CaCl<sub>2</sub> + H<sub>2</sub>O + CO<sub>2</sub>↑</div>
+    </div>
+    <div class="eq">
+      <div class="name">6. 二氧化碳通入澄清石灰水<em>（检验二氧化碳）</em></div>
+      <div class="word">二氧化碳 + 氢氧化钙<span class="arw"><span class="c"></span><span class="l">→</span></span>碳酸钙 + 水</div>
+      <div class="formula">CO<sub>2</sub> + Ca(OH)<sub>2</sub> = CaCO<sub>3</sub>↓ + H<sub>2</sub>O</div>
+    </div>
+    <div class="eq">
+      <div class="name">7. 二氧化碳与水反应</div>
+      <div class="word">二氧化碳 + 水<span class="arw"><span class="c"></span><span class="l">→</span></span>碳酸</div>
+      <div class="formula">CO<sub>2</sub> + H<sub>2</sub>O = H<sub>2</sub>CO<sub>3</sub></div>
+    </div>
+    <div class="eq">
+      <div class="name">8. 碳酸分解</div>
+      <div class="word">碳酸<span class="arw"><span class="c"></span><span class="l">→</span></span>水 + 二氧化碳</div>
+      <div class="formula">H<sub>2</sub>CO<sub>3</sub> = H<sub>2</sub>O + CO<sub>2</sub>↑</div>
+    </div>
+    <div class="eq">
+      <div class="name">9. 一氧化碳燃烧</div>
+      <div class="word">一氧化碳 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>二氧化碳</div>
+      <div class="formula">2CO + O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>2CO<sub>2</sub></div>
+    </div>
+    <div class="eq">
+      <div class="name">10. 一氧化碳还原氧化铜</div>
+      <div class="word">一氧化碳 + 氧化铜<span class="arw"><span class="c">加热</span><span class="l">→</span></span>铜 + 二氧化碳</div>
+      <div class="formula">CO + CuO <span class="arw"><span class="c">△</span><span class="l bar"></span></span>Cu + CO<sub>2</sub></div>
+    </div>
+  </div>
+</section>
+
+<section class="unit">
+  <h2>第七单元<small>燃料及其利用</small></h2>
+  <div class="items">
+    <div class="eq">
+      <div class="name">1. 甲烷（天然气）燃烧</div>
+      <div class="word">甲烷 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>二氧化碳 + 水</div>
+      <div class="formula">CH<sub>4</sub> + 2O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>CO<sub>2</sub> + 2H<sub>2</sub>O</div>
+    </div>
+    <div class="eq">
+      <div class="name">2. 乙醇（酒精）燃烧</div>
+      <div class="word">乙醇 + 氧气<span class="arw"><span class="c">点燃</span><span class="l">→</span></span>二氧化碳 + 水</div>
+      <div class="formula">C<sub>2</sub>H<sub>5</sub>OH + 3O<sub>2</sub> <span class="arw"><span class="c">点燃</span><span class="l bar"></span></span>2CO<sub>2</sub> + 3H<sub>2</sub>O</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>九年级化学上册 · 化学反应汇总</span>
+  <span>共 26 个反应</span>
+</footer>
+
+</div>
+<button class="print-btn" onclick="window.print()">打印 / 存为 PDF</button>
+</body>
+</html>

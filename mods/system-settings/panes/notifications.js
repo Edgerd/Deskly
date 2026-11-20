@@ -198,16 +198,8 @@ export function build() {
     return el("div", { class: "ss-pane ss-notifications" },
         group([
             controlSwitch("notify.enabled", { label: t("ss.notifications.enabled", "允许通知") }),
-            durationRow,
             controlSwitch("notify.sound", { label: t("ss.notifications.sound", "通知提示音") }),
-        ], { title: t("ss.notifications.bannerGroup", "横幅") }),
-
-        group([
-            permissionRow,
-            requestRow,
-        ], { title: t("ss.notifications.permissionGroup", "系统通知权限") }),
-
-        group([
+            durationRow,
             actionRow({
                 label: t("ss.notifications.test", "发送测试通知"),
                 buttonText: t("ss.notifications.testBtn", "发送"),
@@ -222,7 +214,12 @@ export function build() {
                 buttonText: t("ss.notifications.dismissBtn", "收起"),
                 onAction: () => window.__notify?.dismissAll?.(),
             }),
-        ], { title: t("ss.notifications.testGroup", "测试") })
+        ], { title: t("ss.notifications.bannerGroup", "横幅") }),
+
+        group([
+            permissionRow,
+            requestRow,
+        ], { title: t("ss.notifications.permissionGroup", "系统通知权限") })
     );
 }
 

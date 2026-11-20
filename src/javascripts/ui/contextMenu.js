@@ -4,6 +4,7 @@
 import { Z } from "../zindex.js";
 import { FOLDER_ICON, GENERIC_DOC_ICON } from "../paths.js";
 import { appendDesktopItem, makeDraggable } from "./desktopItems.js";
+import { pressMenuItem } from "./menuFeedback.js";
 
 /**
  * 摘掉菜单挂载的 document 级关闭监听。
@@ -113,14 +114,17 @@ export function createContextMenu(x, y, items) {
             // 置灰项只由 CSS 变淡，不禁用点击的话点一下照样执行（如「取消平铺」灰着却能触发）。
             if (item.action && !item.disabled) {
                 menuItem.addEventListener("click", () => {
-                    removeMenu(menu);
-                    try {
-                        // 把菜单打开坐标传给 action：「选项 → 位置」这类二级菜单
-                        // 需要在同一位置继续弹出，旧实现收到 undefined 会算出 NaN 定位。
-                        item.action(x, y);
-                    } catch (err) {
-                        console.error("[contextMenu] 菜单项执行失败:", item.label, err);
-                    }
+                    // 子菜单入口只做层级切换、不闪；普通动作项先亮一帧再收菜单执行。
+                    pressMenuItem(menuItem, () => {
+                        removeMenu(menu);
+                        try {
+                            // 把菜单打开坐标传给 action：「选项 → 位置」这类二级菜单
+                            // 需要在同一位置继续弹出，旧实现收到 undefined 会算出 NaN 定位。
+                            item.action(x, y);
+                        } catch (err) {
+                            console.error("[contextMenu] 菜单项执行失败:", item.label, err);
+                        }
+                    }, { submenu: Boolean(item.hasSubmenu) });
                 });
             }
             menu.appendChild(menuItem);

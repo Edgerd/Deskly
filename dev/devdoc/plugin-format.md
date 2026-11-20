@@ -12,7 +12,7 @@ mods/{id}/
 ├── index.html      # 窗口/界面 HTML
 ├── style.css       # 样式
 ├── script.js       # 逻辑（ES Module）
-└── icon.png        # 图标（程序坞/启动台/商店使用）
+└── icon.webp       # 图标（程序坞/启动台/商店使用）
 ```
 
 > **id 命名**：使用小写蛇形命名，如 `vs_code`、`system-settings`、`app-store`。
@@ -34,7 +34,7 @@ mods/{id}/
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",
-  "icon": "icon.png",
+  "icon": "icon.webp",
   "window": {
     "width": 320,
     "height": 520,
@@ -137,16 +137,16 @@ mods/{id}/
 
 ## 图标规则（硬性）
 
-1. **应用图标一律 PNG，不准使用 SVG**。自绘 SVG 与 macOS 拟物图标混在一起会立刻露馅，
+1. **应用图标一律 WebP（PNG 兼容），不准使用 SVG**。自绘 SVG 与 macOS 拟物图标混在一起会立刻露馅，
    且 Dock / 启动台 / 商店用的是同一张位图，缩放语义也不同。
    限制的只是**应用图标**：顶栏菜单栏的单色 glyph（如 `mods/siri/icon.svg`，
    由 `finderbar.js:registerSiriIcon()` 单独注册，与 `manifest.icon` 无关）不受此约束。
 2. **新应用的图标先到 `assets/icons/` 里找**（含 `assets/icons/dock/`、`assets/icons/folder/` 子目录）。
-3. **找到就复制进插件目录**（`mods/{id}/X.png`），`manifest.icon` / `apps[].icon` 只写裸文件名。
+3. **找到就复制进插件目录**（`mods/{id}/X.webp`），`manifest.icon` / `apps[].icon` 只写裸文件名。
    复制而不是跨目录引用：插件要能整目录打包成 ZIP 安装，图标留在 `assets/` 里就成了包外依赖。
    （`assets/icons/` 是共享图标库，按名字被 `dock.js` 的 `iconMap` 兜底引用，**不要把库里的原文件移走**。）
 4. **库里没有合适的就不声明 `icon` 字段**——不引用、不凑数、不自绘。系统会自动用占位图标：
-   `plugin-manager.js` 的 `GENERIC_APP_ICON`（当前为 `assets/icons/dock/Launcher.png`），
+   `plugin-manager.js` 的 `GENERIC_APP_ICON`（当前为 `assets/icons/dock/Launcher.webp`），
    Dock / 启动台 / 应用商店都在 `img.onerror` 里回退到它。占位图只有一个来源，不要在别处再写死路径。
 
 ## 图标解析顺序
@@ -164,7 +164,7 @@ mods/{id}/
 
 - `assets/…`（可带 `./` 前缀）按**站点根**相对解析；
 - 其它值相对**插件目录 `./mods/<id>/`** 解析，因此 `icon.png` 与历史的
-  `../../assets/icons/X.png` 写法都可用（新插件按上面的规则写裸文件名）；
+  `../../assets/icons/X.webp` 写法都可用（新插件按上面的规则写裸文件名）；
 - 只接受最终落在 `./mods/<id>/` 或 `./assets/` 内的结果，越界（含带 `..` 的伪装写法、绝对 URL）一律回退到下一级。
 
 多应用插件用 `getIconForName(名称或 appId)`：`apps[].icon` 优先，未声明则继承插件级 `icon`，
@@ -177,7 +177,7 @@ mods/{id}/
 | 引用目标 | 写法 |
 |----------|------|
 | 根图片 | `../../assets/images/xxx.svg` |
-| 根图标 | `../../assets/icons/xxx.png` |
+| 根图标 | `../../assets/icons/xxx.webp` |
 | 共享 JS | `../../src/javascripts/xxx.js` |
 | 共享 UI | `../../src/javascripts/ui/contextMenu.js` |
 

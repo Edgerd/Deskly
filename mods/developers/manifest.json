@@ -1,0 +1,31 @@
+{
+  "id": "developers",
+  "name": "开发者",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "把网址和自制页面做成插件：创建、修改、导出与卸载。",
+  "permissions": ["files:read", "files:write", "apps:launch"],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Developers.webp",
+  "store": {
+    "category": "开发",
+    "tagline": "网址一键变插件，也能写下自己的页面",
+    "summary": "从网址创建快捷方式或窗口应用，图标、名称与窗口属性都可以改。内置代码编辑器可以写 HTML、CSS 与脚本，把一个小页面做成插件。\n创建的插件存进本机插件库，能导出成文件，也能从文件或 AI 规格导入。卸载走系统的卸载流程，不留残件。",
+    "features": [
+      "网址创建：快捷方式或带系统窗口壳的窗口应用",
+      "窗口属性：初始与最小尺寸、拖动、缩放、标题栏、强调色",
+      "内置 HTML / CSS / JavaScript 编辑器与静态预览",
+      "导出为 .devplugin.json，支持文件、文本与 devp1 导入码",
+      "AI 规格 schema，可粘贴或导入外部生成的插件描述",
+      "源码存于本插件 AppData，运行副本走系统插件库"
+    ],
+    "usage": "打开后从主页挑推荐站点一键添加，或进入「新增」填网址、调窗口属性。自制页面在「新增 → 页面」里写。已有的插件在「管理」里修改、导出或卸载。",
+    "updated": "2026-11-08",
+    "author": "Edgerd",
+    "screenshots": []
+  }
+}

@@ -9,7 +9,7 @@
   "permissions": ["files:read", "files:write", "apps:launch", "default-apps:read", "quicklook:register"],
   "style": "style.css",
   "script": "script.js",
-  "icon": "Office.png",
+  "icon": "Office.webp",
   "store": {
     "category": "办公",
     "tagline": "Pages 文稿 / Numbers 表格 / Keynote 讲演三件套，Office 2016 功能区界面",
@@ -40,7 +40,7 @@
       "type": "app",
       "entry": "window",
       "main": "word.html",
-      "icon": "Pages.png",
+      "icon": "Pages.webp",
       "formats": [".docx", ".txt"],
       "menus": {
         "文件": [
@@ -67,7 +67,7 @@
       "type": "app",
       "entry": "window",
       "main": "excel.html",
-      "icon": "Numbers.png",
+      "icon": "Numbers.webp",
       "formats": [".xlsx", ".csv"],
       "menus": {
         "文件": [
@@ -94,7 +94,7 @@
       "type": "app",
       "entry": "window",
       "main": "ppt.html",
-      "icon": "Keynote.png",
+      "icon": "Keynote.webp",
       "formats": [".pptx"],
       "menus": {
         "文件": [

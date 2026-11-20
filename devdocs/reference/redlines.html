@@ -28,7 +28,7 @@
     <td>两处各管一段，裸 z-index 越界会压穿动态窗口</td><td>层级体检 / 人工</td></tr>
 <tr><td>运行时资源文件命名 ASCII</td>
     <td>SW 与 <code>%</code>-编码链路对非 ASCII 的处理边界</td><td>static-check 资源节</td></tr>
-<tr><td>界面里<b>不出现 emoji</b>（图标用 assets 里的 PNG/SVG 资源）</td>
+<tr><td>界面里<b>不出现 emoji</b>（图标用 assets 里的 WebP/SVG 资源）</td>
     <td>跨平台渲染不一致，且与 macOS 复刻目标冲突</td><td>人工（规范）</td></tr>
 </table>
 
@@ -55,7 +55,7 @@
 <h2>资源与图标</h2>
 <table>
 <tr><th>红线</th><th>做法</th></tr>
-<tr><td>应用图标一律 PNG</td><td>禁 SVG（程序坞/启动台/商店共用位图）；菜单栏单色 glyph 例外</td></tr>
+<tr><td>应用图标一律 WebP</td><td>禁 SVG（程序坞/启动台/商店共用位图）；菜单栏单色 glyph 例外</td></tr>
 <tr><td>图标先查 <code>assets/icons/</code>，找到<b>复制</b>进插件目录</td><td>manifest 只写裸文件名；库原文件不移走；没有就<b>不声明</b>（自动落 GENERIC_APP_ICON 占位图）</td></tr>
 <tr><td>manifest.permissions 必写（哪怕 []）</td><td>没声明的能力调用直接 ok:false；取值只能来自 22 条 PERMISSION_NAMES</td></tr>
 <tr><td>plugin-unload 必须释放全局注册</td><td>监听 / 定时器 / <code>window.__*</code> 钩子 / __menuActions 键 / settings 订阅——模块表不回收旧实例</td></tr>

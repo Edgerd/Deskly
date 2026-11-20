@@ -1951,6 +1951,19 @@ html[data-theme="dark"] .safari-ov-icon {
     color: #fff;
 }
 
+/* 按下反馈：沿用 Safari 自己的蓝，不串成系统强调色；危险项保持红色 */
+.safari-menu-row.menu-pressed {
+    background: var(--safari-menu-hover) !important;
+}
+
+.safari-menu-row.is-danger.menu-pressed {
+    background: var(--safari-red) !important;
+}
+
+.safari-tl-row.menu-pressed {
+    background: var(--safari-menu-hover) !important;
+}
+
 .safari-menu-row:disabled {
     opacity: .4;
 }

@@ -237,7 +237,7 @@ function trashIconSrc(trashModule, key) {
         const fromKernel = trashModule.getTrashIconFor(key);
         if (fromKernel) return fromKernel;
     }
-    return assetPath(`icons/trash/${trashVariantFile(key)}.png`);
+    return assetPath(`icons/trash/${trashVariantFile(key)}.webp`);
 }
 
 /**
@@ -387,12 +387,6 @@ export function build(ctx) {
 
     root.append(
         group([
-            controlSwitch("dock.autohide", {
-                label: t("ss.dock.autohide", "自动显示和隐藏程序坞"),
-            }),
-            controlSwitch("dock.zoom", {
-                label: t("ss.dock.zoom", "程序坞放大"),
-            }),
             controlSlider("dock.size", {
                 label: t("ss.dock.size", "图标大小"),
                 units: "px",
@@ -401,13 +395,19 @@ export function build(ctx) {
                 label: t("ss.dock.position", "位置"),
                 options: positionOptions,
             }),
-            controlSegmented("dock.minimize.effect", {
-                label: t("ss.dock.minimize", "最小化窗口使用"),
-                options: minimizeOptions,
+            controlSwitch("dock.autohide", {
+                label: t("ss.dock.autohide", "自动显示和隐藏程序坞"),
+            }),
+            controlSwitch("dock.zoom", {
+                label: t("ss.dock.zoom", "程序坞放大"),
             }),
             controlSlider("dock.zoom.amount", {
                 label: t("ss.dock.amount", "放大倍数"),
                 units: "倍",
+            }),
+            controlSegmented("dock.minimize.effect", {
+                label: t("ss.dock.minimize", "最小化窗口使用"),
+                options: minimizeOptions,
             }),
             controlSwitch("dock.show.indicators", {
                 label: t("ss.dock.indicators", "显示应用指示灯"),
@@ -418,6 +418,16 @@ export function build(ctx) {
         ], { title: t("ss.dock.dock", "程序坞") }),
 
         group([
+            controlSwitch("desktop.stage.showDesktopItems", {
+                label: t("ss.dock.stageDesktop", "在桌面上显示项目"),
+            }),
+            controlSegmented("desktop.stage.clickWallpaper", {
+                label: t("ss.dock.stageWallpaper", "点按墙纸显示桌面"),
+                options: [
+                    { value: "always", label: t("ss.dock.wpAlways", "始终") },
+                    { value: "stageOnly", label: t("ss.dock.wpStageOnly", "仅台前调度中") },
+                ],
+            }),
             row({
                 label: t("ss.dock.trash", "废纸篓图标"),
                 control: buildTrashPicker(),
@@ -429,13 +439,10 @@ export function build(ctx) {
             resetRow,
         ], { title: t("ss.dock.desktop", "桌面") }),
 
-        // FS-07：桌面与台前调度区（键定义在 wm/stage-manager.js，这里只渲染）
+        // FS-07：台前调度（键定义在 wm/stage-manager.js，这里只渲染；主入口在本面板）
         group([
             controlSwitch("controlcenter.stage", {
                 label: t("ss.dock.stage", "台前调度"),
-            }),
-            controlSwitch("desktop.stage.showRecent", {
-                label: t("ss.dock.stageRecent", "显示最近使用的应用"),
             }),
             controlSegmented("desktop.stage.windowMode", {
                 label: t("ss.dock.stageMode", "显示应用程序窗口"),
@@ -444,15 +451,8 @@ export function build(ctx) {
                     { value: "one", label: t("ss.dock.stageModeOne", "一次一个") },
                 ],
             }),
-            controlSwitch("desktop.stage.showDesktopItems", {
-                label: t("ss.dock.stageDesktop", "在桌面上显示项目"),
-            }),
-            controlSegmented("desktop.stage.clickWallpaper", {
-                label: t("ss.dock.stageWallpaper", "点按墙纸显示桌面"),
-                options: [
-                    { value: "always", label: t("ss.dock.wpAlways", "始终") },
-                    { value: "stageOnly", label: t("ss.dock.wpStageOnly", "仅台前调度中") },
-                ],
+            controlSwitch("desktop.stage.showRecent", {
+                label: t("ss.dock.stageRecent", "显示最近使用的应用"),
             }),
         ], { title: t("ss.dock.stage", "台前调度") }),
 

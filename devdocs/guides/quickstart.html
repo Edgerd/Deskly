@@ -109,9 +109,9 @@ window.addEventListener("plugin-unload", (e) => {
 
 <h2>图标规则（硬性）</h2>
 <ul>
-<li>应用图标<b>一律 PNG，禁止 SVG</b>（程序坞 / 启动台 / 商店共用同一张位图）。</li>
-<li>先到 <code>assets/icons/</code>（含 <code>dock/</code>、<code>folder/</code> 子目录）找现成的，找到就<b>复制</b>进插件目录，<code>manifest.icon</code> 只写裸文件名（如 <code>"icon.png"</code>）——ZIP 分发要求插件目录自包含，库里原文件不要移走。</li>
-<li>实在没有合适的就<b>不写 icon 字段</b>，系统自动落占位图（<code>assets/icons/dock/Launcher.png</code>）。不引用、不凑数、不自绘。</li>
+<li>应用图标<b>一律位图（优先 WebP），禁止 SVG</b>（程序坞 / 启动台 / 商店共用同一张位图）。</li>
+<li>先到 <code>assets/icons/</code>（含 <code>dock/</code>、<code>folder/</code> 子目录）找现成的，找到就<b>复制</b>进插件目录，<code>manifest.icon</code> 只写裸文件名（如 <code>"icon.webp"</code>）——ZIP 分发要求插件目录自包含，库里原文件不要移走。</li>
+<li>实在没有合适的就<b>不写 icon 字段</b>，系统自动落占位图（<code>assets/icons/dock/Launcher.webp</code>）。不引用、不凑数、不自绘。</li>
 </ul>
 
 <h2>最容易踩的坑（冷加载两条铁律）</h2>

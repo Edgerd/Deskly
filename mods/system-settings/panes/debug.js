@@ -422,6 +422,7 @@ export function build() {
 
     return el("div", { class: "ss-pane ss-debug" },
         group([
+            controlSwitch("debug.developerMode", { label: t("ss.debug.developerMode", "菜单栏显示调试菜单") }),
             controlDropdown("debug.logLevel", {
                 label: t("ss.debug.level", "记录级别"),
                 options: levelOptions(),
@@ -439,7 +440,6 @@ export function build() {
                 min: 0, max: 500, step: 10,
                 units: t("ss.debug.unitEntries", "条"),
             }),
-            controlSwitch("debug.developerMode", { label: t("ss.debug.developerMode", "菜单栏显示调试菜单") }),
         ], { title: t("ss.debug.controlsGroup", "记录") }),
 
         group([

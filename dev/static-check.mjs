@@ -88,7 +88,7 @@ files.forEach((file) => {
                 const isIcon = m[0].includes("assetIcon");
                 const isGlyph = m[0].includes("glyph(");
                 const leaf = sub ? `${base}/${sub}` : base;
-                if (isIcon) checkSiteRootPath(`./assets/icons/${leaf}.png`, rel);
+                if (isIcon) checkSiteRootPath(`./assets/icons/${leaf}.webp`, rel);
                 else if (isGlyph) checkSiteRootPath(`./assets/images/${leaf}.svg`, rel);
                 else checkSiteRootPath(`./${leaf.startsWith("assets/") || leaf.startsWith("mods/") ? leaf : `assets/${leaf}`}`, rel);
             }

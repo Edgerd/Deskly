@@ -17,6 +17,7 @@ import { settings } from "../../src/javascripts/settings.js";
 import { i18n } from "../../src/javascripts/i18n.js";
 import { log } from "../../src/javascripts/log.js";
 import { openPopover, closeAllPopovers } from "../../src/javascripts/ui/popover.js";
+import { pressMenuItem } from "../../src/javascripts/ui/menuFeedback.js";
 
 /** 释放句柄列表：每项是一个无参清理函数。 */
 let disposers = [];
@@ -307,8 +308,11 @@ export function controlDropdown(key, spec = {}) {
             class: "ss-menu__item", attrs: { type: "button", role: "option" }, dataset: { value: String(opt.value) },
         }, opt.color ? el("i", { class: "ss-swatch__dot", style: `background:${opt.color}` }) : null, el("span", { text: opt.label }));
         item.addEventListener("click", () => {
-            link.write(opt.value);
-            hideAllMenus();
+            // 下拉选项属于菜单项：先亮一帧再收浮层并写入设置。
+            pressMenuItem(item, () => {
+                hideAllMenus();
+                link.write(opt.value);
+            });
         });
         list.append(item);
     });
@@ -442,6 +446,41 @@ export function controlSwatches(key, spec = {}) {
         label: spec.label, hint: spec.hint, stack: spec.stack !== false, id: spec.id, key,
         control: items.length ? el("div", { class: "ss-swatches__col" }, dots, name) : dots,
     });
+}
+
+/** 把 #rgb / #rrggbb / 无井号写法统一成原生颜色控件要的 #rrggbb；非法值退回黑色。 */
+function normalizeHex(raw) {
+    const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(raw ?? "").trim());
+    if (!match) return "#000000";
+    const hex = match[1].length === 3
+        ? match[1].split("").map((c) => c + c).join("")
+        : match[1];
+    return `#${hex.toLowerCase()}`;
+}
+
+/**
+ * 颜色选择行：原生取色器 + 十六进制读数。
+ * 存的是字符串键（默认值形如 `#ffffff`），写入用 `<input type="color">` 的规范值，
+ * 不经过文本输入，避免用户敲进 `red` 这类颜色名后写进设置、下游 parse 失败。
+ * @param {string} key 设置键
+ * @param {object} spec {label, hint}
+ * @returns {HTMLElement} 行元素
+ */
+export function controlColor(key, spec = {}) {
+    const input = el("input", {
+        class: "ss-color",
+        attrs: { type: "color", "aria-label": spec.label || key },
+    });
+    const value = el("span", { class: "ss-color__value" });
+    const link = bind(key, (raw) => {
+        const hex = normalizeHex(raw);
+        input.value = hex;
+        value.textContent = hex.toUpperCase();
+    });
+    input.addEventListener("input", () => link.write(input.value));
+    input.addEventListener("change", () => link.write(input.value));
+    const control = el("div", { class: "ss-color__wrap" }, input, value);
+    return row({ label: spec.label, hint: spec.hint, control, id: spec.id, key });
 }
 
 /**

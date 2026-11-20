@@ -27,7 +27,7 @@ mods/<id>/
 ├── index.html      # 界面片段，恰好一个 .window 根
 ├── style.css       # 样式，选择器全部以你的窗口类开头
 ├── script.js       # ES Module，顶层 init() + plugin-unload 清理
-└── icon.png        # PNG 图标（可选，缺省自动落占位图）
+└── icon.webp       # WebP 图标（可选，缺省自动落占位图）
 ```
 
 - id：小写蛇形，合法字符集 `[A-Za-z0-9][A-Za-z0-9._-]*`，不含 `..`，**必须等于目录名**。
@@ -96,8 +96,8 @@ i18n.t("myPlugin.title", "我的插件"); // 键必须字面量，每次必带�
 - 缓动统一 `cubic-bezier(0.16, 1, 0.3, 1)`；窗口开合 160ms 量级；动画只用 `transform` 与 `opacity`。
 - **`.window` 与任何带 backdrop-filter 的元素上禁 transform / filter / clip-path**（采样会断链）。
 - 亚克力表面内部交互反馈只用纯绘制属性（background / box-shadow / color），**禁 `filter: brightness()`**。
-- **界面禁 emoji**（图标用 `assets/icons/` 的 PNG 或 `assets/images/` 的 SVG glyph）；
-  应用图标一律 PNG、复制进插件目录、manifest 只写裸文件名。
+- **界面禁 emoji**（图标用 `assets/icons/` 的 WebP 或 `assets/images/` 的 SVG glyph）；
+  应用图标一律 WebP、复制进插件目录、manifest 只写裸文件名。
 - 尊重减少动态效果：系统会置 `html[data-reduce-motion="on"]`，非必要动效在该属性下关闭。
 - 层级：浮层 z 只取 `zindex.js` 的 Z 表（POPOVER 9640 等）；窗口 z 由 window-manager 焦点栈管，不手写。
 
@@ -117,7 +117,7 @@ i18n.t("myPlugin.title", "我的插件"); // 键必须字面量，每次必带�
 `__osfs` / `OSFS`（路径一律 `OSFS.TOP.*.path`，不写 `/文档` 字面量）、`__trash`（删除收口 moveToTrash/emptyTrash）。
 顶栏图标：`registerFinderbarIcon({id, icon, onClick, order})`（finderbar.js 导出），plugin-unload 里 `unregisterFinderbarIcon(id)`。
 
-JS 运行时资源 URL（`<img src>`、fetch）用 paths.js：`assetPath("icons/x.png")`、`modFile(id, "x.png")`
+JS 运行时资源 URL（`<img src>`、fetch）用 paths.js：`assetPath("icons/x.webp")`、`modFile(id, "x.webp")`
 ——运行时 URL 相对**文档**解析，写 `../../assets/…` 只是碰巧能用。
 
 ## 8. 安装与打包

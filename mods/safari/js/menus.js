@@ -4,6 +4,7 @@ import { app } from "./app.js";
 import { bookmarkFor, readingFor, saveSettings, titleOfTab, zoomFor } from "./store.js";
 import { ZOOM_LEVELS } from "./constants.js";
 import { escapeHtml, faviconMarkup, icon } from "./utils.js";
+import { pressMenuItem } from "../../../src/javascripts/ui/menuFeedback.js";
 import {
     closeMenus,
     isMenuOpen,
@@ -48,8 +49,10 @@ function openTabList() {
                 app.api.tabs.close(tab.id);
                 return;
             }
-            closeMenus();
-            app.api.tabs.switchTo(tab.id);
+            pressMenuItem(row, () => {
+                closeMenus();
+                app.api.tabs.switchTo(tab.id);
+            });
         });
         row.querySelector(".safari-tl-close").addEventListener("click", (event) => {
             event.stopPropagation();
@@ -59,8 +62,10 @@ function openTabList() {
         row.addEventListener("keydown", (event) => {
             if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                closeMenus();
-                app.api.tabs.switchTo(tab.id);
+                pressMenuItem(row, () => {
+                    closeMenus();
+                    app.api.tabs.switchTo(tab.id);
+                });
             }
         });
         target.appendChild(row);

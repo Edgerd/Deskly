@@ -107,9 +107,41 @@ async function query(name) {
     return { ...row, state: "unknown", supported: Boolean(navigator.permissions?.query) };
 }
 
+/** 一次会话内缓存的否定结果：避免每次点击都重复触发系统请求或设备获取。 */
+const ACQUIRE_MEMO = { persistentStorage: null, videoInput: null };
+
+/** 只提示一次的降级说明（持久存储被拒、无摄像头等），避免每次操作重复刷日志。 */
+const NOTICE_ONCE = new Set();
+
+/**
+ * 一次会话只写一条的提示日志。
+ * @param {string} key 去重键
+ * @param {"info"|"warn"} level 级别
+ * @param {string} message 文本
+ * @param {*} [data] 附加上下文
+ */
+function noticeOnce(key, level, message, data) {
+    if (NOTICE_ONCE.has(key)) return;
+    NOTICE_ONCE.add(key);
+    window.__log?.[level]?.("kernel/permissions", message, data);
+}
+
+/** 是否有视频输入设备；结果缓存一次会话（枚举失败时放行，让 getUserMedia 自己报错）。 */
+function hasVideoInput() {
+    if (!ACQUIRE_MEMO.videoInput) {
+        ACQUIRE_MEMO.videoInput = navigator.mediaDevices.enumerateDevices()
+            .then((devices) => devices.some((device) => device.kind === "videoinput"))
+            .catch(() => true);
+    }
+    return ACQUIRE_MEMO.videoInput;
+}
+
 /** 真实的媒体授权：拿到流立刻停掉所有轨道。 */
 async function acquireMedia(kind) {
     if (!navigator.mediaDevices?.getUserMedia) return { state: "unsupported", detail: "此上下文没有 getUserMedia" };
+    if (kind === "video" && !(await hasVideoInput())) {
+        return { state: "unavailable", detail: "未检测到摄像头设备；已跳过获取，接入设备后刷新页面再试" };
+    }
     const constraints = kind === "video" ? { video: true } : { audio: true };
     const stream = await withTimeout(navigator.mediaDevices.getUserMedia(constraints), ACQUIRE_TIMEOUT, kind);
     const labels = stream.getTracks().map((track) => `${track.kind}:${track.label || "未命名"}`);
@@ -150,11 +182,15 @@ async function acquireClipboardWrite() {
     return { state: "granted", detail: keep === null ? "写入成功（原内容不可读，已写入占位空格）" : "写入成功，原内容已还原" };
 }
 
-/** 持久存储请求。 */
+/** 持久存储请求：拒绝过一次就不再请求，直接返回降级说明。 */
 async function acquirePersistentStorage() {
     if (!navigator.storage?.persist) return { state: "unsupported", detail: "此浏览器没有 StorageManager.persist" };
+    if (ACQUIRE_MEMO.persistentStorage === "denied") {
+        return { state: "denied", detail: "此前已被拒绝，沿用普通缓存（IndexedDB）；浏览器可能在空间不足时清理缓存" };
+    }
     const ok = await navigator.storage.persist();
-    return { state: ok ? "granted" : "denied", detail: ok ? "已请求持久存储配额" : "浏览器未授予持久存储（可能已被拒绝过）" };
+    if (!ok) ACQUIRE_MEMO.persistentStorage = "denied";
+    return { state: ok ? "granted" : "denied", detail: ok ? "已请求持久存储配额" : "浏览器未授予持久存储，已降级为普通缓存（IndexedDB）" };
 }
 
 const ACQUIRE = {
@@ -185,7 +221,13 @@ async function request(name) {
     try {
         const result = await action();
         const ok = result.state === "granted";
-        window.__log?.[ok ? "info" : "warn"]("kernel/permissions", `${row.label}：${result.state}`, { name, detail: result.detail });
+        // 无设备 / 持久存储被拒属于已降级的可预期状态：只记一次 INFO，不刷 WARN。
+        const degraded = result.state === "unavailable" || (name === "persistent-storage" && result.state === "denied");
+        if (degraded) {
+            noticeOnce(`degraded:${name}`, "info", `${row.label}：${result.state}`, { name, detail: result.detail });
+        } else {
+            window.__log?.[ok ? "info" : "warn"]("kernel/permissions", `${row.label}：${result.state}`, { name, detail: result.detail });
+        }
         return { ...row, state: result.state, detail: result.detail || "", ok };
     } catch (err) {
         const state = err && err.name === "NotAllowedError" ? "denied" : "prompt";

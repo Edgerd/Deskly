@@ -6,6 +6,7 @@ import { i18n } from '../../src/javascripts/i18n.js';
 import { FinderState } from './finder-state.js';
 import { FinderLayout } from './finder-layout.js';
 import { FinderTags } from './finder-tags.js';
+import { pressMenuItem } from '../../src/javascripts/ui/menuFeedback.js';
 
 /* Q6 收口：只走 Deskly 公开 API（vfs 门面 + UI 原语） */
 const Deskly = () => window.Deskly;
@@ -114,8 +115,10 @@ const FinderActions = (() => {
         const onClick = (e) => {
             const item = e.target.closest('.pop-item');
             if (!item) return;
-            FinderState.setGroupBy(item.dataset.group);
-            closeAll();
+            pressMenuItem(item, () => {
+                closeAll();
+                FinderState.setGroupBy(item.dataset.group);
+            });
         };
         pop.addEventListener('click', onClick);
         track(() => pop.removeEventListener('click', onClick));
@@ -154,8 +157,10 @@ const FinderActions = (() => {
             if (!item) return;
             const action = item.dataset.action;
             if (!action) return;
-            handleMoreAction(action, item).catch((err) => console.error('[finder] 菜单动作失败：', action, err));
-            closeAll();
+            pressMenuItem(item, () => {
+                closeAll();
+                handleMoreAction(action, item).catch((err) => console.error('[finder] 菜单动作失败：', action, err));
+            });
         };
         pop.addEventListener('click', onClick);
         track(() => pop.removeEventListener('click', onClick));

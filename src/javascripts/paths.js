@@ -12,12 +12,12 @@
 /** 相对站点根（扩展页 URL 基准）拼 assets 下的资源路径。 */
 export const assetPath = (rel) => `./assets/${rel}`;
 
-/** `assets/icons/<name>.png`；name 是不带扩展名的图标名（保持与库内文件名一致）。 */
-export const assetIcon = (name) => assetPath(`icons/${name}.png`);
+/** `assets/icons/<name>.webp`；name 是不带扩展名的图标名（保持与库内文件名一致）。 */
+export const assetIcon = (name) => assetPath(`icons/${name}.webp`);
 
 /**
  * `assets/images/<name>.svg` —— 界面字形（SF Symbols 风格单色图），给侧栏/按钮取用；
- * 与「应用图标」区分：应用图标只用 PNG（见 plugin-format.md 图标规则）。
+ * 与「应用图标」区分：应用图标只用 WebP（见 plugin-format.md 图标规则）。
  */
 export const glyph = (name) => assetPath(`images/${name}.svg`);
 
@@ -49,7 +49,7 @@ export const modDateUrl = (id, file, seq) =>
 
 // 通用应用占位图标：任何应用图标缺失或加载失败时的唯一兜底目标。
 // 规则见 dev/devdoc/plugin-format.md「图标规则（硬性）」。
-export const GENERIC_APP_ICON = assetPath("icons/dock/Launcher.png");
+export const GENERIC_APP_ICON = assetPath("icons/dock/Launcher.webp");
 
 // ZIP 能力（商店安装 ZIP 插件 + office 的 docx/xlsx 编解码）共用的第三方库。
 // 不写进 index.html：98KB 只在这两条路径上才用得到，首屏不该付这份下载与解析成本。
@@ -58,12 +58,12 @@ export const JSZIP_SCRIPT = assetPath("vendor/jszip.min.js");
 
 // 告警/错误对话框的默认配图，以及文件类图标的通用三件套。
 export const FINDER_ICON = assetIcon("Finder");
-export const FOLDER_ICON = assetPath("icons/folder/Folder.png");
-export const DOWNLOAD_ICON = assetPath("icons/folder/Download.png");
-export const GENERIC_DOC_ICON = assetPath("images/GenericDocumentIcon.png");
+export const FOLDER_ICON = assetPath("icons/folder/Folder.webp");
+export const DOWNLOAD_ICON = assetPath("icons/folder/Download.webp");
+export const GENERIC_DOC_ICON = assetPath("images/GenericDocumentIcon.webp");
 
-// Siri 顶栏图标：彩色光球（PNG）。与「应用/启动台图标」区分——后者是
-// manifest.icon（mods/siri/Siri.png），走 getIcon("siri")；顶栏要的是这张 Orb。
+// Siri 顶栏图标：彩色光球（WebP）。与「应用/启动台图标」区分——后者是
+// manifest.icon（mods/siri/Siri.webp），走 getIcon("siri")；顶栏要的是这张 Orb。
 export const SIRI_BAR_ICON = assetIcon("Siri-Orb");
 
 /* ── 旧式 App（非插件）残留目录 ──

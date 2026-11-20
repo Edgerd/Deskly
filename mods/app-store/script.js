@@ -311,6 +311,19 @@ function paintHistoryBtn() {
     btn.appendChild(h("span", "as-sidebtn__label", t("as.sidebar.history", "安装记录")));
 }
 
+/**
+ * 分类图标：全部 / 已内置 / 已安装 / 已禁用各有固定图标，商店目录里出现的
+ * 自定义分类（插件的 store.category）按名字对到最近的 Phosphor 图标，
+ * 对不上就用通用标签，不为了几个分类名去加资源。名字都要在 assets/ui/phosphor/ 里存在。
+ */
+const CAT_ICONS = { all: "list", builtin: "squares-four", installed: "puzzle-piece", disabled: "prohibit" };
+const CATEGORY_ICONS = { 系统: "gear-six", 开发: "code", 效率: "lightning", 办公: "briefcase" };
+
+function catIconOf(key, label) {
+    if (CAT_ICONS[key]) return CAT_ICONS[key];
+    return CATEGORY_ICONS[label] || "tag";
+}
+
 /** 类别组：只列真实存在的分类（来自各插件 manifest.store.category）+ 全部。 */
 function renderCats() {
     const box = $("cats");
@@ -320,8 +333,11 @@ function renderCats() {
         .filter((c) => c.key === "all" || c.key.startsWith("cat:"))
         .forEach((c) => {
             const label = c.key === "all" ? t("as.sidebar.all", "全部") : c.label;
-            const btn = h("button", "cat" + (view === "list" && c.key === categoryKey ? " active" : ""), label);
+            const btn = h("button", "cat" + (view === "list" && c.key === categoryKey ? " active" : ""));
             btn.type = "button";
+            const ico = iconEl(catIconOf(c.key, label));
+            if (ico) btn.appendChild(ico);
+            btn.appendChild(h("span", "cat__label", label));
             btn.appendChild(h("span", "n", String(c.count)));
             btn.addEventListener("click", () => {
                 categoryKey = c.key;

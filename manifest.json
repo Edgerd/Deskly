@@ -18,6 +18,7 @@
     "https://www.bing.com/*",
     "https://api.kobin.cn/*"
   ],
+  "optional_host_permissions": ["*://*/*"],
   "background": {
     "service_worker": "sw.js"
   },

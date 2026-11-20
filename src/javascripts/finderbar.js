@@ -16,6 +16,7 @@ import { i18n } from "./i18n.js";
 import { settings } from "./settings.js";
 import { mountToFinderbar } from "./controlcenter.js";
 import { initDatetimePopover } from "./datetime_popover.js";
+import { pressMenuItem } from "./ui/menuFeedback.js";
 import { bringToFront } from "./zindex.js";
 import { assetPath, SIRI_BAR_ICON } from "./paths.js";
 import { dispatchMenuCommand } from "./ui/menuCommands.js";
@@ -552,8 +553,8 @@ function initFinderbar() {
  * 每个新标签页都在为此付费。siri 已入 plugin-manager BUILTIN_IDS，
  * 首次点击图标时才 import 脚本；图标显示不等待任何脚本加载。
  *
- * 顶栏图标用彩色光球 `assets/icons/Siri-Orb.png`（SIRI_BAR_ICON，路径集中在 paths.js）。
- * 它与「应用/启动台图标」manifest.icon（mods/siri/Siri.png）是两张不同的图，
+ * 顶栏图标用彩色光球 `assets/icons/Siri-Orb.webp`（SIRI_BAR_ICON，路径集中在 paths.js）。
+ * 它与「应用/启动台图标」manifest.icon（mods/siri/Siri.webp）是两张不同的图，
  * 宿主侧不写死插件路径；旧的单色 SVG glyph（assets/images/siri.svg）已彻底删除，不再引用。
  */
 function registerSiriIcon() {
@@ -769,10 +770,12 @@ function buildMenuItem(item) {
     if (!item.disabled && item.cmd) {
         p.addEventListener("click", (e) => {
             e.stopPropagation();
-            // 与静态菜单项（ui/menu.js clickMenuItem）同一条路径：先关菜单再执行，
+            // 与静态菜单项（ui/menu.js clickMenuItem）同一条路径：先亮一帧再收菜单执行，
             // 不触发菜单重建的命令（前往文件夹等）执行完菜单不能悬留（BUG-03）。
-            closeAllMenus();
-            dispatchMenuCommand(item.cmd);
+            pressMenuItem(p, () => {
+                closeAllMenus();
+                dispatchMenuCommand(item.cmd);
+            });
         });
     }
     return p;

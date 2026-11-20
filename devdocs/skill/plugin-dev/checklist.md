@@ -4,7 +4,7 @@
 
 ## 结构与清单
 - [ ] 目录 `mods/<id>/` 与 manifest 的 `id` 完全一致，小写蛇形、无 `..`
-- [ ] 四个文件齐备（manifest.json / index.html / style.css / script.js），图标为 PNG 或缺省不声明
+- [ ] 四个文件齐备（manifest.json / index.html / style.css / script.js），图标为 WebP 或缺省不声明
 - [ ] `permissions` 字段存在（哪怕 `[]`），且每条都在 22 条权限名内、每条都真的用到
 - [ ] 根级没写 `author`（无人读取，商店作者写到 `store.author`）；`formats` 单应用插件写根级、多应用套件写 `apps[].formats`
 
@@ -12,7 +12,7 @@
 - [ ] index.html 恰好一个 `.window` 根；`data-window` 只用系统认识的键（尺寸简写 size/min/max 或 width/height/minWidth/minHeight/maxWidth/maxHeight；布尔 resizable/minimizable/maximizable/centered/draggable/fixed/modal/multiWindow；字符串 role/parent/level/dragAxis/resizeAxis/snap/titlebar/trafficLights；特殊 aspectRatio/dragBounds）
 - [ ] 红绿灯为 `<deskly-traffic-lights>`，标题栏形态带 `data-titlebar`，无标题栏用 `overlay`
 - [ ] 所有用户可见文案走 `data-i18n` 或 `t(key, fallback)`；四语（zh-CN/en/ja-JP/cat）都注册
-- [ ] 界面无 emoji；图标为站内 PNG/SVG 资源
+- [ ] 界面无 emoji；图标为站内 WebP/SVG 资源
 
 ## 样式与动画
 - [ ] 无裸 `blur(<px>)`；毛玻璃用 `var(--surface-blur-N)`，文字色用 `var(--surface-text*)`

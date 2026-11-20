@@ -81,7 +81,7 @@ export function getTrashKey() {
  * @returns {string} 站点根相对的图标 URL
  */
 export function getTrashIconFor(key) {
-    return assetPath(`icons/trash/${TRASH_VARIANTS[key] || TRASH_VARIANTS[DEFAULT_KEY]}.png`);
+    return assetPath(`icons/trash/${TRASH_VARIANTS[key] || TRASH_VARIANTS[DEFAULT_KEY]}.webp`);
 }
 
 /** 当前选中变体的图标路径。 */

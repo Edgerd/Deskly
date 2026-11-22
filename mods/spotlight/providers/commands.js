@@ -13,6 +13,8 @@
 import { i18n } from "../../../src/javascripts/i18n.js";
 import { glyph, assetPath } from "../../../src/javascripts/paths.js";
 import { appearance, setTheme } from "../../../src/javascripts/appearance.js";
+import { settings } from "../../../src/javascripts/settings.js";
+import { showNotification } from "../../../src/javascripts/ui/notification.js";
 import { registerSystemAction, listSystemActions, runSystemAction } from "../../../src/javascripts/system-actions.js";
 import { rankOf } from "../engine.js";
 
@@ -21,8 +23,37 @@ function toggleDarkMode() {
     setTheme(appearance.getTheme() === "dark" ? "light" : "dark");
 }
 
+/** 进行中的计时器句柄：同一时刻只保留一个（再设一个就是改时间）。 */
+let timerHandle = null;
+
+/**
+ * F-21：计时器快捷命令。原版「设置计时器」的等价实现：聚焦里输入
+ * 「计时器 5」/「timer 5 分钟」回车即开始倒计时，到点弹一条不自动收起的通知。
+ * @param {number} minutes 分钟数（1..1440，搜索分支已保证）
+ */
+function startTimer(minutes) {
+    if (timerHandle) clearTimeout(timerHandle);
+    const label = i18n.t("spotlight.timerBody", "{min} 分钟计时")
+        .replace("{min}", String(minutes));
+    showNotification({
+        title: i18n.t("spotlight.timerStarted", "计时开始"),
+        text: label,
+        duration: 5000,
+    });
+    timerHandle = setTimeout(() => {
+        timerHandle = null;
+        showNotification({
+            title: i18n.t("spotlight.timerDone", "计时结束"),
+            text: label,
+            duration: 0, // 到点的提醒常驻直到点掉，不做成会悄悄消失的假提醒
+        });
+    }, Math.round(minutes * 60 * 1000));
+}
+
 /** 自带实现的动作表：键名与 __menuActions 同一命名空间，解析时优先查菜单表。 */
-const LOCAL_ACTIONS = { toggleDarkMode };
+const LOCAL_ACTIONS = {
+    toggleDarkMode, startTimer,
+};
 
 /**
  * 解析动作名为可执行函数：__menuActions 是唯一权威（菜单命令即注册表键名，
@@ -67,7 +98,7 @@ const BUILTIN_ACTIONS = [
 
 // 内置动作注册进系统动作表（重复求值时同 id 覆盖，幂等）。
 // 可用性 = 动作名能解析到真实函数（解析不到的条目自动从结果消失，与旧行为一致），
-// 窗口类动作额外要求存在应用窗口。
+// 窗口类动作额外要求存在应用窗口；def.availability 是逐条补充的状态可用性。
 for (const def of BUILTIN_ACTIONS) {
     registerSystemAction({
         id: def.id,
@@ -76,9 +107,35 @@ for (const def of BUILTIN_ACTIONS) {
         icon: def.icon,
         group: def.group,
         aliases: def.aliases,
-        available: () => Boolean(resolveAction(def.id)) && (!def.needsWindow || hasAppWindow()),
+        available: () => Boolean(resolveAction(def.id)) && (!def.needsWindow || hasAppWindow())
+            && (typeof def.availability !== "function" || def.availability()),
         run: () => resolveAction(def.id)?.(),
     });
+}
+
+/** 「计时器 5」「timer 5 分钟」形态：命令词 + 可选数量 + 可选单位词。 */
+const TIMER_RE = /^(?:计时器|定时|timer)\s*([\d.]+)?\s*(?:分钟|分|min|minutes?)?$/i;
+
+/**
+ * 计时器形态解析（F-21）：命令词后必须带分钟数（1..1440），没有数字就不出结果 ——
+ * 「计时器」单独出现不给一个点了没反应的假条目。
+ * @param {string} lower 小写查询
+ * @returns {Array<object>} 命中时一条可执行结果，否则空
+ */
+function timerResults(lower) {
+    const m = lower.match(TIMER_RE);
+    if (!m) return [];
+    const minutes = Number(m[1]);
+    if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 1440) return [];
+    return [{
+        type: "command",
+        score: 0,
+        label: i18n.t("spotlight.timerLabel", "设置计时器：{min} 分钟").replace("{min}", String(minutes)),
+        sub: i18n.t("spotlight.timerSub", "计时器"),
+        hint: i18n.t("spotlight.runHint", "回车执行"),
+        icon: glyph("clock.blue"),
+        action: () => startTimer(minutes),
+    }];
 }
 
 export const commandsProvider = {
@@ -88,6 +145,8 @@ export const commandsProvider = {
     async: false,
     types: ["command"],
     search(ctx) {
+        const timer = timerResults(ctx.lower);
+        if (timer.length) return timer;
         return listSystemActions()
             .map((action) => ({ action, score: rankOf(ctx.lower, action.label, action.id, action.sub, ...action.aliases) }))
             .filter(({ score }) => score < 3)

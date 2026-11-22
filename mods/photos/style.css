@@ -1435,3 +1435,54 @@ html[data-theme="light"] .photos .search-input:focus {
 .photos .file-input {
     display: none;
 }
+
+/* ---- 回忆视图：卡片墙（F-47） ----
+   grid-content 平时是网格容器；回忆模式下整体换成横向滚动的卡片墙，
+   卡片封面用缩略图管线（bindThumb），标题/数量压在封面下缘。 */
+.photos .grid-content .memories-wall {
+    display: flex;
+    gap: 18px;
+    overflow-x: auto;
+    padding: 18px 20px 26px;
+    scroll-snap-type: x proximity;
+}
+.photos .grid-content .memory-card {
+    flex: 0 0 200px;
+    scroll-snap-align: start;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    outline: none;
+}
+.photos .grid-content .memory-card:focus-visible {
+    box-shadow: 0 0 0 2px var(--ph-accent);
+    border-radius: 12px;
+}
+.photos .grid-content .memory-card .thumb-media {
+    display: block;
+    width: 200px;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 12px;
+    background: var(--ph-thumb-bg);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.photos .grid-content .memory-card .thumb-media.loaded {
+    opacity: 1;
+}
+.photos .grid-content .memory-card__title {
+    margin: 8px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ph-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.photos .grid-content .memory-card__count {
+    margin: 2px 0 0;
+    font-size: 11.5px;
+    color: var(--ph-text-3);
+}

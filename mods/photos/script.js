@@ -172,6 +172,7 @@ function startPhotos(win) {
         btnNext: win.querySelector(".btn-next"),
         btnRotateLeft: win.querySelector(".btn-rotate-left"),
         btnRotateRight: win.querySelector(".btn-rotate-right"),
+        btnEdit: win.querySelector(".btn-edit"),
         btnZoomOut: win.querySelector(".btn-zoom-out"),
         btnZoomIn: win.querySelector(".btn-zoom-in"),
         zoomSlider: win.querySelector(".zoom-slider"),
@@ -413,13 +414,14 @@ function startPhotos(win) {
 
     /* ── 数据持久化 ── */
 
-    function seedAlbums() {
-        return [
-            { id: makeId("album"), name: T("photos.album.travel", "旅行") },
-            { id: makeId("album"), name: T("photos.album.work", "工作") },
-            { id: makeId("album"), name: T("photos.album.family", "家人") },
-        ];
-    }
+    /* 旧版首次打开会播种「旅行/工作/家人」演示相簿；这些名字是历史遗留标识，
+       不随当前语言包变化，故按四语名字硬编码识别，只清理没有成员的空相簿。 */
+    const LEGACY_SEED_ALBUM_NAMES = new Set([
+        "旅行", "工作", "家人",
+        "Travel", "Work", "Family",
+        "旅行", "仕事", "家族",
+        "出遊喵", "上班喵", "家人喵",
+    ]);
 
     function loadLibrary() {
         // 元数据（相簿归属/收藏/旋转等）按路径挂在 localStorage；
@@ -438,10 +440,22 @@ function startPhotos(win) {
                 .filter((a) => a && typeof a.id === "string" && typeof a.name === "string")
                 .filter((a) => !albumSeen.has(a.id) && albumSeen.add(a.id))
                 .map((a) => ({ id: a.id, name: a.name }));
+            if ((Number(data.version) || 0) < 4) {
+                const used = new Set();
+                Object.values(state.meta).forEach((m) => {
+                    (Array.isArray(m && m.albumIds) ? m.albumIds : []).forEach((id) => used.add(id));
+                });
+                state.albums = state.albums.filter((a) => used.has(a.id) || !LEGACY_SEED_ALBUM_NAMES.has(a.name));
+                // 此时 items 尚未扫描，不能走 saveLibrary（会把 meta 清空），直接原样回写
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, version: 4, albums: state.albums }));
+                } catch (e) {
+                    console.warn("[photos] 清理演示相簿后回写失败", e);
+                }
+            }
         } else {
             state.meta = {};
-            // 只有首次打开才播种默认相簿：用户删掉的相簿不应该下次启动又长回来
-            state.albums = seedAlbums();
+            state.albums = [];
             saveLibrary();
         }
     }
@@ -489,7 +503,7 @@ function startPhotos(win) {
                     favorite: !!meta.favorite,
                     deleted: false,
                     deletedAt: null,
-                    albumIds: [],
+                    albumIds: Array.isArray(meta.albumIds) ? meta.albumIds : [],
                     rotation: normRotation(meta.rotation),
                     location: mount.name,
                     width: Number(meta.width) || 0,
@@ -520,7 +534,7 @@ function startPhotos(win) {
                 if (item.duration) entry.duration = item.duration;
                 if (Object.keys(entry).length) meta[item.id] = entry;
             });
-            payload = JSON.stringify({ version: 3, meta, albums: state.albums });
+            payload = JSON.stringify({ version: 4, meta, albums: state.albums });
         } catch (e) {
             console.error("[photos] 媒体库元数据序列化失败", e);
             reportSaveFailure("serialize", e);
@@ -781,10 +795,6 @@ function startPhotos(win) {
         el.onload = () => el.classList.add("loaded");
         el.onerror = () => el.classList.remove("loaded");
 
-        if (isInlineSource(item)) {
-            el.src = item.src;
-            return;
-        }
         getThumbURL(item.id).then((url) => {
             if (seq != null && (seq !== renderSeq || !el.isConnected)) return;
             if (!url) {
@@ -868,6 +878,10 @@ function startPhotos(win) {
             case "smart-image":
                 items = sortByDate(items.filter((i) => i.type === "image" && !i.deleted));
                 break;
+            case "memories":
+                // 回忆视图的素材：全部图片按日期倒序；合集的规则拆分在 buildMemoryCollections
+                items = sortByDate(items.filter((i) => i.type === "image" && !i.deleted));
+                break;
             default:
                 if (state.view.startsWith("album-")) {
                     const albumId = state.view.slice(6);
@@ -897,6 +911,7 @@ function startPhotos(win) {
             case "trash": return T("photos.view.trash", "已删除");
             case "smart-video": return T("photos.view.videos", "仅视频");
             case "smart-image": return T("photos.view.images", "仅图片");
+            case "memories": return T("photos.view.memories", "回忆");
             default:
                 if (state.view.startsWith("album-")) {
                     const album = findAlbum(state.view.slice(6));
@@ -945,6 +960,13 @@ function startPhotos(win) {
         }
 
         els.emptyState.classList.remove("show");
+        if (state.view === "memories") {
+            // 回忆是卡片墙：不管当前网格/列表模式，都走自己的渲染
+            els.gridView.classList.add("active");
+            els.listView.classList.remove("active");
+            renderMemories(items);
+            return;
+        }
         if (state.mode === "grid") {
             els.gridView.classList.add("active");
             els.listView.classList.remove("active");
@@ -954,6 +976,121 @@ function startPhotos(win) {
             els.listView.classList.add("active");
             renderList(items);
         }
+    }
+
+    /* ── 回忆视图 ── */
+
+    /** 同一自然月（本地时区）。 */
+    function sameMonth(date, ref) {
+        return date.getFullYear() === ref.getFullYear() && date.getMonth() === ref.getMonth();
+    }
+
+    /**
+     * 由图库图片生成回忆合集（纯函数，供逻辑探针复用）：
+     * ① 最近 30 天 ≥8 张 →「最近的日子」；② 当月 ≥6 张 →「这个月」（当月已被近期卡
+     * 全覆盖时不再重复出卡）；③ 个人收藏 ≥4 张；④ 其余按月分组 ≥6 张，取最近 4 个月。
+     * 全部按日期倒序，每卡最多 60 张。
+     * @param {Array<object>} items 图片条目（date 可被 Date 解析）
+     * @param {Date} [ref] 参照「今天」，默认当前时间
+     * @returns {Array<{key:string,title:string,items:Array<object>}>} 合集列表
+     */
+    function buildMemoryCollections(items, ref = new Date()) {
+        const images = sortByDate(items.filter((i) => i.type === "image" && !i.deleted));
+        if (!images.length) return [];
+        const collections = [];
+        const covered = new Set();
+        const DAY = 24 * 60 * 60 * 1000;
+
+        const recent = images.filter((i) => {
+            const t = new Date(i.date || 0).getTime();
+            return t && t <= ref.getTime() && t > ref.getTime() - 30 * DAY;
+        });
+        if (recent.length >= 8) {
+            collections.push({ key: "recent-days", title: T("photos.memories.recentDays", "最近的日子"), items: recent.slice(0, 60) });
+            recent.forEach((i) => covered.add(i.id));
+        }
+
+        const month = images.filter((i) => {
+            const d = new Date(i.date || 0);
+            return !Number.isNaN(d.getTime()) && sameMonth(d, ref);
+        });
+        const monthHasUnseen = month.some((i) => !covered.has(i.id));
+        if (month.length >= 6 && (!collections.length || monthHasUnseen)) {
+            collections.push({ key: "this-month", title: T("photos.memories.thisMonth", "这个月"), items: month.slice(0, 60) });
+            month.forEach((i) => covered.add(i.id));
+        }
+
+        const favorites = images.filter((i) => i.favorite);
+        if (favorites.length >= 4) {
+            collections.push({ key: "favorites", title: T("photos.memories.favorites", "个人收藏"), items: favorites.slice(0, 60) });
+        }
+
+        const byMonth = new Map();
+        images.forEach((i) => {
+            const d = new Date(i.date || 0);
+            if (Number.isNaN(d.getTime())) return;
+            const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+            if (!byMonth.has(key)) byMonth.set(key, []);
+            byMonth.get(key).push(i);
+        });
+        const monthKeys = [...byMonth.keys()]
+            .filter((key) => {
+                const [y, m] = key.split("-").map(Number);
+                if (y === ref.getFullYear() && m === ref.getMonth() + 1) return false;
+                return byMonth.get(key).length >= 6;
+            })
+            .sort((a, b) => {
+                const [ay, am] = a.split("-").map(Number);
+                const [by, bm] = b.split("-").map(Number);
+                return (by - ay) * 12 + (bm - am);
+            })
+            .slice(0, 4);
+        monthKeys.forEach((key) => {
+            const [y, m] = key.split("-").map(Number);
+            const label = T("photos.memories.byMonth", "{month}").replace("{month}", `${y} 年 ${m} 月`);
+            collections.push({ key: `month-${key}`, title: label, items: byMonth.get(key).slice(0, 60) });
+        });
+        return collections;
+    }
+
+    /** 回忆视图：卡片墙，每张卡一个合集，点开从封面照片进入连播。 */
+    function renderMemories(items) {
+        const collections = buildMemoryCollections(items);
+        els.gridContent.innerHTML = "";
+        if (!collections.length) {
+            showEmptyState();
+            return;
+        }
+        const wall = document.createElement("div");
+        wall.className = "memories-wall";
+        collections.forEach((coll) => {
+            const card = document.createElement("div");
+            card.className = "memory-card";
+            card.tabIndex = 0;
+            card.setAttribute("role", "button");
+            card.setAttribute("aria-label", `${coll.title}，${coll.items.length} 张`);
+            const cover = document.createElement("img");
+            cover.alt = coll.title;
+            cover.draggable = false;
+            bindThumb(cover, coll.items[0]);
+            const title = document.createElement("p");
+            title.className = "memory-card__title";
+            title.textContent = coll.title;
+            const count = document.createElement("p");
+            count.className = "memory-card__count";
+            count.textContent = T("photos.memories.count", "{n} 张照片").replace("{n}", String(coll.items.length));
+            card.append(cover, title, count);
+            const open = () => openPreview(coll.items[0].id, { items: coll.items });
+            card.addEventListener("click", open);
+            card.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    open();
+                }
+            });
+            wall.append(card);
+        });
+        els.gridContent.append(wall);
     }
 
     function showEmptyState() {
@@ -971,6 +1108,7 @@ function startPhotos(win) {
         else if (state.view.startsWith("album-")) kind = "album";
         else if (state.view === "smart-video") kind = "videos";
         else if (state.view === "smart-image") kind = "images";
+        else if (state.view === "memories") kind = "memories";
 
         const texts = {
             all: ["photos.empty.all.title", "没有照片", "photos.empty.all.hint", "点击「导入」按钮，或把图片、视频拖进窗口", "photos.import", "导入", "import"],
@@ -980,6 +1118,7 @@ function startPhotos(win) {
             album: ["photos.empty.album.title", "相簿是空的", "photos.empty.album.hint", "在「所有照片」中选择项目，再添加到这个相簿。", "photos.empty.album.action", "前往所有照片", "all"],
             videos: ["photos.empty.videos.title", "没有视频", "photos.empty.videos.hint", "导入的视频会显示在这里。", "photos.import", "导入", "import"],
             images: ["photos.empty.images.title", "没有图片", "photos.empty.images.hint", "导入的图片会显示在这里。", "photos.import", "导入", "import"],
+            memories: ["photos.empty.memories.title", "还没有回忆", "photos.empty.memories.hint", "照片多一些之后，这里会按日子和月份自动生成回忆。", null, "", null],
         }[kind];
 
         els.emptyTitle.textContent = T(texts[0], texts[1]);
@@ -1340,7 +1479,8 @@ function startPhotos(win) {
     }
 
     function openPreview(id, options = {}) {
-        const items = getVisibleItems();
+        // 回忆卡片等场景会显式传入要连播的集合；不传就按当前视图取
+        const items = (Array.isArray(options.items) && options.items.length) ? options.items : getVisibleItems();
         const idx = items.findIndex((item) => item.id === id);
         if (idx < 0) return;
 
@@ -1714,6 +1854,92 @@ function startPhotos(win) {
         applyImageTransform();
         refreshRotationDOM(item.id);
         updateDetailIfCurrent(item);
+    }
+
+    /* ── 编辑器 ── */
+
+    /** 从预览工具栏打开当前图片的编辑器（动态加载编辑器模块）。 */
+    function openEditorForCurrent() {
+        const item = currentPreviewItem();
+        if (!item || item.type === "video") return;
+        import("./editor.js").then(({ openEditor }) => {
+            openEditor(item, { onSaved: (result) => handleEditorSaved(item, result) });
+        }).catch((err) => {
+            console.warn("[photos] 编辑器模块加载失败", err);
+            showInfo(T("photos.editor.loadFailed", "编辑器加载失败"), String((err && err.message) || err));
+        });
+    }
+
+    /**
+     * 编辑器保存回吐：写本体进照片库并刷新界面。
+     * @param {object} item 被编辑的条目
+     * @param {{mode:string, blob:Blob, thumbBlob:Blob, width:number, height:number}} result 编辑结果
+     */
+    async function handleEditorSaved(item, result) {
+        const { mode, blob, thumbBlob, width, height } = result || {};
+        if (!blob) return;
+        if (mode === "original") {
+            await putMedia(item.id, blob);
+            if (thumbBlob) {
+                try {
+                    await putThumb(item.id, thumbBlob);
+                    item._thumbState = "ready";
+                } catch { item._thumbState = "failed"; }
+            }
+            item.width = width;
+            item.height = height;
+            item.size = blob.size;
+            item.rotation = 0;
+            saveLibrary();
+            // 原媒体的对象 URL 已过期：先释放引用再重取，预览里立即看到新图
+            releasePreviewHeld(item.id);
+            if (state.preview.open && currentPreviewItem() === item) updatePreview({});
+            refreshRotationDOM(item.id);
+            updateDetailIfCurrent(item);
+            return;
+        }
+        // 存储为副本：走 uniqueLibraryPath 起一个不冲突的库名，落成全新条目
+        const base = String(item.name || T("photos.untitled", "未命名"));
+        const stem = base.replace(/\.[^.]+$/, "");
+        const ext = (base.match(/\.[^.]+$/) || [".jpg"])[0].toLowerCase();
+        const copyItem = {
+            id: await uniqueLibraryPath(`${stem} 已编辑${ext}`),
+            name: `${stem} 已编辑${ext}`,
+            type: "image",
+            size: blob.size,
+            date: new Date().toISOString(),
+            favorite: false,
+            deleted: false,
+            deletedAt: null,
+            albumIds: [],
+            location: "",
+            rotation: 0,
+            sourcePath: "",
+            external: false,
+            width: width,
+            height: height,
+            _thumbState: "failed",
+        };
+        copyItem.sourcePath = copyItem.id;
+        try {
+            await putMedia(copyItem.id, blob);
+        } catch (err) {
+            console.warn("[photos] 副本写入本地库失败", err);
+            throw new Error(T("photos.errStorageWrite", "写入本地存储失败"));
+        }
+        if (thumbBlob) {
+            try {
+                await putThumb(copyItem.id, thumbBlob);
+                copyItem._thumbState = "ready";
+            } catch { copyItem._thumbState = "failed"; }
+        }
+        state.items.push(copyItem);
+        if (!saveLibrary()) {
+            state.items = state.items.filter((entry) => entry.id !== copyItem.id);
+            deleteMedia([copyItem.id]).catch((err2) => console.warn("[photos] 回滚副本媒体失败", err2));
+            throw new Error(T("photos.errStorageWrite", "写入本地存储失败"));
+        }
+        render();
     }
 
     /* ── 预览：详情 / 胶片条 ── */
@@ -2993,6 +3219,7 @@ function startPhotos(win) {
         els.btnNext.addEventListener("click", () => previewGo(1));
         els.btnRotateLeft.addEventListener("click", () => rotateCurrent(-90));
         els.btnRotateRight.addEventListener("click", () => rotateCurrent(90));
+        els.btnEdit.addEventListener("click", openEditorForCurrent);
         els.btnZoomOut.addEventListener("click", () => zoomStep(-0.25));
         els.btnZoomIn.addEventListener("click", () => zoomStep(0.25));
         els.zoomSlider.addEventListener("input", (e) => {

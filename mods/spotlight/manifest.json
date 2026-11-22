@@ -5,7 +5,7 @@
   "type": "app",
   "entry": "background",
   "author": "Deskly",
-  "description": "系统级统一搜索：应用、设置、文件、命令、书签、手册、计算与换算，⌥Space 呼出",
+  "description": "系统级统一搜索：应用、设置、文件、命令、书签、手册、计算与换算，双击修饰键呼出",
   "permissions": [],
   "style": "style.css",
   "script": "script.js",

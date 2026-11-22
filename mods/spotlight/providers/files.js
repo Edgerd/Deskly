@@ -12,7 +12,8 @@
 
 import { i18n } from "../../../src/javascripts/i18n.js";
 import { VFS } from "../../../src/javascripts/vfs.js";
-import { FOLDER_ICON, GENERIC_DOC_ICON } from "../../../src/javascripts/paths.js";
+import { FOLDER_ICON } from "../../../src/javascripts/paths.js";
+import { fileIconFor } from "../../../src/javascripts/file-type-icons.js";
 import { rankOf } from "../engine.js";
 import { createIndex } from "../index.js";
 
@@ -119,7 +120,7 @@ export const filesProvider = {
                 label: String(entry.name),
                 sub: `${where} · ${entry.path}`,
                 hint: VFS.formatDate ? VFS.formatDate(entry.modified) : i18n.t("spotlight.revealHint", "回车在访达中打开"),
-                icon: entry.type === "folder" ? FOLDER_ICON : GENERIC_DOC_ICON,
+                icon: entry.type === "folder" ? FOLDER_ICON : fileIconFor(entry.name),
                 action: () => revealInFinder(entry),
             }));
     },

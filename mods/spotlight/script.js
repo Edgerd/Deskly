@@ -9,7 +9,7 @@
  * - 提供者宿主：内置 providers（应用/设置/文件/命令/书签/手册/日期）+ 插件 providers
  *   （manifest.spotlightProviders 声明，首次查询时惰性 import，计算器是第一个）；
  * - 查询引擎（engine.js）：异步、AbortSignal 取消、逐 provider 错误隔离、分组排序；
- * - 面板：⌥Space（默认，可改）呼出、输入即搜（60ms 防抖 + 取消）、↑↓/Tab 选择、
+ * - 面板：双击修饰键（默认双击左 ⌃，可改 Ctrl/Alt/Shift 与左右侧）呼出、输入即搜（60ms 防抖 + 取消）、↑↓/Tab 选择、
  *   回车执行（copyText 优先复制）、Esc/点外部关闭、分组小标题、结果分块渲染（虚拟列表）、
  *   呼出/关闭动画走项目非线性曲线并遵守「减少动态效果」。
  *
@@ -33,6 +33,7 @@ import { commandsProvider } from "./providers/commands.js";
 import { bookmarksProvider } from "./providers/bookmarks.js";
 import { manualProvider } from "./providers/manual.js";
 import { datetimeProvider } from "./providers/datetime.js";
+import { instantProvider } from "./providers/instant.js";
 import { webSearchFallback } from "./providers/websearch.js";
 
 /* ───────────────────────── 四语文案 ───────────────────────── */
@@ -117,14 +118,28 @@ function t(key, fallback) {
 const HISTORY_SLOT = "deskly-spotlight-history";
 const HISTORY_MAX = 10;
 
-/** 快捷键候选（与设置项 values 一致；顺序即设置下拉的顺序）。 */
-const HOTKEYS = ["alt+space", "ctrl+shift+space", "ctrl+meta+space", "cmd+space", "ctrl+space", "off"];
+/** 双击修饰键候选（与设置项 values 一致；顺序即设置下拉的顺序）。 */
+const DOUBLE_TAP_MAP = {
+    "double-ctrl-left": "ControlLeft",
+    "double-ctrl-right": "ControlRight",
+    "double-alt-left": "AltLeft",
+    "double-alt-right": "AltRight",
+    "double-shift-left": "ShiftLeft",
+    "double-shift-right": "ShiftRight",
+};
+
+/** 快捷键候选。 */
+const HOTKEYS = [...Object.keys(DOUBLE_TAP_MAP), "off"];
+
+/** 缺省唤起键：双击左侧 Control（不占用任何组合键，也不与输入法/系统聚焦冲突）。 */
+const DEFAULT_HOTKEY = "double-ctrl-left";
+
+/** 两次「干净单击」之间的最大间隔（毫秒），超过就当作两次独立按键。 */
+const DOUBLE_TAP_MS = 400;
 
 /**
- * 唤起键 → 修饰键要求。
- * 默认 ⌥Space：⌘Space（macOS 聚焦 / Windows 输入法）与 ⌃Space（CJK 输入法切换 / macOS
- * 输入源）在两大平台都被系统先抢走，页面根本收不到；⌥Space 在 macOS 产生的是
- * U+00A0（经 event.code 判定），在 Windows 可被 preventDefault 拦住系统菜单。
+ * 旧版组合键（⌥Space 等）→ 修饰键要求。
+ * 候选已换成双击修饰键，这里只保留判定逻辑供旧数据与 dev/spotlight-probe.mjs 校验。
  */
 const HOTKEY_MAP = {
     "alt+space": { alt: true },
@@ -136,18 +151,19 @@ const HOTKEY_MAP = {
 
 /** 设置里显示的键位字形（跨语言中立的记号写法）。 */
 const HOTKEY_LABELS = {
-    "alt+space": "⌥Space",
-    "ctrl+shift+space": "⌃⇧Space",
-    "ctrl+meta+space": "⌃⌘Space",
-    "cmd+space": "⌘Space",
-    "ctrl+space": "⌃Space",
+    "double-ctrl-left": "双击 ⌃（左）",
+    "double-ctrl-right": "双击 ⌃（右）",
+    "double-alt-left": "双击 ⌥（左）",
+    "double-alt-right": "双击 ⌥（右）",
+    "double-shift-left": "双击 ⇧（左）",
+    "double-shift-right": "双击 ⇧（右）",
     "off": "—",
 };
 
 /** 注册本应用托管的设置项（其余 spotlight.* 由定义表声明；新开关等设置 UI 放行后呈现）。 */
 function defineSchema() {
     settings.define({
-        key: "spotlight.hotkey", type: "string", default: "alt+space",
+        key: "spotlight.hotkey", type: "string", default: DEFAULT_HOTKEY,
         values: HOTKEYS,
         valuesLabel: HOTKEYS.map((key) => HOTKEY_LABELS[key] || key),
         control: "dropdown", pane: "spotlight", group: "聚焦", order: 5,
@@ -199,6 +215,8 @@ const BUILTIN_GATES = {
     bookmarks: "spotlight.bookmarks",
     datetime: "spotlight.datetime",
     calculator: "spotlight.convert",
+    // F-21：裸数量多单位换算与货币符号，与计算器同走「计算与换算」开关
+    instant: "spotlight.convert",
 };
 
 /**
@@ -737,12 +755,14 @@ function hotkeyMatches(spec, event) {
         && Boolean(want.shift) === Boolean(event.shiftKey);
 }
 
-/** 当前生效的快捷键（设置缺失时走默认 ⌥Space）。 */
+/** 当前生效的快捷键（设置缺失或旧数据时走默认双击左 ⌃）。 */
 function currentHotkey() {
-    return settings.get("spotlight.hotkey") || "alt+space";
+    const stored = settings.get("spotlight.hotkey");
+    if (stored === "off" || DOUBLE_TAP_MAP[stored]) return stored;
+    return DEFAULT_HOTKEY;
 }
 
-/** document 级快捷键入口。 */
+/** document 级快捷键入口（F4 与旧版组合键）。 */
 function onHotkey(event) {
     // F4：手册里的「聚焦」键，无修饰键时归聚焦（启动台改用 ⌃↓，见 keyboard.js 键位表）
     const plainF4 = event.key === "F4"
@@ -751,6 +771,51 @@ function onHotkey(event) {
     event.preventDefault();
     event.stopPropagation();
     toggleSpotlight();
+}
+
+/* 双击修饰键：只有「单独按住目标修饰键、期间没夹带任何其他键、干净抬起」才算一次 tap，
+ * 两次 tap 间隔在 DOUBLE_TAP_MS 内即呼出/关闭聚焦；Ctrl+C 这类组合不会被误判。 */
+const pressedCodes = new Set();
+let tapClean = false;
+let lastTapAt = 0;
+let lastTapSpec = "";
+
+/** 修饰键按下：记录按住的键，并判断本次按住是否可能成为干净单击。 */
+function onModifierDown(event) {
+    const spec = currentHotkey();
+    const wantCode = DOUBLE_TAP_MAP[spec];
+    if (!wantCode) return;
+    pressedCodes.add(event.code);
+    if (event.repeat) return;
+    if (event.code !== wantCode) {
+        // 夹带了别的键（含另一侧修饰键）：本次不算单击
+        tapClean = false;
+        lastTapAt = 0;
+        lastTapSpec = "";
+        return;
+    }
+    tapClean = pressedCodes.size === 1;
+}
+
+/** 修饰键抬起：干净单击则计数，窗口内第二次即切换聚焦。 */
+function onModifierUp(event) {
+    const spec = currentHotkey();
+    const wantCode = DOUBLE_TAP_MAP[spec];
+    if (!wantCode) return;
+    const released = pressedCodes.delete(event.code);
+    if (event.code !== wantCode || !released) return;
+    const clean = tapClean && pressedCodes.size === 0;
+    tapClean = false;
+    if (!clean) {
+        lastTapAt = 0;
+        lastTapSpec = "";
+        return;
+    }
+    const now = performance.now();
+    const isDouble = lastTapSpec === spec && lastTapAt > 0 && now - lastTapAt <= DOUBLE_TAP_MS;
+    lastTapAt = isDouble ? 0 : now;
+    lastTapSpec = isDouble ? "" : spec;
+    if (isDouble) toggleSpotlight();
 }
 
 /** 顶栏图标：finderbar 的注册函数由它自己的模块提供，取不到就安静跳过。 */
@@ -797,9 +862,12 @@ function initSpotlight() {
     registerSpotlightProvider(manualProvider);
     registerSpotlightProvider(bookmarksProvider);
     registerSpotlightProvider(datetimeProvider);
+    registerSpotlightProvider(instantProvider);
 
     // 快捷键 + 总表动态文本（用户改绑后设置 › 键盘的显示不撒谎）
     document.addEventListener("keydown", onHotkey, true);
+    document.addEventListener("keydown", onModifierDown, true);
+    document.addEventListener("keyup", onModifierUp, true);
     setShortcutText("spotlight", () => `${HOTKEY_LABELS[currentHotkey()] || currentHotkey()} / F4`);
 
     // 失效事件：插件装卸触发索引失效与 provider 装卸；设置与语言变化刷新惰性索引

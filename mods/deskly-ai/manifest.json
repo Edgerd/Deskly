@@ -1,0 +1,15 @@
+{
+  "id": "deskly-ai",
+  "name": "Deskly AI",
+  "version": "1.0.0",
+  "type": "app",
+  "entry": "window",
+  "author": "Edgerd",
+  "description": "接入系统统一 AI 服务的对话应用（改造自 deepseek chat-demo）",
+  "permissions": ["ai:invoke"],
+  "main": "index.html",
+  "style": "style.css",
+  "script": "script.js",
+  "icon": "Siri.webp",
+  "iconRender": "native"
+}

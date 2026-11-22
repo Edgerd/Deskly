@@ -1,0 +1,53 @@
+/* deskly.css — Deskly 宿主外观：透明画布交给窗口亚克力，字体与强调色对齐 macOS */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: transparent !important;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --dsw-alias-brand-primary: #0a84ff;
+  --dsw-alias-button-primary-fill: #0a84ff;
+
+  /* 访达式分层：左侧边栏浅而透，右侧内容区更深 */
+  --deskly-pane: rgba(205, 205, 213, 0.55);
+  --deskly-sidebar: rgba(255, 255, 255, 0.55);
+  --deskly-input: rgba(255, 255, 255, 0.42);
+
+  /* 输入框与用户气泡不再使用不透明白/浅蓝 */
+  --dsw-specific-input-major: var(--deskly-input);
+  --dsw-specific-bubble: rgba(10, 132, 255, 0.16);
+  --dsw-specific-sidebar-fill: transparent;
+}
+
+/* 模糊强度由宿主从系统亚克力令牌写入 html 的内联变量；这里只是兜底 */
+html {
+  --deskly-blur: 20px;
+  --deskly-saturate: 180%;
+}
+
+body[data-ds-dark-theme] {
+  --deskly-pane: rgba(18, 18, 22, 0.5);
+  --deskly-sidebar: rgba(255, 255, 255, 0.06);
+  --deskly-input: rgba(255, 255, 255, 0.08);
+  --dsw-specific-bubble: rgba(10, 132, 255, 0.28);
+}
+
+/* 内容区跟随系统外壳的半透明质感，避免纯白块盖住亚克力 */
+#root > div {
+  background: transparent;
+}
+
+/* 轻提示：浅色玻璃上仍要保证可读性 */
+[class*='toast'] {
+  background-color: rgba(28, 28, 32, 0.86) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #fff !important;
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+}

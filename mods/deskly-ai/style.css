@@ -1,0 +1,69 @@
+/* style.css — Deskly AI 宿主窗口：亚克力侧栏 + 苹果式标题栏 */
+
+.deskly-ai.window {
+    /* 不要覆盖 position：核心 .window 用 position:absolute + 内联 left/top 做窗口管理；
+       改成 relative 会让 left/top 变成「静态位置之上的偏移」，拖动与缩放全部翻倍错位。 */
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(246, 246, 248, 0.55);
+    -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+    backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+    box-shadow:
+        0 0 0 0.5px rgba(0, 0, 0, 0.18),
+        0 30px 80px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] .deskly-ai.window {
+    background: rgba(28, 28, 30, 0.72);
+    box-shadow:
+        0 0 0 0.5px rgba(255, 255, 255, 0.16),
+        0 30px 80px rgba(0, 0, 0, 0.55);
+}
+
+.deskly-ai.window .deskly-ai-titlebar {
+    display: flex;
+    align-items: center;
+    height: 44px;
+    flex: 0 0 44px;
+    padding: 0 12px;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
+    background: rgba(255, 255, 255, 0.35);
+    -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+    backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate));
+    user-select: none;
+}
+
+html[data-theme="dark"] .deskly-ai.window .deskly-ai-titlebar {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.deskly-ai.window .deskly-ai-titlebar .wintools {
+    margin-left: var(--traffic-inset);
+}
+
+.deskly-ai.window .deskly-ai-titlebar .title {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding-right: 64px;
+    font-size: 12.5px;
+    color: var(--text-secondary, rgba(0, 0, 0, 0.6));
+}
+
+.deskly-ai.window .deskly-ai-titlebar .title-icon {
+    font-weight: 600;
+    color: var(--text-primary, #1d1d1f);
+    letter-spacing: -0.01em;
+}
+
+.deskly-ai.window .deskly-ai-frame {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: transparent;
+}

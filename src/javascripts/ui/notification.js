@@ -16,14 +16,19 @@
  *    「转义后再拼 HTML」这一步整个省掉，没有漏转义的死角。
  *
  * 四条策略都来自设置中枢，读的是当次调用的即时值（不缓存，改了立刻生效）：
- * - `notify.enabled` 关 → 直接 return null，连横幅都不生成；
- * - `controlcenter.focus`（控制中心的专注模式大卡）开 → 不弹横幅，但**计数**：
- *   noteSuppressed() 把 deskly-dnd-count 加一，专注模式面板据此显示「拦截了 N 条」，
- *   否则用户永远不知道自己为什么没收到提醒；
+ * - `notify.enabled` 关 → 直接 return null，连落库都不做；
+ * - 按应用开关（notify.apps）关 → 该应用的通知整条丢弃；
+ * - 专注模式（notifications/focus.js 的 evaluate）不放行 → 不弹横幅不响铃，
+ *   但落库为 muted 记录 —— 系统设置专注面板的「拦截了 N 条」与通知中心回看共用它；
+ * - `notify.bannerStyle` → 横幅样式（横幅=按时长收起 / 提醒=常驻 / 无=不弹）；
  * - `notify.duration` → 自动收起的默认时长；
  * - `notify.sound` → 是否播放提示音。
  *
  * 每一次投递（含被拦下的）都进运行记录：source `kernel/notification`，message 为标题。
+ *
+ * F-17/F-19 之后的数据流：所有通知（含被专注模式静音的）统一落 notifications/store.js
+ * 持久化（50 条 / 7 天），通知中心面板与横幅共用同一份 store；「专注模式拦截计数」
+ * 改为 store 里 muted 记录的实时统计，不再单独维护数字。
  *
  * 层级取自全局层级表 zindex.js：Z.MODAL（9610），高于 Dock(9500) 与启动台(9600)，
  * 低于右键菜单(9620) —— 通知不应盖住用户正在操作的菜单。
@@ -32,14 +37,42 @@ import { Z } from "../zindex.js";
 import { settings } from "../settings.js";
 import { sound } from "../sound.js";
 import { GENERIC_APP_ICON } from "../paths.js";
+import { store } from "../notifications/store.js";
 
 const DEFAULT_DURATION = 5500;   // 设置缺失时的兜底自动收起时长
 const CLOSE_ANIMATION = 400;     // 与下方 transition 时长保持一致
 const TOP_OFFSET = 34;           // 首条通知距视口顶部（让开 30px 菜单栏）
 const ITEM_HEIGHT = 84;          // 76px 高度 + 8px 堆叠间距
 
-/** 专注模式拦截计数槽：是统计而非设置，直写存储，不走设置中枢。 */
-const DND_COUNT_SLOT = "deskly-dnd-count";
+/** 应用显示名（异步预热，落库时用得上；拿不到就退回 appId 本身）。 */
+let appRegistry = null;
+import("../app-registry.js").then((m) => { appRegistry = m; }).catch(() => {});
+
+/**
+ * 记下一条被专注模式拦截的通知。
+ * 旧实现只累加计数；F-17 起拦截的通知与普通通知共用同一份 store（带 muted 标记），
+ * 因此这里只兼容旧导出：真正的落库发生在 showNotification 内部。
+ * @returns {number} 当前静音条数
+ */
+export function noteSuppressed() {
+    return store.mutedCount();
+}
+
+/**
+ * 当前被专注模式静音的通知条数（系统设置「拦截统计」数据源）。
+ * @returns {number} 计数
+ */
+export function pendingCount() {
+    return store.mutedCount();
+}
+
+/**
+ * 清零拦截统计（进入系统设置查看后调用）：静音记录转正为普通可回看通知。
+ * @returns {void}
+ */
+export function resetPendingCount() {
+    store.clearMutedFlags();
+}
 
 /** 当前在册的通知：用于计算堆叠位置与卸载后回收。 */
 const visible = new Set();
@@ -56,53 +89,15 @@ function defaultDuration() {
     return Number.isFinite(value) ? value : DEFAULT_DURATION;
 }
 
-/** 专注模式（勿扰）是否开启。 */
-function isDisturbing() {
-    return flag("controlcenter.focus", false);
-}
-
 /** 读拦截计数。 */
 function readCount() {
-    try {
-        const n = Number(localStorage.getItem(DND_COUNT_SLOT));
-        return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-    } catch {
-        return 0;
-    }
+    return store.mutedCount();
 }
 
 function writeCount(n) {
-    try {
-        if (n > 0) localStorage.setItem(DND_COUNT_SLOT, String(n));
-        else localStorage.removeItem(DND_COUNT_SLOT);
-    } catch { /* 存储不可用时计数只活在本页 */ }
-    document.dispatchEvent(new CustomEvent("notify-suppressed-change", { detail: { count: n }, bubbles: true }));
-}
-
-/**
- * 记下一条被专注模式拦截的通知（专注模式面板的「拦截了 N 条」据此显示）。
- * @returns {number} 累计拦截条数
- */
-export function noteSuppressed() {
-    const next = readCount() + 1;
-    writeCount(next);
-    return next;
-}
-
-/**
- * 当前累计被拦截的通知条数。
- * @returns {number} 计数
- */
-export function pendingCount() {
-    return readCount();
-}
-
-/**
- * 清零拦截计数（进入专注模式面板查看后调用）。
- * @returns {void}
- */
-export function resetPendingCount() {
-    writeCount(0);
+    if (n > 0) return; // 新数据流下计数由 store 派生，旧写路径不再使用
+    store.clearMutedFlags();
+    document.dispatchEvent(new CustomEvent("notify-suppressed-change", { detail: { count: 0 }, bubbles: true }));
 }
 
 /**
@@ -111,6 +106,8 @@ export function resetPendingCount() {
  * @param {string} [opts.icon] 图标路径（如 ./assets/icons/Finder.webp）
  * @param {string} [opts.title] 标题
  * @param {string} [opts.text] 正文
+ * @param {string} [opts.appId] 归属应用（插件 id）；专注模式白名单与按应用开关都按它判定，
+ *                              缺省按「无法归属」处理（激活专注模式时会被静音）
  * @param {string} [opts.time] 右侧时间文案，默认「刚刚」
  * @param {Function} [opts.onAction] 点击回调（通知随即收起）
  * @param {number} [opts.duration] 自动收起毫秒数，默认取 notify.duration；传 0 表示不自动收起
@@ -123,15 +120,36 @@ export function showNotification(opts = {}) {
     } = opts;
     if (!title && !text) return null;
 
-    // 拦下的原因先判出来，日志一次写全：被关掉、被勿扰、还是真的弹了出去
-    const outcome = !flag("notify.enabled", true) ? "disabled"
-        : (isDisturbing() ? "do-not-disturb" : "shown");
-    globalThis.__log?.info("kernel/notification", String(title || text), { outcome, text });
-    if (outcome === "disabled") return null;
-    if (outcome === "do-not-disturb") {
-        noteSuppressed();
+    const appId = typeof opts.appId === "string" ? opts.appId : "";
+
+    // 拦下的原因先判出来，日志一次写全：被关掉、被按应用开关关掉、被专注模式静音、只有落库、还是真的弹了出去
+    if (!flag("notify.enabled", true)) {
+        globalThis.__log?.info("kernel/notification", String(title || text), { outcome: "disabled", text });
         return null;
     }
+    const appCfg = appId ? store.appConfig(appId) : { enabled: true, inCenter: true };
+    if (!appCfg.enabled) {
+        globalThis.__log?.info("kernel/notification", String(title || text), { outcome: "app-disabled", appId, text });
+        return null;
+    }
+
+    // 落库：横幅与通知中心共用同一份 store
+    if (appCfg.inCenter) {
+        store.add({
+            appId,
+            appName: appId ? (appRegistry?.displayNameFor?.(appId) || appId) : "",
+            icon, title, text, muted: false,
+        });
+    }
+
+    const bannerStyle = settings.get("notify.bannerStyle", "banner");
+    if (bannerStyle === "none") {
+        globalThis.__log?.info("kernel/notification", String(title || text), { outcome: "banner-none", appId, text });
+        return null;
+    }
+    // 「提醒」（alert）样式常驻直到用户点掉；「横幅」（banner）按时长自动收起
+    const effDuration = bannerStyle === "alert" ? 0 : duration;
+    globalThis.__log?.info("kernel/notification", String(title || text), { outcome: "shown", appId, text });
 
     if (flag("notify.sound", true)) sound.playTone("alert");
 
@@ -207,7 +225,7 @@ export function showNotification(opts = {}) {
 
     document.body.appendChild(el);
     visible.add(el);
-    if (duration > 0) timer = setTimeout(close, duration);
+    if (effDuration > 0) timer = setTimeout(close, effDuration);
     return el;
 }
 
@@ -226,12 +244,20 @@ export function dismissAllNotifications() {
 // 与 window.__dialog 同风格：核心层与插件不必 import 本模块即可调用。
 // 挂载时机：本模块由引用方（核心模块或插件）import 后生效，与 alert.js 一致。
 window.__notify = {
-    /** 弹出一条通知（参数见 showNotification） */
+    /** 弹出一条通知（参数见 showNotification；opts.appId 标注归属应用） */
     show: showNotification,
     /** 收起全部通知 */
     dismissAll: dismissAllNotifications,
-    /** 专注模式已拦截条数 */
+    /** 专注模式已静音条数（= store 中 muted 记录数） */
     pendingCount,
-    /** 清零拦截计数 */
+    /** 清零拦截统计（静音记录转正） */
     resetPendingCount,
+    /** 通知 store：list()/remove(id)/clearAll()/subscribe(fn)，批次 7（Siri/聚焦）经此读取 */
+    store,
 };
+window.__notifyStore = store;
+
+// 预热通知中心面板（点时间/日期即开，首次点击不再等待模块加载）
+import("./notification-center.js").catch((err) => {
+    console.warn("[notification] 通知中心模块预热失败:", err);
+});

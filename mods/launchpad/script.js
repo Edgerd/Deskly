@@ -4,12 +4,12 @@
  * 同步 window.__launchpad / window.specialCloses / appStatus / Dock 指示灯；plugin-unload 时自清 window 级监听。
  */
 
-import { listApps, openApp, load as loadPlugin, unload, getIconForName, isPluginEnabled, GENERIC_APP_ICON } from '../../src/javascripts/plugin-manager.js';
+import { listApps, openApp, load as loadPlugin, unload, getIconForName, getIconRenderForName, isPluginEnabled, GENERIC_APP_ICON } from '../../src/javascripts/plugin-manager.js';
 import { displayNameFor, getAppVisibility } from '../../src/javascripts/app-registry.js';
 import { updateMenu } from '../../src/javascripts/finderbar.js';
-import { addToDock } from '../../src/javascripts/dock.js';
+import { addToDock, isPointInDock, previewDockDrop, updateDockPreview, cancelDockPreview, commitDockDrop, completeDockDrop } from '../../src/javascripts/dock.js';
 import { slotToIndex } from '../../src/javascripts/core/visibleOrder.js';
-import { pressMenuItem } from '../../src/javascripts/ui/menuFeedback.js';
+import { createContextMenu, closeContextMenu } from '../../src/javascripts/ui/contextMenu.js';
 
 // 取最后一个 .launchpad（最新注入的实例），避免 reopen 时 DOM 中仍残留旧实例导致引用错位
 const _allLaunchpads = document.querySelectorAll(".launchpad");
@@ -22,7 +22,10 @@ const folderLayer = launchpad.querySelector(".folder-layer");
 const folderPanel = launchpad.querySelector(".folder-panel");
 const folderTitleInput = launchpad.querySelector(".folder-title");
 const folderGrid = launchpad.querySelector(".folder-grid");
-const ctxMenu = launchpad.querySelector(".ctx-menu");
+const folderPages = launchpad.querySelector(".folder-pages");
+// 右键菜单改用系统共享菜单（挂到 body，见 ui/contextMenu.js）：
+// 这样启动台菜单与访达/桌面/程序坞吃同一份亚克力样式，不再各自维护一套。
+let activeCtxMenu = null;
 const pageDots = launchpad.querySelector(".page-dots");
 
 // 布局持久化 v2：{ items: [{type:'app',name} | {type:'folder',name,apps:[应用名]}], labels: {应用名: 显示名} }
@@ -61,6 +64,12 @@ const LP_STATE = (window.__lpState = window.__lpState || { isClosing: false });
 // labels 为应用自定义显示名（独立于 items：应用移进文件夹后条目只剩名字，label 不能挂在条目上）
 const state = { items: [], apps: new Map(), labels: {} };
 let openFolderItem = null;   // 当前展开的文件夹（指向 state.items 里的引用）
+// 文件夹内分页：单页容量由面板尺寸实时反推，图标超出就分页（滚轮/方向键/圆点切换）
+let folderPage = 0;
+let folderPageCount = 1;
+// 当前页在文件夹完整成员列表里的起始下标：拖拽重排要把页内落点换算回绝对下标
+let folderPageStart = 0;
+let lastFolderTurnAt = 0;
 let keyword = "";
 let isDragging = false;
 let suppressNextClick = false;
@@ -117,12 +126,17 @@ function readRegistryApps() {
         .map((rec) => ({
             name: rec.windowName,
             icon: getIconForName(rec.appId),
+            // 应用可在 manifest / apps[] 里声明 iconRender：默认 "artwork" 走可见画面归一化，
+            // "native" 表示作者对图标画布留白负责，原样铺进排版盒。
+            iconRender: getIconRenderForName(rec.appId),
             appId: rec.appId,
             // 禁用的应用仍留在注册表映射里（布局按名字对账，剔掉会丢文件夹归属），
             // 只是不渲染；重新启用后回到原来的位置。
             disabled: !isPluginEnabled(rec.id),
             centered: !!((rec.app && rec.app.window && rec.app.window.centered)
                 || (rec.manifest.window && rec.manifest.window.centered)),
+            // 站点型应用：打开即跳宿主浏览器，没有窗口，不能点亮「运行中」或切换顶栏菜单。
+            link: (rec.manifest && typeof rec.manifest.link === "string" && rec.manifest.link) || "",
         }));
 }
 
@@ -170,12 +184,75 @@ function buildState() {
 
 /* ─────────────── 渲染 ─────────────── */
 
+// 图标画面归一化：不同来源的图标画布留白不一 —— 有的 PNG 四周留透明边（画面只占 80%），
+// 有的铺满整张画布（100%），烘焙阴影也会让 alpha 包围盒变大。直接铺进 --lp-icon 的方框，
+// 肉眼可见的图形就会一大一小。这里量出每张图「实心内容」的包围盒（alpha 阈值过滤掉淡阴影），
+// 再统一缩放到排版盒的 70/84；默认档 84 时所有图标的可见画面都是 70px。
+const ARTWORK_RATIO = 70 / 84;
+const ARTWORK_ALPHA_THRESHOLD = 64;
+const iconScaleCache = new Map();   // src -> Promise<number>
+
+function measureIconScale(src) {
+    if (iconScaleCache.has(src)) return iconScaleCache.get(src);
+    const task = new Promise((resolve) => {
+        const probe = new Image();
+        probe.onload = () => {
+            try {
+                // 缩到 128 以内再逐像素扫 alpha：精度足够，又不必对 768² 全图跑循环
+                const k = Math.min(1, 128 / Math.max(probe.naturalWidth, probe.naturalHeight));
+                const w = Math.max(1, Math.round(probe.naturalWidth * k));
+                const h = Math.max(1, Math.round(probe.naturalHeight * k));
+                const canvas = document.createElement("canvas");
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                ctx.drawImage(probe, 0, 0, w, h);
+                const data = ctx.getImageData(0, 0, w, h).data;
+                let minX = w, minY = h, maxX = -1, maxY = -1;
+                for (let y = 0; y < h; y += 1) {
+                    for (let x = 0; x < w; x += 1) {
+                        if (data[(y * w + x) * 4 + 3] > ARTWORK_ALPHA_THRESHOLD) {
+                            if (x < minX) minX = x;
+                            if (x > maxX) maxX = x;
+                            if (y < minY) minY = y;
+                            if (y > maxY) maxY = y;
+                        }
+                    }
+                }
+                if (maxX < 0) {
+                    resolve(ARTWORK_RATIO);
+                    return;
+                }
+                const content = Math.max(maxX - minX + 1, maxY - minY + 1) / Math.max(w, h);
+                resolve(Math.min(1.6, Math.max(0.6, ARTWORK_RATIO / content)));
+            } catch (e) {
+                // 跨域图标读不到像素：退回统一比例，至少不会顶满盒子
+                resolve(ARTWORK_RATIO);
+            }
+        };
+        probe.onerror = () => resolve(ARTWORK_RATIO);
+        probe.src = src;
+    });
+    iconScaleCache.set(src, task);
+    return task;
+}
+
 function makeIconImg(app) {
     const img = document.createElement("img");
-    img.src = (app && app.icon) || GENERIC_APP_ICON;
+    const src = (app && app.icon) || GENERIC_APP_ICON;
+    img.src = src;
     img.alt = (app && app.name) || "";
     img.draggable = false;
     img.addEventListener("error", () => { img.src = GENERIC_APP_ICON; });
+    // 应用声明 native：画布原样铺进排版盒，不量实心包围盒（图标形状本身不是方块时，
+    // 归一化会按最长边缩放，反而把主体缩得比邻居小）。
+    if (app && app.iconRender === "native") {
+        img.style.setProperty("--lp-icon-scale", "1");
+        return img;
+    }
+    measureIconScale(src).then((scale) => {
+        img.style.setProperty("--lp-icon-scale", String(scale));
+    });
     return img;
 }
 
@@ -478,6 +555,33 @@ function makeGhost(item, sampleCell) {
     return ghost;
 }
 
+let dragLayer = null;
+
+function ensureDragLayer() {
+    if (!dragLayer) {
+        dragLayer = document.createElement("div");
+        dragLayer.className = "launchpad-drag-layer";
+        document.body.appendChild(dragLayer);
+    }
+    return dragLayer;
+}
+
+/**
+ * 把拖拽幽灵搬到程序坞之上。
+ * 启动台本身是 9600 的层叠上下文，程序坞被临时抬到 9601，幽灵放在启动台里必然被程序坞压住；
+ * 搬到 body 下的顶层拖拽层（10000）后，拖动时图标才会盖在程序坞上方。
+ * 搬之前先在启动台内取一次计算样式，把尺寸类自定义属性固化成内联值，避免脱离祖先链后丢失。
+ */
+function liftGhostAboveDock(ghost) {
+    const cs = getComputedStyle(ghost);
+    ["--lp-cell", "--lp-icon", "--lp-icon-scale", "--lp-artwork-ratio", "--lp-font", "--surface-text"]
+        .forEach((key) => {
+            const value = cs.getPropertyValue(key).trim();
+            if (value) ghost.style.setProperty(key, value);
+        });
+    ensureDragLayer().appendChild(ghost);
+}
+
 function beginPress(e, item, scope, cell) {
     if (press) return;                   // 上一次按压会话未结束（防指针重复按下叠加监听）
     if (e.button !== 0) return;
@@ -486,6 +590,8 @@ function beginPress(e, item, scope, cell) {
     press = {
         item, scope, cell, x0: e.clientX, y0: e.clientY,
         moved: false, ghost: null, noDrag: !!keyword, longPressTimer: null,
+        // 指针是否停在程序坞上：进入时收起让位场，离开时重建快照。
+        overDock: false,
         // 根网格按页划分：让位/命中只在本页做，跨页由自动翻页重拍快照。
         scopeGrid: scope === "folder" ? folderGrid : (cell.closest(".page-grid") || grid),
     };
@@ -518,6 +624,7 @@ function onPointerCancel() {
         if (d.ghost) d.ghost.remove();
         d.cell.classList.remove("dragging");
         launchpad.classList.remove("drag-cursor");
+        cancelDockPreview();
         clearDodge();
     }
 }
@@ -533,6 +640,7 @@ function onPointerMove(e) {
         isDragging = true;
         press.ghost = makeGhost(press.item, press.cell);
         launchpad.appendChild(press.ghost);
+        liftGhostAboveDock(press.ghost);
         press.cell.classList.add("dragging");
         launchpad.classList.add("drag-cursor");
         // 躲闪与命中都基于此刻的基准矩形：位移是纯视觉效果，不参与落点计算
@@ -540,6 +648,25 @@ function onPointerMove(e) {
     }
     press.ghost.style.left = `${e.clientX}px`;
     press.ghost.style.top = `${e.clientY}px`;
+    // 拖到程序坞上方：收起启动台让位场，改由 Dock 负责高亮与开缝。
+    const overDock = isPointInDock(e.clientX, e.clientY);
+    if (overDock) {
+        if (!press.overDock) {
+            clearDodge();
+            clearMergeHint(press.scopeGrid);
+            previewDockDrop(press.item.name, press.item.type, e.clientX, e.clientY);
+        } else {
+            updateDockPreview(e.clientX, e.clientY);
+        }
+        press.overDock = true;
+        return;
+    }
+    if (press.overDock) {
+        press.overDock = false;
+        cancelDockPreview();
+        // 离开程序坞重新建立让位快照，后面的落点判定才有基准矩形。
+        snapshotDodge(press.scopeGrid, press.cell);
+    }
     scheduleDodge(e.clientX, e.clientY);
     maybeAutoTurnPage(e.clientX);
 }
@@ -561,10 +688,64 @@ function onPointerUp(e) {
     isDragging = false;
     suppressNextClick = true;
     setTimeout(() => { suppressNextClick = false; }, 150);
-    d.ghost.remove();
     d.cell.classList.remove("dragging");
     launchpad.classList.remove("drag-cursor");
+
+    // 在程序坞上松手：应用固定到收藏区，幽灵飞入 Dock 后收尾；
+    // 文件夹等不支持的类型由 Dock 给出说明气泡，不走启动台排序。
+    if (isPointInDock(e.clientX, e.clientY)) {
+        clearDodge();
+        const result = commitDockDrop(d.item.name, d.item.type, e.clientX, e.clientY);
+        if (result.ok) flyGhostToDock(d.ghost, result.target, d.item.name);
+        else dismissDockGhost(d.ghost);
+        return;
+    }
+    cancelDockPreview();
+    d.ghost.remove();
     endDrag(d, e.clientX, e.clientY);
+}
+
+// 幽灵飞入程序坞：缩到目标图标大小、淡出标签，落定后再显形并弹跳。
+const DOCK_FLY_MS = 260;
+
+function flyGhostToDock(ghost, target, name) {
+    if (!ghost) { completeDockDrop(name); return; }
+    if (!target || !target.width || reduceMotion()) {
+        ghost.remove();
+        completeDockDrop(name);
+        return;
+    }
+    const start = ghost.getBoundingClientRect();
+    const scale = Math.max(0.12, Math.min(1.2, target.width / Math.max(1, start.width)));
+    // 先把过渡起点钉成当前形态，再补 .docking，避免浏览器把首帧合并成瞬跳。
+    ghost.style.transform = "translate(-50%, -58%) scale(1.12)";
+    ghost.classList.add("docking");
+    requestAnimationFrame(() => {
+        ghost.style.left = `${target.left + target.width / 2}px`;
+        ghost.style.top = `${target.top + target.height / 2}px`;
+        ghost.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        ghost.style.opacity = "0.15";
+    });
+    setTimeout(() => {
+        ghost.remove();
+        completeDockDrop(name);
+    }, DOCK_FLY_MS + 40);
+}
+
+/** 投放被拒绝（重复 / 不支持 / 存储失败）：原地缩小淡出，不飞向 Dock。 */
+function dismissDockGhost(ghost) {
+    if (!ghost) return;
+    ghost.classList.add("docking");
+    requestAnimationFrame(() => {
+        ghost.style.opacity = "0";
+        ghost.style.transform = "translate(-50%, -58%) scale(0.82)";
+    });
+    setTimeout(() => ghost.remove(), 200);
+}
+
+function reduceMotion() {
+    if (document.documentElement.getAttribute("data-reduce-motion") === "on") return true;
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 }
 
 /* ─────────────── 让位场（海水让开） ─────────────── */
@@ -763,7 +944,8 @@ function endDrag(d, x, y) {
     }
     if (d.scope === "folder") {
         // 文件夹内：仅支持重排（macOS 不允许文件夹嵌套）
-        const idx = insertionIndexSnap(x, y);
+        // 分页后页内落点是相对当前页的，要加上本页起始下标才对应完整成员列表
+        const idx = folderPageStart + insertionIndexSnap(x, y);
         const visible = visibleAppsOf(openFolderItem);
         const from = visible.indexOf(d.item.name);
         clearDodge();
@@ -916,10 +1098,11 @@ function openFolder(item) {
     // 搜索条会随根网格一起淡出，先把焦点交还给文件夹标题，避免在看不见的输入框里继续输入。
     searchInput.blur();
     folderTitleInput.value = openFolderItem.name;
-    renderFolderGrid();
+    folderPage = 0;
+    // 先挂上 open 再渲染：面板在 display:none 时量不到可用尺寸，分页容量会算成 0
     folderLayer.classList.add("open");
-    // 底衬加糊加暗：浮层的磨砂才读得出层次
     launchpad.classList.add("folder-open");
+    renderFolderGrid();
 }
 
 function closeFolder() {
@@ -935,15 +1118,91 @@ function closeFolder() {
     }, FOLDER_CLOSE_MS);
 }
 
+// 文件夹单页容量：列数取 grid 实际轨道数，行数按面板可用高度反推。
+// 只在面板可见时量；量不到（正在关闭/隐藏）就退化为「全部放一页」。
+function measureFolderPageCapacity() {
+    if (!folderGrid.clientWidth || !folderPanel.clientHeight) return Infinity;
+    const gcs = getComputedStyle(folderGrid);
+    const gapX = parseFloat(gcs.columnGap) || 0;
+    const gapY = parseFloat(gcs.rowGap) || 0;
+    const cols = Math.max(1, gcs.gridTemplateColumns.split(/\s+/).filter(Boolean).length);
+    const cell = Math.max(1, (folderGrid.clientWidth - (cols - 1) * gapX) / cols);
+    const pcs = getComputedStyle(folderPanel);
+    // 预留标题与页码点的高度（页码点常驻预留，避免「出现圆点→容量变小→页数变多」的循环）
+    const inner = folderPanel.clientHeight
+        - parseFloat(pcs.paddingTop) - parseFloat(pcs.paddingBottom)
+        - folderTitleInput.offsetHeight - 24 - 24;
+    const rows = Math.max(1, Math.floor((inner + gapY) / (cell + gapY)));
+    return cols * rows;
+}
+
 function renderFolderGrid() {
     folderGrid.innerHTML = "";
-    if (!openFolderItem) return;
+    if (!openFolderItem) {
+        renderFolderPager(0);
+        return;
+    }
     // 只用可见成员渲染；成员归属仍以 openFolderItem.apps 为准。
-    visibleAppsOf(openFolderItem).forEach((n) => {
+    const list = visibleAppsOf(openFolderItem);
+    const capacity = measureFolderPageCapacity();
+    folderPageCount = Number.isFinite(capacity) ? Math.max(1, Math.ceil(list.length / capacity)) : 1;
+    folderPage = Math.max(0, Math.min(folderPage, folderPageCount - 1));
+    const start = Number.isFinite(capacity) ? folderPage * capacity : 0;
+    const end = Number.isFinite(capacity) ? start + capacity : list.length;
+    folderPageStart = start;
+    list.slice(start, end).forEach((n) => {
         folderGrid.appendChild(makeCell({ type: "app", name: n }, "folder"));
     });
+    renderFolderPager(folderPageCount);
     if (editMode) applyJiggle(folderGrid);
 }
+
+function renderFolderPager(count) {
+    folderPages.innerHTML = "";
+    if (count <= 1) {
+        folderPages.hidden = true;
+        return;
+    }
+    folderPages.hidden = false;
+    for (let i = 0; i < count; i += 1) {
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.className = `folder-page-dot${i === folderPage ? " active" : ""}`;
+        dot.dataset.page = String(i);
+        dot.setAttribute("aria-label", `第 ${i + 1} 页`);
+        folderPages.appendChild(dot);
+    }
+}
+
+function turnFolderPage(delta) {
+    if (!openFolderItem || folderPageCount <= 1) return;
+    const next = Math.max(0, Math.min(folderPageCount - 1, folderPage + delta));
+    if (next === folderPage) return;
+    folderPage = next;
+    renderFolderGrid();
+}
+
+folderPages.addEventListener("click", (e) => {
+    const dot = e.target.closest(".folder-page-dot");
+    if (!dot) return;
+    e.stopPropagation();
+    folderPage = Number(dot.dataset.page) || 0;
+    renderFolderGrid();
+});
+
+/**
+ * 文件夹内滚轮/轻扫切页：与启动台整屏翻页同一套节流，
+ * 单页已装得下时不动，避免吞掉面板内部原本就不存在的滚动。
+ */
+folderPanel.addEventListener("wheel", (e) => {
+    if (!openFolderItem || folderPageCount <= 1) return;
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    const now = performance.now();
+    if (now - lastFolderTurnAt < 320) return;
+    lastFolderTurnAt = now;
+    turnFolderPage(e.deltaY > 0 ? 1 : -1);
+}, { passive: false });
 
 function dissolveIfSparse(folder) {
     if (folder.apps.length >= 2) return;
@@ -1040,49 +1299,50 @@ function startRename(item) {
 /* ─────────────── 右键菜单 ─────────────── */
 
 function openCtxMenu(x, y, item) {
-    ctxMenu.innerHTML = "";
-    const mk = (text, fn) => {
-        const b = document.createElement("div");
-        b.className = "ctx-item";
-        b.textContent = text;
-        b.addEventListener("click", () => pressMenuItem(b, () => { closeCtxMenu(); fn(); }));
-        return b;
-    };
+    const items = [];
     // 添加到桌面 / 从桌面移除：快捷方式是 /桌面 下的真实 .webloc.json，可重命名可进废纸篓
     if (item.type === "app") {
         const name = item.name;
-        ctxMenu.appendChild(mk(desktopShortcutLabel.add, async () => {
-            const { Shortcuts } = await import("../../src/javascripts/core/shortcuts.js");
-            const { resolveAppId } = await import("../../src/javascripts/app-registry.js");
-            const appId = resolveAppId(name);
-            if (!appId) return;
-            if (!(await Shortcuts.findExisting(appId))) {
-                await Shortcuts.add(appId).catch((err) => console.warn("[launchpad] 添加到桌面失败：", err));
-            }
-        }));
-        ctxMenu.appendChild(mk(desktopShortcutLabel.remove, async () => {
-            const { Shortcuts } = await import("../../src/javascripts/core/shortcuts.js");
-            const { resolveAppId } = await import("../../src/javascripts/app-registry.js");
-            const appId = resolveAppId(name);
-            if (!appId) return;
-            const existing = await Shortcuts.findExisting(appId);
-            if (existing) await Shortcuts.remove(existing).catch((err) => console.warn("[launchpad] 移除快捷方式失败：", err));
-        }));
+        items.push({
+            label: desktopShortcutLabel.add,
+            action: async () => {
+                const { Shortcuts } = await import("../../src/javascripts/core/shortcuts.js");
+                const { resolveAppId } = await import("../../src/javascripts/app-registry.js");
+                const appId = resolveAppId(name);
+                if (!appId) return;
+                if (!(await Shortcuts.findExisting(appId))) {
+                    await Shortcuts.add(appId).catch((err) => console.warn("[launchpad] 添加到桌面失败：", err));
+                }
+            },
+        });
+        items.push({
+            label: desktopShortcutLabel.remove,
+            action: async () => {
+                const { Shortcuts } = await import("../../src/javascripts/core/shortcuts.js");
+                const { resolveAppId } = await import("../../src/javascripts/app-registry.js");
+                const appId = resolveAppId(name);
+                if (!appId) return;
+                const existing = await Shortcuts.findExisting(appId);
+                if (existing) await Shortcuts.remove(existing).catch((err) => console.warn("[launchpad] 移除快捷方式失败：", err));
+            },
+        });
     }
-    ctxMenu.appendChild(mk("重命名", () => startRename(item)));
-    if (item.type === "folder") ctxMenu.appendChild(mk("解散文件夹", () => dissolveFolder(item)));
-    ctxMenu.hidden = false;
-    const r = ctxMenu.getBoundingClientRect();
-    ctxMenu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - r.width - 8))}px`;
-    ctxMenu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - r.height - 8))}px`;
+    items.push({ label: "重命名", action: () => startRename(item) });
+    if (item.type === "folder") items.push({ label: "解散文件夹", action: () => dissolveFolder(item) });
+    // 共享菜单负责定位、视口夹取、Esc/外部点击关闭与按下反馈
+    activeCtxMenu = createContextMenu(x, y, items);
 }
 
 const desktopShortcutLabel = { add: "添加到桌面", remove: "从桌面移除" };
 
+/** 共享菜单可能已被外部点击/Esc 自行关闭，判定要连带检查节点是否还在文档里。 */
+function isCtxMenuOpen() {
+    return Boolean(activeCtxMenu && activeCtxMenu.isConnected);
+}
+
 function closeCtxMenu() {
-    ctxMenu.hidden = true;
-    ctxMenu.style.left = "";
-    ctxMenu.style.top = "";
+    closeContextMenu(activeCtxMenu);
+    activeCtxMenu = null;
 }
 
 /* ─────────────── 应用启动 ─────────────── */
@@ -1131,6 +1391,12 @@ function launchApp(name, imgEl) {
     const app = state.apps.get(name);
     if (imgEl) zoomLaunch(imgEl);
     if (!app) return;
+    if (app.link) {
+        // 站点型应用：只让宿主浏览器开新标签，不进入「运行中」也不接管顶栏菜单。
+        openApp(app.appId);
+        closeLaunchpad();
+        return;
+    }
     if (window.appStatus[name]) {
         openApp(app.appId);
     } else {
@@ -1182,6 +1448,10 @@ function prefersReducedMotion() {
 
 function closeLaunchpad() {
     if (LP_STATE.isClosing) return;
+    // 关闭时收掉进行中的拖拽：幽灵现在挂在 body 顶层，不随启动台节点一起卸载。
+    if (press) onPointerCancel();
+    cancelDockPreview();
+    if (dragLayer) dragLayer.replaceChildren();
     if (!launchpad || !launchpad.isConnected) {
         window.appStatus["启动台"] = false;
         document.documentElement.classList.remove("deskly-launchpad-open");
@@ -1274,11 +1544,11 @@ function onPageDotClick(e) {
 /* ─────────────── 全局交互 ─────────────── */
 
 // 点击空白：文件夹开着先关文件夹，否则关闭启动台
+// （右键菜单挂在 body 上，点它不会冒泡到这里，关闭由共享菜单自己的监听负责）
 launchpad.addEventListener("click", (e) => {
-    closeCtxMenu();
     if (suppressNextClick) return;
     if (e.target.closest(".container") || e.target.closest(".searchbar")
-        || e.target.closest(".ctx-menu") || e.target.closest(".folder-panel")) return;
+        || e.target.closest(".folder-panel")) return;
     if (editMode) { exitEditMode(); return; }
     if (folderLayer.classList.contains("open")) closeFolder();
     else closeLaunchpad();
@@ -1288,14 +1558,21 @@ const onWindowKeydown = (e) => {
     const tag = document.activeElement && document.activeElement.tagName;
     const typing = tag === "INPUT" || tag === "TEXTAREA";
     // 左右方向键翻页（页码点只给鼠标用，键盘用户走这条路径）。
-    if (!typing && ctxMenu.hidden && !folderLayer.classList.contains("open")
+    if (!typing && !isCtxMenuOpen() && !folderLayer.classList.contains("open")
         && (e.key === "ArrowLeft" || e.key === "ArrowRight") && pageCount > 1) {
         e.preventDefault();
         goToPage(currentPage + (e.key === "ArrowRight" ? 1 : -1));
         return;
     }
+    // 文件夹展开时，左右方向键切文件夹内的页（整屏翻页在展开态下不生效）
+    if (!typing && !isCtxMenuOpen() && folderLayer.classList.contains("open")
+        && (e.key === "ArrowLeft" || e.key === "ArrowRight") && folderPageCount > 1) {
+        e.preventDefault();
+        turnFolderPage(e.key === "ArrowRight" ? 1 : -1);
+        return;
+    }
     if (e.key !== "Escape") return;
-    if (!ctxMenu.hidden) { closeCtxMenu(); return; }
+    if (isCtxMenuOpen()) { closeCtxMenu(); return; }
     if (editMode) { exitEditMode(); return; }
     if (folderLayer.classList.contains("open")) { closeFolder(); return; }
     if (keyword) {
@@ -1358,6 +1635,8 @@ const onSizeChange = () => {
     applySizes();
     renderRoot();
     updatePageDotsPosition();
+    // 面板尺寸变了（窗口缩放/图标尺寸），单页容量随之变化，重算分页
+    if (openFolderItem) renderFolderGrid();
 };
 
 /* ─────────────── 初始化 ─────────────── */

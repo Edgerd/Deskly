@@ -74,6 +74,10 @@
   /* 尺寸单一来源：图标/文字由设置项写入（script.js 的 applySizes），
      格子宽度与文件夹预览都由 --lp-icon 推导，保证任意档位下比例一致 */
   --lp-icon: 84px;
+  /* 可见图标画面占排版盒的比例：script.js 按每张图的实心包围盒写入 --lp-icon-scale，
+     统一收敛到 70/84（默认档 84 → 可见 70px）。未测量完/跨域时退回同一比例，
+     避免先顶满 84 再跳小；文件夹磁贴的涂装也用这个比例，三者视觉尺寸一致。 */
+  --lp-artwork-ratio: 0.8333;
   --lp-font: 13px;
   --lp-cell: calc(var(--lp-icon) + 44px);
   /* 文字色：--surface-text 的全局推导在「墙纸着色关闭」时读不到墙纸明暗，浅色主题会推出黑字压在深色墙纸上。
@@ -95,21 +99,20 @@
   cursor: var(--deskly-cursor, default);
   transition: backdrop-filter 0.22s cubic-bezier(0.4, 0, 0.2, 1), background 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
-/* 文件夹展开时：底衬更糊更暗，浮层的磨砂才读得出层次。
-   常态 4 档、展开态 5 档，保住「展开比常态更糊」这一步。 */
+/* 文件夹展开时：不再把整屏模糊抬到 5 档（桌面会糊成一片），
+   改为保留 4 档、把遮罩压淡提亮；背后的 App 图标由 .grid-scroll 的
+   filter 单独虚化（见下方）。模糊量始终走系统令牌，跟随设置里的等级。 */
 .launchpad.folder-open {
-  --surface-blur: var(--surface-blur-5);
   backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
   -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(var(--surface-saturate));
-  background: rgba(0, 0, 0, 0.28);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 /* ── 光标：常态/悬浮两档；拖拽全程锁定为手指，不随指针落点变化 ──
    引用内核的 --deskly-cursor* 而不是直接贴 assets/cursors/*.cur：.cur 是 128px
    多帧文件，Chrome 按原生尺寸渲染，在这层铺满全屏的磨砂上会显得巨大，且不吃
    用户设定的光标大小与阴影。 */
-.launchpad .container,
-.launchpad .ctx-item {
+.launchpad .container {
   cursor: var(--deskly-cursor-pointer, pointer);
 }
 .launchpad.drag-cursor,
@@ -135,9 +138,16 @@
 .launchpad .grid-scroll::-webkit-scrollbar {
   display: none;
 }
-/* 文件夹展开时，根网格与搜索条让位：原版只留下被压暗模糊的桌面，
-   不会让背后的 App 图标和文件夹面板抢注意力。 */
-.launchpad.folder-open .grid-scroll,
+/* 文件夹展开时，搜索条与页码点让位；根网格保留可见但整体虚化。
+   这里用 filter 模糊 App 图标自己（背景层的 backdrop-filter 只负责桌面），
+   所以展开后看到的是「模糊的应用图标」，而不是一块空白的模糊桌面。
+   模糊量取系统 2 档，跟随设置里的模糊等级等比变化。 */
+.launchpad.folder-open .grid-scroll {
+  filter: blur(var(--surface-blur-2));
+  opacity: 0.72;
+  pointer-events: none;
+  transition: filter 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
 .launchpad.folder-open .searchbar {
   opacity: 0;
   pointer-events: none;
@@ -195,7 +205,10 @@
   height: var(--lp-icon);
   object-fit: contain;
   pointer-events: none;
-  transition: transform 0.15s ease;
+  /* 只缩放画面，不改排版盒：格子宽度、标签顶边、让位计算都不受影响。
+     scale 与 hover 的 transform 是两套独立属性，会叠加而不是互相覆盖。 */
+  scale: var(--lp-icon-scale, var(--lp-artwork-ratio));
+  transition: transform 0.15s ease, scale 0.15s ease;
 }
 /* 几何契约：App 图标与文件夹磁贴共用同一条主轴尺寸和零外边距，
    两者都是 .container 的第一个 flex 子项 → 排版矩形（宽高、left、top）逐项相同。
@@ -234,21 +247,19 @@
   animation: cell-pop 0.25s ease-out;
 }
 
-/* 文件夹磁贴：排版盒与 App 图标严格同尺寸，但「涂装」（可见的圆角浅色方块）只有图标盒的 84.4%。
-   15% 的差不是磁贴过大，而是内置图标 PNG 自带的透明外边距：实测 15 枚图标的不透明内容
-   只占画布 84.0%–84.8%（Finder/Safari/Photos 均为 84.4%）。磁贴若涂满整个盒，就会比图标的
-   肉眼尺寸大一圈（84 盒 → 85 的方块 vs 约 70 的画面）。所以涂装层按同一比例内缩，
-   可见面积与图标内容对齐；排版盒保持不变，标签顶边才能与相邻应用同高。
+/* 文件夹磁贴：排版盒与 App 图标严格同尺寸，「涂装」（可见的圆角浅色方块）按统一的
+   可见画面比例 70/84 内缩 —— 与 script.js 对 App 图标的实心包围盒归一化使用同一比例，
+   PNG 自带的透明边、烘焙阴影都不会再把某个图标撑大或缩小。默认档 84 → 可见 70px。
    材质：白色低透明度叠在启动台根表面的 4 档模糊上（展开文件夹时是 5 档），
    不给每格挂 backdrop-filter —— 28 格逐格采样成本高，且磁贴 hover 有 transform，
    会触发本项目「亚克力元素禁止 transform」的退化。外描边 / 外投影一概不加。 */
 .launchpad .folder-tile {
   /* 全部由 --lp-icon 推导：任何图标档位下比例不变，不写死 px。 */
-  --lp-folder-artwork: 0.844;                       /* 图标不透明内容占比（实测中位数） */
+  --lp-folder-artwork: 0.8333;                      /* 可见图标画面占排版盒的比例（70/84） */
   --lp-folder-fill: rgba(247, 248, 252, 0.46);
   --lp-folder-fill-solid: #eef0f5;
-  /* 涂装层四周各让出的比例 = (1 − 0.844) / 2，与图标 PNG 的透明边等宽 */
-  --lp-folder-paint-inset: calc(var(--lp-icon) * 0.078);
+  /* 涂装层四周各让出的比例 = (1 − 0.8333) / 2，与 App 图标的可见画面等宽 */
+  --lp-folder-paint-inset: calc(var(--lp-icon) * 0.08335);
   /* 涂装方块内的留白 = 涂装边长 × 0.07 ≈ 整盒的 0.137 */
   --lp-folder-pad: calc(var(--lp-icon) * 0.137);
   --lp-folder-gap: calc(var(--lp-icon) * 0.05);
@@ -281,8 +292,8 @@
   background:
     linear-gradient(155deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.12) 46%, rgba(255, 255, 255, 0.04)),
     var(--lp-folder-fill);
-  /* 只有顶部 1px 内高光，不加环状内描边 */
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  /* 不要顶部内高光描边：磁贴只靠半透明底色与模糊区分层次 */
+  box-shadow: none;
   pointer-events: none;
 }
 /* 预览层绝对定位且 inset: 0：内边距再大也只影响自己，排版盒恒等于 --lp-icon。 */
@@ -340,13 +351,14 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+  /* 预览只是装饰：铺满各自的小格即可，不套用应用图标那套可见画面归一化 */
+  scale: 1;
   transition: none;
 }
 /* 「降低透明度」：摘掉半透明层，退回实色 —— 但必须是浅色实底，不跟随深色主题变深。
    启动台根表面此时由 main.css 换成深色 scrim，浅色磁贴正好保持可读。 */
 html[data-transparency="off"] .launchpad .folder-tile::before {
   background: var(--lp-folder-fill-solid);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 /* ── 搜索栏 ── */
@@ -468,25 +480,27 @@ html[data-transparency="off"] .launchpad .folder-tile::before {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(720px, 86vw);
-  min-height: 260px;
-  max-height: 74vh;
+  /* 圆角正方形：宽高取同一个边长度（随视口收缩），内容在方形里居中排布 */
+  --folder-side: min(560px, 86vw, 74vh);
+  width: var(--folder-side);
+  height: var(--folder-side);
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   scrollbar-width: none;
-  border-radius: 32px;
+  /* 明显的圆角（不是直角，也不是 32px 的大圆角） */
+  border-radius: 28px;
   padding: 28px 32px 34px;
-  /* 原版展开文件夹是一整块更浓的磨砂玻璃：壁纸颜色透进来、边缘有柔和高光，
-     不是一块实心灰。底色压到 0.30，再叠一层自上而下的白色薄膜高光；
-     模糊仍走系统 4 档，由 .launchpad.folder-open 在外层再加一档。 */
+  /* 浅色磨砂玻璃：底色用低浓度冷灰 + 自上而下的白色薄膜，
+     模糊降到系统 3 档并加一点 brightness 提亮（原 4 档 + 0.30 深灰底偏黑）。
+     模糊与亮度都走系统令牌/统一参数，跟随设置里的模糊等级。 */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05) 38%, rgba(255, 255, 255, 0) 100%),
-    rgba(86, 86, 94, 0.30);
-  backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
-  -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
-  box-shadow:
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 34px 90px rgba(0, 0, 0, 0.48);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.09) 40%, rgba(255, 255, 255, 0.02) 100%),
+    rgba(138, 138, 148, 0.22);
+  backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate)) brightness(1.22);
+  -webkit-backdrop-filter: blur(var(--surface-blur-3)) saturate(var(--surface-saturate)) brightness(1.22);
+  /* 只保留外投影：内高光描边与顶部亮线一并去掉，面板边缘不再发白 */
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.42);
   animation: folder-pop 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 .launchpad .folder-layer.closing .folder-panel {
@@ -522,31 +536,45 @@ html[data-transparency="off"] .launchpad .folder-tile::before {
   display: grid;
   grid-template-columns: repeat(auto-fill, var(--lp-cell));
   justify-content: center;
+  /* 方形面板里图标少于行数时，用上下 auto 外边距把图标组垂直居中；
+     内容超高时 auto 外边距自动归零，滚动不受影响 */
+  margin-block: auto;
   gap: 24px 14px;
   padding: 2px 4px 4px;
 }
 
-/* ── 右键菜单 ── */
-.launchpad .ctx-menu {
-  position: fixed;
-  z-index: 20;
-  min-width: 160px;
-  padding: 5px;
-  border-radius: 10px;
-  background: rgba(50, 50, 55, 0.72);
-  backdrop-filter: blur(var(--surface-blur-3));
-  -webkit-backdrop-filter: blur(var(--surface-blur-3));
-  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 10px 30px rgba(0, 0, 0, 0.3);
+.launchpad .folder-pages {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0 0;
+  flex: none;
 }
-.launchpad .ctx-menu .ctx-item {
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--surface-text);
+.launchpad .folder-pages[hidden] {
+  display: none;
 }
-.launchpad .ctx-menu .ctx-item:hover {
-  background: rgba(255, 255, 255, 0.18);
+.launchpad .folder-page-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.32);
+  cursor: var(--deskly-cursor-pointer, pointer);
+  transition: background 0.15s ease, transform 0.15s ease;
 }
+.launchpad .folder-page-dot:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+.launchpad .folder-page-dot.active {
+  background: rgba(255, 255, 255, 0.92);
+  transform: scale(1.15);
+}
+
+/* ── 右键菜单 ──
+   启动台不再自绘菜单：openCtxMenu 改调 ui/contextMenu.js 的共享菜单，
+   与访达/桌面/程序坞共用 .menu 的亚克力样式（含 Dock 同款底色）。 */
 
 /* ── 行内重命名输入框 ── */
 .launchpad .rename-input {
@@ -563,7 +591,15 @@ html[data-transparency="off"] .launchpad .folder-tile::before {
 }
 
 /* ── 拖拽跟随幽灵 ── */
-.launchpad .drag-ghost {
+/* 幽灵挂在 body 顶层拖拽层：启动台是 9600 的层叠上下文，程序坞在它之上（9601），
+   幽灵留在启动台里会被程序坞压住；10000 层保证拖动时图标始终盖在程序坞上方。 */
+.launchpad-drag-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+.launchpad-drag-layer .drag-ghost {
   position: fixed;
   z-index: 9700;
   width: var(--lp-cell);
@@ -575,26 +611,40 @@ html[data-transparency="off"] .launchpad .folder-tile::before {
   transform: translate(-50%, -58%) scale(1.12);
   filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.4));
 }
-.launchpad .drag-ghost > img {
+.launchpad-drag-layer .drag-ghost > img {
   width: var(--lp-icon);
   height: var(--lp-icon);
   object-fit: contain;
+  /* 幽灵是克隆出来的格子，--lp-icon-scale 已随 inline style 一起复制 */
+  scale: var(--lp-icon-scale, var(--lp-artwork-ratio));
 }
-.launchpad .drag-ghost .folder-tile {
+.launchpad-drag-layer .drag-ghost .folder-tile {
   inline-size: var(--lp-icon);
   block-size: var(--lp-icon);
 }
-.launchpad .drag-ghost .folder-tile img {
+.launchpad-drag-layer .drag-ghost .folder-tile img {
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
-.launchpad .drag-ghost p {
+.launchpad-drag-layer .drag-ghost p {
   margin: 8px 0 0;
   font-size: var(--lp-font);
   color: var(--surface-text);
   white-space: nowrap;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+/* 飞入程序坞：位置/缩放/透明度一起收，标签先淡出，落点后由 Dock 接管弹跳。 */
+.launchpad-drag-layer .drag-ghost.docking {
+  transition:
+    left 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    top 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease;
+}
+.launchpad-drag-layer .drag-ghost.docking p {
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
 /* 原版启动台是「隐藏菜单栏、保留程序坞」的全屏空间，启动期间给 <html> 挂 deskly-launchpad-open：

@@ -428,7 +428,7 @@ export async function installZip(file, opts = {}) {
         // 权限清单必须在落库之前确认（设计决策：取消就整段终止）。半途注册会留下
         // 「注册表里有、授权账本里没有」的插件，之后它每次调用能力都对不上账。
         progress("grant", "等待确认权限…");
-        if (!(await showPermissionChecklist(manifest))) return fail("cancelled", { id, name: manifest.name || id });
+        if (!opts.confirmed && !(await showPermissionChecklist(manifest))) return fail("cancelled", { id, name: manifest.name || id });
 
         progress("write", "正在写入本地插件库…");
         let registered = false;
@@ -498,6 +498,149 @@ export function uninstallPreview(id) {
     const entry = getEntry(id);
     if (!entry) return null;
     return { name: entry.name, files: meta ? meta.files : 0, bytes: meta ? meta.bytes : 0 };
+}
+
+/* ── 系统层确认框：安装清单 / 批量安装 / 卸载（应用内不再弹第二次） ── */
+
+function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (ch) => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+    ));
+}
+
+/**
+ * 读取 ZIP 里的清单（只解析 manifest.json，不落库），供批量安装的预览使用。
+ * @param {File} file ZIP 包
+ * @param {Function} JSZip 已就绪的 JSZip
+ * @returns {Promise<object|null>}
+ */
+async function peekManifest(file, JSZip) {
+    const zip = await JSZip.loadAsync(file);
+    const entries = Object.entries(zip.files).filter(([, f]) => !f.dir).map(([name]) => name);
+    const root = commonRoot(entries);
+    const keyOf = (name) => name.replace(/^\.\//, "").slice(root ? root.length : 0);
+    const entry = entries.find((n) => keyOf(n) === "manifest.json");
+    if (!entry) return null;
+    return JSON.parse(await zip.file(entry).async("string"));
+}
+
+/**
+ * 系统层卸载：一个弹窗说清要移除什么，确认后执行。
+ * 应用内（开发者、商店）不要再自己弹确认框，否则用户会连点两次。
+ * @param {string} id 插件 id
+ * @param {{confirm?: boolean}} opts confirm=false 时直接卸载（批量清理用）
+ * @returns {Promise<{ok: boolean, reason?: string, freed?: number, files?: number}>}
+ */
+export async function requestUninstall(id, opts = {}) {
+    const preview = uninstallPreview(id);
+    if (!preview) return { ok: false, reason: "注册表里没有这个插件，可能已经卸载过了" };
+    if (opts.confirm !== false) {
+        const [{ dialog }, { i18n }] = await Promise.all([
+            import("./ui/dialog.js"),
+            import("./i18n.js"),
+        ]);
+        const size = preview.bytes
+            ? `${(preview.bytes / 1024).toFixed(1)} KB`
+            : i18n.t("dialog.uninstall.noData", "无附加数据");
+        const html = `<p>${escapeHtml(i18n.t("dialog.uninstall.lead", "将从本机移除下列应用及其数据："))}</p>`
+            + `<ul class="ag-apps"><li><span>${escapeHtml(preview.name)}</span><span class="ag-app__ver">${escapeHtml(String(preview.files || 0))} ${escapeHtml(i18n.t("dialog.uninstall.files", "个文件"))} · ${escapeHtml(size)}</span></li></ul>`
+            + `<p class="ag-note">${escapeHtml(i18n.t("dialog.uninstall.note", "卸载后应用图标会从启动台、程序坞与访达一并移除。"))}</p>`;
+        const ok = await dialog.confirm({
+            title: i18n.t("dialog.uninstall.title", "卸载应用"),
+            message: html,
+            html: true,
+            danger: true,
+            confirmText: i18n.t("dialog.uninstall.confirm", "卸载"),
+        });
+        if (!ok) return { ok: false, reason: "cancelled" };
+    }
+    return uninstall(id);
+}
+
+/**
+ * 一次弹窗安装多个应用：列出全部应用与合并后的权限，确认后逐个走同一条安装流程。
+ * 供「全部重新安装 / 批量导入」使用，避免每个应用各弹一次。
+ * @param {File[]} files ZIP 列表
+ * @param {{overwrite?: boolean, onProgress?: Function}} opts
+ * @returns {Promise<{ok: boolean, reason?: string, results?: Array}>}
+ */
+export async function installMany(files, opts = {}) {
+    const list = Array.from(files || []);
+    if (!list.length) return { ok: false, reason: "没有收到文件" };
+    let JSZip;
+    try {
+        JSZip = await ensureJSZip();
+    } catch (err) {
+        return { ok: false, reason: "缺少 JSZip，无法解压" };
+    }
+    const [{ dialog }, { i18n }] = await Promise.all([
+        import("./ui/dialog.js"),
+        import("./i18n.js"),
+    ]);
+
+    const apps = [];
+    for (const file of list) {
+        if (!/\.zip$/i.test(file.name || "")) {
+            apps.push({ file, error: "只接受 .zip 插件包" });
+            continue;
+        }
+        try {
+            const manifest = await peekManifest(file, JSZip);
+            if (manifest && typeof manifest.id === "string") apps.push({ file, manifest });
+            else apps.push({ file, error: "manifest.json 不合法" });
+        } catch (err) {
+            apps.push({ file, error: "压缩包无法解析" });
+        }
+    }
+    const valid = apps.filter((item) => item.manifest);
+    if (!valid.length) return { ok: false, reason: "没有可安装的插件包" };
+
+    const merged = new Set();
+    valid.forEach((item) => {
+        (Array.isArray(item.manifest.permissions) ? item.manifest.permissions : []).forEach((p) => merged.add(p));
+    });
+    const permRows = Array.from(merged).filter(isKnownPermission).map((p) => {
+        const base = describe(p);
+        return `<li><b>${escapeHtml(base.label)}</b>`
+            + `<span class="ag-hint">${escapeHtml(base.hint)}</span></li>`;
+    }).join("");
+    const appRows = valid.map((item) => {
+        const m = item.manifest;
+        return `<li><span>${escapeHtml(m.name || m.id)}</span>`
+            + `<span class="ag-app__ver">${escapeHtml(i18n.t("dialog.permission.version", "版本"))} ${escapeHtml(String(m.version || "?"))}</span></li>`;
+    }).join("");
+    const skipped = apps.filter((item) => item.error);
+    const skippedNote = skipped.length
+        ? `<p class="ag-note">${escapeHtml(i18n.t("dialog.install.skipped", "有 {n} 个文件无法读取，将跳过。").replace("{n}", String(skipped.length)))}</p>`
+        : "";
+    const html = `<p>${escapeHtml(i18n.t("dialog.install.multiLead", "将安装以下 {n} 个应用：").replace("{n}", String(valid.length)))}</p>`
+        + `<ul class="ag-apps">${appRows}</ul>`
+        + `<ul class="ag-list">${permRows || `<li>${escapeHtml(i18n.t("dialog.permission.none", "不需要任何额外能力"))}</li>`}</ul>`
+        + `<p class="ag-note">${escapeHtml(i18n.t("dialog.permission.checklistNote", "其中需要单独确认的能力，会在第一次使用时询问。"))}</p>`
+        + skippedNote;
+
+    const value = await dialog.choose({
+        title: i18n.t("dialog.install.multiTitle", "安装应用"),
+        message: html,
+        html: true,
+        buttons: [
+            { label: i18n.t("common.cancel", "取消"), value: "cancel", style: "secondary" },
+            { label: i18n.t("dialog.permission.install", "安装并授权"), value: "ok", style: "primary" },
+        ],
+        dismissValue: "cancel",
+    });
+    if (value !== "ok") return { ok: false, reason: "cancelled" };
+
+    const results = [];
+    for (const item of valid) {
+        results.push(await installZip(item.file, {
+            overwrite: opts.overwrite === true,
+            onProgress: opts.onProgress,
+            confirmed: true,
+        }));
+    }
+    const failed = results.find((r) => !r.ok);
+    return { ok: !failed, reason: failed ? failed.reason : undefined, results };
 }
 
 /** 商店占位图（与全宿主同一来源，界面不要再写死路径） */

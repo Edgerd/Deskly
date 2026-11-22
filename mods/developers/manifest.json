@@ -6,7 +6,7 @@
   "entry": "window",
   "author": "Edgerd",
   "description": "把网址和自制页面做成插件：创建、修改、导出与卸载。",
-  "permissions": ["files:read", "files:write", "apps:launch"],
+  "permissions": ["files:read", "apps:launch", "apps:uninstall"],
   "main": "index.html",
   "style": "style.css",
   "script": "script.js",

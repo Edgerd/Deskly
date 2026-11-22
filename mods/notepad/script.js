@@ -1,5 +1,5 @@
 ﻿/**
- * script.js — 记事本入口（ES module）
+ * script.js — 文本编辑入口（ES module）
  * 装配 store / 三类编辑器 / 侧边栏 / 标签 / 工具栏 / 查找替换 / 快捷键 / 持久化。
  *
  * plugin-manager 每次打开都重新注入本文件（core/*、features/* 仍是同一实例），
@@ -217,7 +217,7 @@ function init(root) {
         flushActive();
         store.removeNote(id);
         if (note && note.path) {
-            alertBox(t('noteRemoved', '已从记事本移除'), t('fileKept', '磁盘上的文件仍需手动删除：') + note.path);
+            alertBox(t('noteRemoved', '已从文本编辑移除'), t('fileKept', '磁盘上的文件仍需手动删除：') + note.path);
         }
         renderActiveView();
     }

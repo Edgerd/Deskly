@@ -1,20 +1,71 @@
 /**
  * library.js — 创建的插件源码库。
  *
- * 位置：本插件 AppData 下的 library.json / library.bak.json。
- * 为什么不用 localStorage：容量小、和工作区数据分开存、清站点数据时容易只剩半份；
- * OSFS 由内核统一管理（默认 IndexedDB 后端，挂了文件夹就落到磁盘），刷新与重启都在。
- * 为什么还要备份：写坏一次就够丢掉全部源码，写前把上一版挪到 .bak.json。
+ * 位置：本插件自己的 IndexedDB（库名 deskly-developers，键 current / backup）。
+ * 为什么不再用 Deskly.fs：文件存储（files:write）是敏感能力，第一次保存会额外弹一次
+ * 「文件存储」确认，与卸载确认叠成两次弹窗。源码库只是本应用的数据，放自己的
+ * IndexedDB 里刷新与重启都在，也不再需要写权限；files:read 只用于一次性迁移旧数据。
+ * 为什么还要备份：写坏一次就够丢掉全部源码，写前把上一版挪到 backup。
  */
 
 const FILE = "library.json";
 const BACKUP = "library.bak.json";
 const SCHEMA_VERSION = 1;
+const DB_NAME = "deskly-developers";
+const DB_VERSION = 1;
+const STORE = "kv";
 
 const KIND_VALUES = new Set(["shortcut", "window", "page"]);
+// 与 icon.js 的三种图标样式保持一致；这里单独列一份，避免把画布逻辑带进 Node 校验。
+const ICON_STYLES = new Set(["brand", "letter", "brand-letter"]);
 
-/** 读出信封里的 File；缺失、被拒、解析失败都返回 null。 */
-async function readJson(name) {
+let dbPromise = null;
+
+/** 打开（或复用）本插件的 IndexedDB。 */
+function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error("打开源码库失败"));
+    });
+    return dbPromise;
+}
+
+/** 读一个键；失败返回 null，不阻塞界面。 */
+async function idbGet(key) {
+    try {
+        const db = await openDb();
+        return await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE, "readonly");
+            const req = tx.objectStore(STORE).get(key);
+            req.onsuccess = () => resolve(req.result == null ? null : req.result);
+            req.onerror = () => reject(req.error);
+        });
+    } catch (err) {
+        console.warn("[developers] 读取源码库失败", key, err);
+        return null;
+    }
+}
+
+/** 写一个键；失败抛出，由界面提示。 */
+async function idbSet(key, value) {
+    const db = await openDb();
+    await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+    });
+}
+
+/** 旧版存在 AppData 里的 JSON（只读一次，用于迁移）。无权限时静默返回 null。 */
+async function readLegacyJson(name) {
     try {
         const res = await Deskly.fs.read(name);
         if (!res || !res.ok || !res.value) return null;
@@ -22,7 +73,6 @@ async function readJson(name) {
         if (!text || !text.trim()) return null;
         return JSON.parse(text);
     } catch (err) {
-        console.warn("[developers] 读取", name, "失败", err);
         return null;
     }
 }
@@ -54,7 +104,8 @@ export function normalizeIcon(input, fallbackLetter) {
     const data = typeof src.data === "string" && /^data:image\//.test(src.data) ? src.data : "";
     const letter = String(src.letter || fallbackLetter || "?").slice(0, 2).toUpperCase();
     const color = /^#[0-9a-f]{6}$/i.test(src.color || "") ? src.color : "";
-    return { data, letter, color };
+    const style = ICON_STYLES.has(src.style) ? src.style : "";
+    return { data, letter, color, style };
 }
 
 /** 单条记录归一化；坏记录返回 null（调用方过滤掉）。 */
@@ -101,37 +152,43 @@ export function normalizeLibrary(raw) {
 
 let cache = null;
 
-/** 首次读库；读不到退回备份；再读不到给空库。 */
+/** 首次读库；读不到退回备份；再读不到给空库。旧版文件只迁移一次。 */
 export async function loadLibrary({ force = false } = {}) {
     if (cache && !force) return cache;
-    let raw = await readJson(FILE);
-    if (!raw) raw = await readJson(BACKUP);
+    let raw = null;
+    const current = await idbGet("current");
+    if (current) {
+        try { raw = JSON.parse(current); } catch (_) { raw = null; }
+    }
+    if (!raw) {
+        const backup = await idbGet("backup");
+        if (backup) {
+            try { raw = JSON.parse(backup); } catch (_) { raw = null; }
+        }
+    }
+    if (!raw) raw = await readLegacyJson(FILE);
+    if (!raw) raw = await readLegacyJson(BACKUP);
     cache = normalizeLibrary(raw);
+    if (raw) {
+        // 迁移/修复后立刻落一份，下次不再读旧文件
+        try { await idbSet("current", JSON.stringify(cache)); } catch (_) { /* 下次再写 */ }
+    }
     return cache;
 }
 
 /**
- * 保存整份库。先写备份（上一版），再写主文件；
+ * 保存整份库。先写备份（上一版），再写主记录；
  * 任何一步失败都把错误抛给调用方，界面据此提示而不是假装成功。
  */
 export async function saveLibrary(library) {
     const normalized = normalizeLibrary(library);
     normalized.updatedAt = new Date().toISOString();
 
-    let previous = "";
-    try {
-        const current = await Deskly.fs.read(FILE);
-        if (current && current.ok && current.value) previous = await current.value.text();
-    } catch (_) {
-        previous = "";
-    }
+    const previous = await idbGet("current");
     if (previous) {
-        const bak = await Deskly.fs.write(BACKUP, previous);
-        if (!bak || !bak.ok) throw new Error(bak?.reason || "备份写入失败");
+        await idbSet("backup", previous);
     }
-
-    const res = await Deskly.fs.write(FILE, JSON.stringify(normalized));
-    if (!res || !res.ok) throw new Error(res?.reason || "写入失败");
+    await idbSet("current", JSON.stringify(normalized));
     cache = normalized;
     return normalized;
 }

@@ -33,8 +33,9 @@ import {
     exportFilename,
     downloadText,
 } from "./js/spec.js";
-import { iconFromFile, applyIconData, clearIconData, iconColor } from "./js/icon.js";
-import { isInstalled, installRecord, uninstallRecord, launchRecord } from "./js/install.js";
+import { iconFromFile, applyIconData, clearIconData, iconColor, brandIcon, composeIcon, brandOf } from "./js/icon.js";
+import { iconSvg } from "../../src/javascripts/ui/phosphor-icons.js";
+import { isInstalled, installRecord, installRecords, uninstallRecord, launchRecord } from "./js/install.js";
 import { captureSite, requestSiteAccess } from "./js/capture.js";
 import { buildPreviewDocument, PAGE_TEMPLATES } from "./js/templates.js";
 
@@ -42,6 +43,7 @@ i18n.registerMessagesAll(DEVELOPER_MESSAGES);
 
 const win = document.querySelector(".developers.window");
 
+// 常用网站：图标由 icon.js 用品牌标记绘制（上半品牌标、下半名称），底色即品牌色。
 const RECOMMENDED = [
     { name: "GitHub", url: "https://github.com", letter: "G", color: "#24292F" },
     { name: "Figma", url: "https://www.figma.com", letter: "F", color: "#A259FF" },
@@ -52,6 +54,15 @@ const RECOMMENDED = [
     { name: "Vercel", url: "https://vercel.com", letter: "V", color: "#000000" },
     { name: "Unsplash", url: "https://unsplash.com", letter: "U", color: "#111111" },
 ];
+
+/** 站点图标（data URL）；BRANDS 未收录的站按品牌色画首字。 */
+const siteIconCache = new Map();
+function siteIcon(site) {
+    if (!siteIconCache.has(site.name)) {
+        siteIconCache.set(site.name, brandIcon(site.name, site.name));
+    }
+    return siteIconCache.get(site.name);
+}
 
 const ACCENTS = ["#2078DA", "#1D9BF0", "#34A853", "#F59E0B", "#E5484D", "#8B5CF6", "#EC4899", "#111827"];
 const PANE_NAMES = ["home", "form", "manage", "settings"];
@@ -127,14 +138,11 @@ function kindLabel(kind) {
     return t(KIND_KEYS[kind] || kind, kind);
 }
 
+// 侧栏图标统一取 App Store 同款图标库（Phosphor regular），不再内联自定义 SVG。
+const NAV_ICONS = { home: "house", create: "plus", manage: "list", settings: "gear-six" };
+
 function navIcon(name) {
-    const paths = {
-        home: '<path d="M2.2 6.6 8 2.2l5.8 4.4v6.2a1 1 0 0 1-1 1H3.2a1 1 0 0 1-1-1z"/><path d="M6.1 13.8V9.3h3.8v4.5"/>',
-        create: '<path d="M8 3.2v9.6M3.2 8h9.6"/>',
-        manage: '<path d="M2.8 4.4h10.4M2.8 8h10.4M2.8 11.6h10.4"/>',
-        settings: '<circle cx="8" cy="8" r="2.1"/><path d="M8 1.7v1.9M8 12.4v1.9M1.7 8h1.9M12.4 8h1.9M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/>',
-    };
-    return `<svg class="ui-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths[name] || ""}</svg>`;
+    return iconSvg(NAV_ICONS[name] || "house", { size: 16 });
 }
 
 function monoNode(record, className) {
@@ -294,8 +302,6 @@ function renderNav() {
 
 function renderChrome() {
     renderNav();
-    const brand = role("brand");
-    if (brand) brand.textContent = "开发者";
     const line = role("storage-line");
     if (line) line.textContent = fill(t("dev.manage.count"), { n: state.library.plugins.length });
 
@@ -371,7 +377,8 @@ function renderHome() {
     const pane = paneEl("home");
     if (!pane) return;
     const plugins = state.library.plugins;
-    const installed = plugins.filter((item) => item.kind !== "shortcut" && isInstalled(item)).length;
+    // 快捷方式现在也会装成系统插件（打开即跳宿主浏览器），所以判定只看是否已安装。
+    const installed = plugins.filter((item) => isInstalled(item)).length;
     const shortcuts = plugins.filter((item) => item.kind === "shortcut").length;
 
     pane.innerHTML = `
@@ -438,9 +445,10 @@ function renderRecommended() {
         const existing = state.library.plugins.find((item) => item.url === site.url);
         const row = el("div", `dv-rec${existing ? " is-added" : ""}`);
         const number = el("span", "dv-rec__index", String(index + 1).padStart(2, "0"));
-        const mono = el("span", "dv-rec__mono", site.letter);
-        mono.style.color = site.color;
-        mono.style.background = hexA(site.color, 0.14);
+        const icon = el("img", "dv-rec__icon");
+        icon.src = siteIcon(site);
+        icon.alt = "";
+        icon.draggable = false;
         const text = el("div", "dv-rec__text");
         text.append(el("span", "dv-rec__name", site.name), el("span", "dv-rec__host", hostOf(site.url)));
         const actions = el("div", "dv-rec__actions");
@@ -465,7 +473,7 @@ function renderRecommended() {
             addWindow.title = t("dev.home.addWindow");
             actions.append(add, addWindow);
         }
-        row.append(number, mono, text, actions);
+        row.append(number, icon, text, actions);
         grid.appendChild(row);
     });
 }
@@ -488,10 +496,14 @@ function renderRecent() {
         row.type = "button";
         row.dataset.action = "open";
         row.dataset.id = record.id;
-        row.appendChild(iconNode(record, ""));
-        row.appendChild(el("span", "dv-recent__name", record.name));
-        row.appendChild(el("span", "dv-recent__kind", kindLabel(record.kind)));
-        row.appendChild(el("span", "dv-recent__time", formatDate(record.updatedAt)));
+        row.appendChild(iconNode(record, "dv-recent__icon"));
+        const body = el("div", "dv-recent__body");
+        const host = hostOf(record.url);
+        body.append(
+            el("span", "dv-recent__name", record.name),
+            el("span", "dv-recent__meta", host ? `${kindLabel(record.kind)} · ${host}` : kindLabel(record.kind)),
+        );
+        row.append(body, el("span", "dv-recent__time", formatDate(record.updatedAt)));
         box.appendChild(row);
     });
 }
@@ -514,6 +526,8 @@ async function addRecommended(index, kind, button) {
         return;
     }
     const record = normalized.record;
+    // 站点型应用也安装成系统插件：启动台里有图标，打开时直接跳宿主浏览器。
+    record.icon.data = siteIcon(site);
     try {
         upsertRecord(state.library, record);
         await saveLibrary(state.library);
@@ -521,13 +535,9 @@ async function addRecommended(index, kind, button) {
         toast(t("dev.toast.storageFailed"), true);
         return;
     }
-    if (kind !== "shortcut") {
-        const result = await installRecord(record, { overwrite: false });
-        if (!result.ok) toast(fill(t("dev.create.installFailed"), { reason: result.reason || "install" }), true);
-        else toast(t("dev.toast.installed"));
-    } else {
-        toast(t("dev.home.added"));
-    }
+    const result = await installRecord(record, { overwrite: false });
+    if (!result.ok) toast(fill(t("dev.create.installFailed"), { reason: result.reason || "install" }), true);
+    else toast(t("dev.toast.installed"));
     renderAll();
 }
 
@@ -542,7 +552,8 @@ function newDraft(mode) {
         url: "",
         name: "",
         description: "",
-        icon: { data: "", letter: "", color: "" },
+        icon: { data: "", letter: "", color: "", style: "" },
+        letterTouched: false,
         window: normalizeWindow({}),
         page: mode === "page" ? { ...PAGE_TEMPLATES.blank } : { html: "", css: "", js: "" },
         pageTab: "html",
@@ -563,6 +574,7 @@ function draftFromRecord(record) {
         name: record.name,
         description: record.description,
         icon: { ...record.icon },
+        letterTouched: true,
         window: { ...record.window },
         page: { ...record.page },
         pageTab: "html",
@@ -597,9 +609,18 @@ function draftLetter() {
 
 function syncLetter() {
     const draft = state.draft;
-    if (!draft || (draft.icon && draft.icon.data)) return;
+    if (!draft || (draft.icon && draft.icon.data) || draft.letterTouched) return;
     const source = (draft.name || "").trim() || titleFromUrl(draft.url) || "?";
     draft.icon.letter = source.slice(0, 2).toUpperCase();
+}
+
+/** 当前图标样式：显式选择优先，未选时按品牌自动推断。 */
+function draftStyle() {
+    const draft = state.draft;
+    if (!draft) return "letter";
+    const style = draft.icon && draft.icon.style;
+    if (style === "brand" || style === "letter" || style === "brand-letter") return style;
+    return brandOf(draft.name) ? "brand" : "letter";
 }
 
 function iconPreviewHtml() {
@@ -607,8 +628,15 @@ function iconPreviewHtml() {
     if (draft.icon && draft.icon.data) {
         return `<img src="${esc(draft.icon.data)}" alt="" />`;
     }
-    const color = draft.window.accent || "#2078DA";
-    return `<span class="dv-mono" style="color:${esc(color)};background:${esc(hexA(color, 0.14))}">${esc(draftLetter())}</span>`;
+    // 预览即安装后的样子：圆角底板 + 纯品牌标 / 纯字母 / 品牌标 + 字母，底色可自定义。
+    const data = composeIcon({
+        letter: draftLetter(),
+        name: draft.name || "",
+        color: iconColor(draft),
+        brand: brandOf(draft.name),
+        style: draftStyle(),
+    });
+    return `<img src="${data}" alt="" />`;
 }
 
 function windowPanelHtml() {
@@ -655,6 +683,13 @@ function windowPanelHtml() {
 
 function fieldsHtml(isPage) {
     const draft = state.draft;
+    const brand = brandOf(draft.name);
+    const style = draftStyle();
+    const styleOptions = [
+        ["brand", "dev.create.styleBrand", !!brand],
+        ["letter", "dev.create.styleLetter", true],
+        ["brand-letter", "dev.create.styleBrandLetter", !!brand],
+    ];
     return `
     <div class="dv-field">
         <label class="dv-label" for="dv-name">${esc(t("dev.create.nameLabel"))}</label>
@@ -667,7 +702,20 @@ function fieldsHtml(isPage) {
             <div class="dv-iconrow-actions">
                 <button class="dv-btn dv-btn--sm" type="button" data-action="pick-icon">${esc(t("dev.create.changeIcon"))}</button>
                 <button class="dv-btn dv-btn--ghost dv-btn--sm" type="button" data-action="reset-icon">${esc(t("dev.create.resetIcon"))}</button>
+                <label class="dv-iconcolor" title="${esc(t("dev.create.accentCustom"))}">
+                    <span>${esc(t("dev.create.accent"))}</span>
+                    <input class="dv-color" type="color" name="icon-color" data-color="icon" value="${esc(iconColor(draft) || "#2078DA")}" aria-label="${esc(t("dev.create.accentCustom"))}" />
+                </label>
             </div>
+        </div>
+        <div class="dv-iconstyles" role="group" aria-label="${esc(t("dev.create.iconStyle"))}">
+            ${styleOptions.map(([value, key, enabled]) => (
+                `<button class="dv-iconstyle${style === value ? " active" : ""}" type="button" data-iconstyle="${value}" aria-pressed="${style === value}"${enabled ? "" : " disabled"}>${esc(t(key))}</button>`
+            )).join("")}
+        </div>
+        <div class="dv-iconletter" data-role="icon-letter"${style === "letter" || style === "brand-letter" ? "" : " hidden"}>
+            <label class="dv-label" for="dv-icon-letter">${esc(t("dev.create.letterLabel"))}</label>
+            <input class="dv-input dv-iconletter__input" id="dv-icon-letter" data-field="icon-letter" type="text" maxlength="2" value="${esc(draftLetter())}" placeholder="${esc(t("dev.create.letterPlaceholder"))}" />
         </div>
     </div>
     <div class="dv-field">
@@ -800,6 +848,15 @@ function bindForm() {
         descInput.addEventListener("input", () => { state.draft.description = descInput.value; });
     }
 
+    const letterInput = query('[data-field="icon-letter"]');
+    if (letterInput) {
+        letterInput.addEventListener("input", () => {
+            state.draft.icon.letter = letterInput.value.trim().slice(0, 2).toUpperCase();
+            state.draft.letterTouched = true;
+            updateIconPreview();
+        });
+    }
+
     pane.querySelectorAll("[data-win]").forEach((input) => {
         input.addEventListener("input", () => {
             const key = input.dataset.win;
@@ -820,6 +877,21 @@ function bindForm() {
         colorInput.addEventListener("input", () => {
             state.draft.window.accent = colorInput.value.toLowerCase();
             updateWindowPreview();
+            // 图标底色默认跟随窗口强调色（未单独设过图标底色时）
+            if (!state.draft.icon.color) {
+                updateIconPreview();
+                const iconColorInput = query('[data-color="icon"]');
+                if (iconColorInput) iconColorInput.value = state.draft.window.accent;
+            }
+        });
+    }
+
+    const iconColorInput = query('[data-color="icon"]');
+    if (iconColorInput) {
+        iconColorInput.addEventListener("input", () => {
+            state.draft.icon.color = iconColorInput.value.toLowerCase();
+            // 自定义底色只作用于自动生成的图标；上传的图片保持原样
+            updateIconPreview();
         });
     }
 
@@ -848,9 +920,32 @@ function bindForm() {
 }
 
 function updateIconPreview() {
-    const box = paneEl("form") && paneEl("form").querySelector('[data-role="icon-preview"]');
-    if (!box) return;
-    box.innerHTML = iconPreviewHtml();
+    const pane = paneEl("form");
+    if (!pane) return;
+    const box = pane.querySelector('[data-role="icon-preview"]');
+    if (box) box.innerHTML = iconPreviewHtml();
+    updateIconStyleControls();
+}
+
+/** 名称变化后同步样式按钮的可用状态、字母输入框与选中态（不重建表单，避免光标跳动）。 */
+function updateIconStyleControls() {
+    const pane = paneEl("form");
+    if (!pane || !state.draft) return;
+    const brand = brandOf(state.draft.name);
+    const style = draftStyle();
+    pane.querySelectorAll("[data-iconstyle]").forEach((button) => {
+        const value = button.dataset.iconstyle;
+        const enabled = value === "letter" || !!brand;
+        button.disabled = !enabled;
+        button.classList.toggle("active", style === value);
+        button.setAttribute("aria-pressed", String(style === value));
+    });
+    const row = pane.querySelector('[data-role="icon-letter"]');
+    if (row) row.hidden = !(style === "letter" || style === "brand-letter");
+    const input = pane.querySelector('[data-field="icon-letter"]');
+    if (input && !state.draft.letterTouched && document.activeElement !== input) {
+        input.value = draftLetter();
+    }
 }
 
 function updateWindowPreview() {
@@ -990,7 +1085,7 @@ async function submitDraft() {
         description: draft.description,
         window: draft.window,
         page: isPage ? draft.page : {},
-        icon: { ...draft.icon, letter: draft.icon.letter || draftLetter() },
+        icon: { ...draft.icon, letter: draft.icon.letter || draftLetter(), style: draftStyle() },
         createdAt: undefined,
     }, { id: draft.editing ? draft.id : undefined });
 
@@ -1012,7 +1107,6 @@ async function submitDraft() {
         submit.textContent = draft.editing ? t("dev.create.saving") : t("dev.create.creating");
     }
 
-    const original = draft.editing ? getRecord(state.library, draft.id) : null;
     try {
         upsertRecord(state.library, record);
         await saveLibrary(state.library);
@@ -1025,15 +1119,10 @@ async function submitDraft() {
         return;
     }
 
+    // 站点型应用也安装成系统插件（启动台可见），打开时由内核跳转宿主浏览器。
     let installProblem = "";
-    if (record.kind === "shortcut") {
-        if (original && original.kind !== "shortcut") {
-            await uninstallRecord(record.id);
-        }
-    } else {
-        const result = await installRecord(record, { overwrite: !!draft.editing });
-        if (!result.ok) installProblem = result.reason || result.code || "install";
-    }
+    const result = await installRecord(record, { overwrite: !!draft.editing });
+    if (!result.ok) installProblem = result.reason || result.code || "install";
 
     const editing = draft.editing;
     state.draft = null;
@@ -1189,7 +1278,7 @@ function renderManageList() {
         const titleline = el("div", "dv-row__titleline");
         titleline.appendChild(el("span", "dv-row__name", record.name));
         titleline.appendChild(el("span", "dv-badge", kindLabel(record.kind)));
-        if (record.kind !== "shortcut") {
+        {
             const installed = isInstalled(record);
             const badge = el("span", `dv-badge ${installed ? "dv-badge--ok" : "dv-badge--warn"}`, installed ? t("dev.manage.installed") : t("dev.manage.notInstalled"));
             titleline.appendChild(badge);
@@ -1202,7 +1291,7 @@ function renderManageList() {
         row.appendChild(main);
 
         const actions = el("div", "dv-row__actions");
-        if (record.kind !== "shortcut" && !isInstalled(record)) {
+        if (!isInstalled(record)) {
             const reinstall = el("button", "dv-btn dv-btn--sm", t("dev.manage.reinstall"));
             reinstall.type = "button";
             reinstall.dataset.action = "reinstall";
@@ -1256,19 +1345,11 @@ async function reinstallRecord(id) {
 async function uninstall(id) {
     const record = getRecord(state.library, id);
     if (!record) return;
-    const ok = await showDialog({
-        title: t("dev.manage.uninstallTitle"),
-        body: p(fill(t("dev.manage.uninstallText"), { name: record.name })),
-        buttons: [
-            { label: t("dev.dialog.cancel"), value: false },
-            { label: t("dev.dialog.uninstall"), value: true, danger: true },
-        ],
-    });
-    if (!ok) return;
-
-    if (record.kind !== "shortcut") {
+    // 确认框只由系统层弹一次（apps:uninstall），这里不再重复询问。
+    if (isInstalled(record)) {
         const result = await uninstallRecord(record.id);
-        if (result && result.ok === false && result.reason) {
+        if (result && result.ok === false) {
+            if (result.code === "CANCELLED" || result.reason === "cancelled") return;
             toast(fill(t("dev.toast.uninstallFailed"), { reason: result.reason }), true);
             return;
         }
@@ -1361,15 +1442,16 @@ function renderSettings() {
 }
 
 async function reinstallAll() {
-    const records = state.library.plugins.filter((record) => record.kind !== "shortcut");
-    let failed = "";
-    for (const record of records) {
-        const result = await installRecord(record, { overwrite: true });
-        if (!result.ok && !failed) failed = result.reason || result.code || "install";
+    const records = state.library.plugins.slice();
+    if (!records.length) return;
+    // 批量安装：系统层一个弹窗列出全部应用与合并权限，不再逐个弹。
+    const result = await installRecords(records, { overwrite: true });
+    if (result.ok) {
+        toast(t("dev.manage.reinstalled"));
+        renderAll();
+    } else if (result.reason !== "cancelled") {
+        toast(fill(t("dev.toast.installFailed"), { reason: result.reason || "install" }), true);
     }
-    if (failed) toast(fill(t("dev.toast.installFailed"), { reason: failed }), true);
-    else toast(t("dev.manage.reinstalled"));
-    renderAll();
 }
 
 async function clearAll() {
@@ -1384,7 +1466,7 @@ async function clearAll() {
     });
     if (!ok) return;
     for (const record of [...state.library.plugins]) {
-        if (record.kind !== "shortcut") await uninstallRecord(record.id);
+        if (isInstalled(record)) await uninstallRecord(record.id, { confirm: false });
     }
     try {
         state.library.plugins = [];
@@ -1531,12 +1613,10 @@ async function runImport(text) {
             return;
         }
 
-        if (record.kind !== "shortcut") {
-            const result = await installRecord(record, { overwrite });
-            if (!result.ok) {
-                failed += 1;
-                if (!reason) reason = result.reason || result.code || "install";
-            }
+        const result = await installRecord(record, { overwrite });
+        if (!result.ok) {
+            failed += 1;
+            if (!reason) reason = result.reason || result.code || "install";
         }
         imported += 1;
     }
@@ -1698,6 +1778,13 @@ win.addEventListener("click", (event) => {
     const kind = event.target.closest("[data-kind]");
     if (kind && kind.classList.contains("dv-kind")) {
         state.draft.kind = kind.dataset.kind;
+        renderForm();
+        return;
+    }
+
+    const iconStyle = event.target.closest("[data-iconstyle]");
+    if (iconStyle && !iconStyle.disabled) {
+        state.draft.icon.style = iconStyle.dataset.iconstyle;
         renderForm();
         return;
     }

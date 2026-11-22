@@ -123,6 +123,74 @@ swift-messagebox.os-dialog.is-closing { opacity: 0; }
 html[data-reduce-motion="on"] .os-dialog-backdrop,
 html[data-reduce-motion="on"] swift-messagebox.os-dialog { transition: none; }
 html[data-reduce-motion="on"] .os-dialog-progress-bar { animation: none; transform: none; width: 100%; }
+
+/* 安装清单 / 卸载 / 批量安装的正文排版（正文是 slot 里的 light DOM，这份样式够得到） */
+.os-dialog div[slot="text"] {
+    display: block;
+    text-align: center;
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+.os-dialog div[slot="text"] > p { margin: 0 0 2px; }
+.os-dialog .ag-list,
+.os-dialog .ag-apps {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+}
+.os-dialog .ag-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(120, 120, 128, 0.12);
+    font-size: 12px;
+    line-height: 1.45;
+    color: rgba(0, 0, 0, 0.86);
+}
+.os-dialog .ag-list li b {
+    font-size: 12.5px;
+    font-weight: 600;
+}
+.os-dialog .ag-hint {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: rgba(0, 0, 0, 0.52);
+}
+.os-dialog .ag-note {
+    margin: 10px 0 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: rgba(0, 0, 0, 0.52);
+    text-align: left;
+}
+.os-dialog .ag-apps li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(120, 120, 128, 0.12);
+    font-size: 12.5px;
+    text-align: left;
+}
+.os-dialog .ag-apps .ag-app__ver {
+    font-variant-numeric: tabular-nums;
+    color: rgba(0, 0, 0, 0.52);
+    font-size: 11.5px;
+}
+html[data-theme="dark"] .os-dialog .ag-list li,
+html[data-theme="dark"] .os-dialog .ag-apps li { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.9); }
+html[data-theme="dark"] .os-dialog .ag-hint,
+html[data-theme="dark"] .os-dialog .ag-note,
+html[data-theme="dark"] .os-dialog .ag-apps .ag-app__ver { color: rgba(255, 255, 255, 0.56); }
 `;
     document.head.appendChild(style);
 }
@@ -233,7 +301,9 @@ function open(opts = {}) {
             wrap.appendChild(inputEl);
             box.appendChild(wrap);
         } else if (message) {
-            const textP = document.createElement("p");
+            // HTML 正文用 div：清单是块级内容（ul/li/p），塞进 <p> 里既不合语义，
+            // 也会让浏览器把段落拆开，正是安装清单排版错乱的来源。
+            const textP = document.createElement(html ? "div" : "p");
             textP.setAttribute("slot", "text");
             textP.innerHTML = html ? message : textToHtml(message);
             box.appendChild(textP);

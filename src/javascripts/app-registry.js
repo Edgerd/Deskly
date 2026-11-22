@@ -155,7 +155,7 @@ const KERNEL_TOPICS = new Set([
     "dock-size-change", "dock-position-change", "dock-order-change", "dock-recents-change",
     "dock-autohide-change", "dock-zoom-change", "dock-minimize-effect-change",
     "dock-zoom-amount-change", "dock-show-indicators-change", "dock-show-recent-change",
-    "launchpad-icon-size-change", "launchpad-font-size-change", "siri-orb-size-change",
+    "launchpad-icon-size-change", "launchpad-font-size-change",
     "datetime-format-change", "notify-config-change", "keyboard-shortcut-hints-change",
     "wallpaper-change", "wallpaper-tint-change", "deskly-brand-pack-changed",
     "debug-menu-visibility-change",
@@ -373,6 +373,16 @@ function invalidateIndex() {
 /** 确保索引可用（空数组也是有效结果，所以用 null 而不是长度做哨兵）。 */
 function ensureIndex() {
     if (!appsCache) rebuildIndex();
+}
+
+// 语言包就位/切换后，显示名必须按新表重算：
+// 引导期注册表可能先于语言包解析被问过一次，缓存里会留下中文原名兜底，
+// 之后即使 apps.<id> 已加载也命不中（启动台、程序坞会一直显示旧名）。
+if (typeof document !== "undefined") {
+    document.addEventListener("languagechange", () => {
+        displayNameCache.clear();
+        invalidateIndex();
+    });
 }
 
 /**

@@ -14,6 +14,8 @@
  */
 
 import { VERSION } from "./version.js";
+// NW-7：同一应用的窗口实例上限（F-15）。超限复用最早实例置顶，不做假新建。
+const MULTI_INSTANCE_CAP = 6;
 // 资源路径统一由 paths.js 生成（./mods/<id>/… 与 assets 下的公共图标只有这一个出处）
 import { GENERIC_APP_ICON, modFile, modUrl, modDateUrl } from "./paths.js";
 import { brandIcon } from "./office-brand.js";
@@ -82,11 +84,11 @@ const BUILTIN_IDS = [
     "notepad",
     "photos",
     "vs_code",
-    "siri",
     "safari",
     "office",
     "manual",
     "spotlight",
+    "deskly-ai",
 ];
 
 // 重显启动台：取消遗留退出计时器并标记运行态（启动台为 fullscreen 入口，根元素 .launchpad 无 id）
@@ -205,6 +207,23 @@ function sanitizePluginHtml(html) {
         });
     });
     return doc.body.innerHTML;
+}
+
+/**
+ * 注入的 HTML 以宿主文档为基准解析相对 URL，裸相对路径（如 icon.webp）会落到站点根。
+ * 安装包里的资源实际在 ./mods/<id>/ 下，这里把裸相对路径补全到插件目录。
+ * 含协议、以 /、./、../、#、? 开头的路径保持原样。
+ */
+function resolveRelativeAssets(root, id) {
+    const base = `./mods/${id}/`;
+    root.querySelectorAll("[src], [href]").forEach((el) => {
+        for (const attr of ["src", "href"]) {
+            const value = el.getAttribute(attr);
+            // 与 resolveManifestIcon 同一约定：assets/ 是站点根相对，不补插件目录
+            if (!value || /^(?:[a-z][a-z0-9+.-]*:|\/|\.{1,2}\/|#|\?)/i.test(value) || /^assets\//i.test(value)) continue;
+            el.setAttribute(attr, base + value);
+        }
+    });
 }
 
 /**
@@ -557,6 +576,21 @@ export function getIconForName(nameOrId) {
     return resolveManifestIcon(rec.app, rec.id) || getIcon(rec.id);
 }
 
+/**
+ * 按显示名 / appId 取图标渲染方式，apps[].iconRender 优先于 manifest.iconRender。
+ * - "artwork"（默认）：启动台量出图标实心画面，统一归一化到可见 70px；
+ * - "native"：图标画布原样铺进排版盒，适合图形自带透明留白或故意溢出画布的图标。
+ * 未知取值一律按默认处理，避免清单笔误把图标顶满。
+ * @param {string} nameOrId 显示名、插件 id 或 appId
+ * @returns {"artwork"|"native"}
+ */
+export function getIconRenderForName(nameOrId) {
+    const rec = resolveAppRecord(nameOrId);
+    if (!rec) return "artwork";
+    const declared = (rec.app && rec.app.iconRender) || rec.manifest.iconRender;
+    return declared === "native" ? "native" : "artwork";
+}
+
 // 正在加载中的插件：id -> Promise。
 // 旧实现只按 getElementById 判断窗口是否存在，而窗口 id 要等 fetch 完成后才写入，
 // 因此连点两次「打开」会同时通过判断、注入两份界面与两个脚本实例。
@@ -641,6 +675,17 @@ export function load(id, opts = {}) {
         console.warn(`[plugin-manager] 插件已被禁用: ${id}`);
         return Promise.resolve(null);
     }
+    // 站点型应用（manifest.link）：注册、图标、启动台位置与普通应用一致，
+    // 但「打开」不是注入窗口，而是直接让宿主机浏览器跳转到声明里的网址。
+    // 必须在任何 HTML/脚本拉取之前返回，否则会先闪一个空窗口。
+    if (typeof manifest.link === "string" && manifest.link) {
+        try {
+            window.open(manifest.link, "_blank", "noopener,noreferrer");
+        } catch (err) {
+            console.warn(`[plugin-manager] 打开站点型应用失败: ${manifest.link}`, err);
+        }
+        return Promise.resolve(null);
+    }
     // 背景型系统应用（聚焦等）：没有可打开的窗口，逻辑由内核适配层在引导期点亮，
     // 走窗口注入只会拿到 404 的空壳。
     if (manifest.entry === "background") {
@@ -713,6 +758,20 @@ async function doLoadApp(appId, rec, opts) {
     // 未声明时 newWindow 在 Deskly.apps.launch 就已被拦回，这里看到的仍是缺省去重语义。
     const allowMulti = opts.newWindow === true && (app.multiWindow === true || manifest.multiWindow === true);
 
+    // NW-7：同 appId 实例上限 6。超限时不做假新建：复用最早打开的实例置顶
+    // （DOM 顺序即打开顺序），控制台 warn 供排查；上限常量与 NW-7 判定同居一处。
+    if (allowMulti) {
+        const instances = Array.from(document.querySelectorAll("body > .window"))
+            .filter((w) => w.dataset && w.dataset.appId === appId);
+        if (instances.length >= MULTI_INSTANCE_CAP) {
+            const earliest = instances[0];
+            bringToFront(earliest, windowName);
+            announceFile(id, appId, windowName, file);
+            console.warn(`[plugin-manager] ${appId} 已达 ${MULTI_INSTANCE_CAP} 个窗口上限，复用最早实例`);
+            return earliest;
+        }
+    }
+
     // 同一 appId 的窗口已存在则置顶复用（与单应用路径同一套去重语义）。
     // 必须校验 data-app-id：两个应用同名时按 id 命中别人的窗口会把它误当自己。
     const existing = document.getElementById(windowName);
@@ -740,10 +799,12 @@ async function doLoadApp(appId, rec, opts) {
         throw err;
     }
     if (manifest._installed) htmlText = sanitizePluginHtml(htmlText);
+
     document.body.insertAdjacentHTML("beforeend", htmlText);
 
     const addedWins = Array.from(document.querySelectorAll("body > .window"))
         .filter((w) => !preWins.has(w));
+    if (manifest._installed) addedWins.forEach((w) => resolveRelativeAssets(w, id));
     const newWin = addedWins.length ? addedWins[addedWins.length - 1] : null;
     if (newWin) {
         // 先隐藏再量尺寸：HTML 一旦进入 DOM 就有一次绘制机会，默认 .window 是
@@ -854,6 +915,19 @@ async function doLoad(id, manifest, opts) {
     // NW-7 多窗口：opts.newWindow + manifest.multiWindow:true 才跳过去重另开新窗
     const allowMulti = opts.newWindow === true && manifest.multiWindow === true;
 
+    // NW-7：单应用插件的实例上限与多应用路径同口径（超限复用最早实例置顶）
+    if (allowMulti && manifest.entry !== "fullscreen") {
+        const instances = Array.from(document.querySelectorAll("body > .window"))
+            .filter((w) => w.dataset && w.dataset.pluginId === id);
+        if (instances.length >= MULTI_INSTANCE_CAP) {
+            const earliest = instances[0];
+            bringToFront(earliest, windowName);
+            announceFile(id, id, windowName, file);
+            console.warn(`[plugin-manager] ${id} 已达 ${MULTI_INSTANCE_CAP} 个窗口上限，复用最早实例`);
+            return earliest;
+        }
+    }
+
     // 已存在实例的复用判断必须按入口类型分流：
     // - fullscreen（启动台）：根元素是 .launchpad（非 .window、无 id），只能用类名识别。
     //   若误用 getElementById(windowName) 查「启动台」，会命中页面上被误写 id 的其他元素
@@ -900,11 +974,13 @@ async function doLoad(id, manifest, opts) {
     // 用户安装的 ZIP 属于不可信输入：insertAdjacentHTML 不会执行 <script>，
     // 但会执行 <img onerror=...> 这类内联事件处理器，因此先剥离。内置插件是我们自己的代码，不处理。
     if (manifest._installed) htmlText = sanitizePluginHtml(htmlText);
+
     document.body.insertAdjacentHTML("beforeend", htmlText);
 
     // 取本次新增的真窗口；fullscreen 入口无 .window 时为 null
     const added = Array.from(document.querySelectorAll("body > .window"))
         .filter((w) => !preWins.has(w));
+    if (manifest._installed) added.forEach((w) => resolveRelativeAssets(w, id));
     let newWin = added.length ? added[added.length - 1] : null;
     if (newWin) {
         // 与多应用路径同一理由：先隐藏，等真实尺寸/居中落实后再显示。
@@ -1051,6 +1127,10 @@ export function unload(id) {
     // 4. 移除插件脚本
     const script = document.querySelector(`script[plugin="${id}"]`);
     if (script) script.remove();
+
+    // 5. 关窗时也要丢掉界面的内存缓存：此前只在安装/卸载（商店）时清，
+    // 正常关窗后 HTML 文本与预取记录会一直挂在 Map 上，属于隐性内存泄漏。
+    invalidatePluginCaches(id);
 }
 
 /**

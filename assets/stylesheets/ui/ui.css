@@ -11,9 +11,10 @@ img {
   border: 0.5px solid var(--hairline, rgba(0, 0, 0, 0.06));
   box-shadow: inset 0 0 1px 0 rgba(255, 255, 255, 0.5), 0 2px 4px 0 rgba(0, 0, 0, 0.15), 0 8px 15px 6px rgba(0, 0, 0, 0.18);
   border-radius: 8px;
-  background: var(--panel-bg, rgba(246, 246, 246, 0.6));
-  backdrop-filter: blur(var(--surface-blur-3));
-  -webkit-backdrop-filter: blur(var(--surface-blur-3));
+  background: var(--acrylic-panel-bg, rgba(246, 246, 246, 0.46));
+  /* 与 Dock 同一档亚克力：模糊档位与饱和度一致，右键菜单和底栏读起来是同一种玻璃 */
+  backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
+  -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
   display: inline-flex;
   flex-direction: column;
   justify-content: center;
@@ -50,7 +51,7 @@ html[data-theme="dark"] .menu {
   font-family: "SFPro-Medium", "PingFangSC-Medium", -apple-system, BlinkMacSystemFont,
                "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
   margin: 1.5px 0;
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 3px 10px;
 }
 .menu p:hover {

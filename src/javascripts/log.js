@@ -353,7 +353,17 @@ function installErrorCapture() {
             try { host = new URL(url, location.href).host; } catch { host = String(url).slice(0, 80); }
             const key = `resource:${target.tagName.toLowerCase()}:${host}`;
             if (!shouldRecordOnce(key)) return;
-            logEntry("error", "kernel/loader", `资源加载失败：<${target.tagName.toLowerCase()}> ${String(url).slice(0, 160)}`, { via: "error-event", host }, "resource");
+            // 外部 http(s) 资源（站点 favicon、远程图片）失败由网络与对方 CORS 决定，
+            // 不是本机缺陷：降为 warn，避免 error 门槛被这类噪声填满。
+            // 扩展内资源（chrome-extension://）404 才是真的缺文件，仍记 error。
+            let external = false;
+            try {
+                const parsed = new URL(url, location.href);
+                external = parsed.protocol === "http:" || parsed.protocol === "https:";
+            } catch { external = false; }
+            const level = external ? "warn" : "error";
+            const label = external ? "外部资源加载失败" : "资源加载失败";
+            logEntry(level, "kernel/loader", `${label}：<${target.tagName.toLowerCase()}> ${String(url).slice(0, 160)}`, { via: "error-event", host }, "resource");
             return;
         }
         logEntry("error", "kernel/global", `未捕获异常：${event.message}`, { file: event.filename, line: event.lineno, col: event.colno, error: event.error }, "error");

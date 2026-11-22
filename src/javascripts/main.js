@@ -14,12 +14,21 @@ import "./log.js";
 
 /** 把 body 高度钉成视口高度，规避移动端地址栏伸缩造成的 100vh 抖动。 */
 function resetHeight() {
-    document.body.style.height = `${window.innerHeight}px`;
+    // <html> 带 zoom 时 innerHeight 是放大后的视口高度，而 body 高度按布局 px 解释：
+    // 直接写 innerHeight 会让页面比视口高一截（多出滚动条、底部元素错位）。
+    const raw = getComputedStyle(document.documentElement).zoom;
+    const z = parseFloat(raw);
+    const scale = Number.isFinite(z) && z > 0 ? z : 1;
+    document.body.style.height = `${window.innerHeight / scale}px`;
 }
 
 resetHeight();
 
 ["resize", "orientationchange", "load"].forEach((e) => window.addEventListener(e, resetHeight));
+// 界面缩放改变时 innerHeight 不变、换算倍数变了，需要重算一次
+document.addEventListener("settings-changed", (e) => {
+    if (e.detail && e.detail.key === "accessibility.zoom") resetHeight();
+});
 
 // 禁用浏览器原生右键菜单（开关本身是一个设置项，见 contextMenuSettings.js）
 import "./contextMenuSettings.js";

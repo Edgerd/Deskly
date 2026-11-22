@@ -18,6 +18,11 @@
  * 3. **自动播放被拒是预期行为**：首次用户手势之前 `play()` 必然 reject，静默吞掉即可，
  *    不能让它冒成「未处理的 Promise 拒绝」进运行记录。
  *
+ * 提示音的门控（F-50）：`sound.effects` 关掉时 playTone 直接不开口；音量按
+ * 主音量 × 提示音音量两级相乘。已知但暂无素材的音色（倒废纸篓 / 音量反馈 /
+ * 错误 / 弹出）登记在 SILENT_TONES 里 —— 请求它们时如实返回 false（没出声），
+ * 等素材文件到位后把它们挪进 TONES 即自动可响。
+ *
  * 页内已有的 <audio>/<video>（照片预览与视频类插件）在 `play` 事件的捕获阶段统一套上主音量：
  * media 事件不冒泡，但捕获监听仍会收到，因此插件不必 import 本模块也能被音量管住。
  */
@@ -28,10 +33,19 @@ import { assetPath } from "./paths.js";
 const TONES = {
     alert: assetPath("sounds/alert.ogg"),
     capture: assetPath("sounds/capture.aif"),
+    // notify 复用 alert 素材：通知横幅需要独立音色名，素材到位后可单独换文件
+    notify: assetPath("sounds/alert.ogg"),
 };
+
+/** 已知但暂无素材的音色：请求它们时如实返回 false（没出声），绝不假装播过。
+ *  素材（如 trash.ogg / volume.ogg / error.ogg / pop.ogg）放入 assets/sounds/ 并
+ *  挪进 TONES 后即自动可响。 */
+const SILENT_TONES = ["trash", "volume", "error", "pop"];
 
 /** 默认主音量，与控制中心 DEFAULT_STATE.volume 对齐。 */
 const DEFAULT_MASTER = 0.65;
+/** 提示音音量的默认值（独立于主音量的二级滑块）。 */
+const DEFAULT_EFFECTS = 1;
 
 /** 复用的提示音实例与其音色名（音色变化时才换 src）。 */
 let audio = null;
@@ -44,7 +58,7 @@ function ratio(value, fallback) {
     return Math.min(1, Math.max(0, num));
 }
 
-/** 注册本模块托管的两个设置项（音量 / 静音共用控制中心的 JSON 槽）。 */
+/** 注册本模块托管的四个设置项（音量 / 静音共用控制中心的 JSON 槽；提示音门控独立成槽）。 */
 function defineSchema() {
     settings.defineMany([
         {
@@ -61,12 +75,34 @@ function defineSchema() {
             label: "静音", hint: "立即静音：提示音与页内媒体都不再出声",
             apply: () => applyToPage(),
         },
+        {
+            key: "sound.effects", slot: "sound-effects", type: "boolean", default: true,
+            control: "switch", pane: "sound", group: "提示音", order: 30,
+            label: "提示音音效", hint: "关掉后提示音不再出声",
+        },
+        {
+            key: "sound.effectsVolume", slot: "sound-effects-volume",
+            type: "number", default: DEFAULT_EFFECTS, min: 0, max: 1, step: 0.01,
+            format: "percent", control: "slider", pane: "sound", group: "提示音", order: 40,
+            label: "提示音音量",
+            apply: () => applyToPage(),
+        },
     ]);
 }
 
 /** 当前主音量比（0..1）。 */
 function getMaster() {
     return ratio(settings.get("sound.master"), DEFAULT_MASTER);
+}
+
+/** 提示音音效是否开启。 */
+function isEffectsEnabled() {
+    return settings.get("sound.effects") !== false;
+}
+
+/** 提示音音量比（0..1，独立于主音量）。 */
+function getEffectsVolume() {
+    return ratio(settings.get("sound.effectsVolume"), DEFAULT_EFFECTS);
 }
 
 /** 当前是否静音。 */
@@ -77,6 +113,12 @@ function isMuted() {
 /** 实际输出电平：静音优先于主音量。 */
 function level() {
     return isMuted() ? 0 : getMaster();
+}
+
+/** 提示音的实际输出电平：静音 × 主音量 × 提示音音量；音效关掉即为 0。 */
+function effectsLevel() {
+    if (isMuted() || !isEffectsEnabled()) return 0;
+    return getMaster() * getEffectsVolume();
 }
 
 /**
@@ -123,13 +165,15 @@ function toneOf(name) {
 
 /**
  * 播放一段提示音。
- * @param {string} [name="alert"] 音色名（alert / capture）
- * @returns {boolean} 是否已发起播放（自动播放被拒时同样是 true，只是没出声）
+ * @param {string} [name="alert"] 音色名（alert / capture / notify；trash、volume、error、pop 暂无素材）
+ * @returns {boolean} 是否真的发起了播放（音效被关、静音、音色缺素材时都是 false；自动播放被拒是 true，只是没出声）
  */
 function playTone(name = "alert") {
+    if (isMuted() || !isEffectsEnabled()) return false;
+    if (SILENT_TONES.includes(name) && !TONES[name]) return false;
     try {
         const el = toneOf(name);
-        el.volume = level();
+        el.volume = effectsLevel();
         el.muted = isMuted();
         if (el.currentTime > 0) el.currentTime = 0;
         const result = el.play();
@@ -141,6 +185,9 @@ function playTone(name = "alert") {
         return false;
     }
 }
+
+/** playTone 的语义化别名：调用方写 play("trash") 比 playTone 更像一句系统行为。 */
+const play = playTone;
 
 /**
  * 经设置中枢写入主音量。
@@ -168,14 +215,22 @@ const sound = {
     setMaster,
     isMuted,
     setMuted,
+    isEffectsEnabled,
+    getEffectsVolume,
     playTone,
+    /** playTone 的别名：sound.play("trash") 这样的调用更像一句系统行为。 */
+    play,
     applyVolume,
 };
 
 let initialized = false;
 
+/** 音量反馈的节流窗口（毫秒）：拖动滑块期间只在停顿后响一次。 */
+const VOLUME_TONE_THROTTLE_MS = 150;
+
 /**
- * 初始化声音模块：接管页内媒体的播放音量。
+ * 初始化声音模块：接管页内媒体的播放音量，并接上两处系统提示音的触发源
+ * （倒废纸篓 / 音量调节反馈；素材未到位的音色请求会如实返回 false）。
  * @returns {boolean} 是否完成初始化（重复调用幂等）
  */
 function initSound() {
@@ -184,6 +239,14 @@ function initSound() {
     // play 事件不冒泡，但捕获阶段仍能收到：任何 audio/video 起播前先套上主音量，
     // 插件不必 import 本模块也遵守同一个音量设置。
     document.addEventListener("play", (event) => applyVolume(event.target), true);
+    // 倒空 / 清空废纸篓的提示音（音色暂无素材，playTone 如实返回 false）
+    document.addEventListener("trash-changed", () => playTone("trash"));
+    // 音量调节反馈音：节流 150ms，拖动结束才响
+    let volumeToneTimer = 0;
+    settings.on("sound.master", () => {
+        clearTimeout(volumeToneTimer);
+        volumeToneTimer = setTimeout(() => playTone("volume"), VOLUME_TONE_THROTTLE_MS);
+    });
     applyToPage();
     window.__log?.info("kernel/sound", `声音就绪：主音量 ${Math.round(getMaster() * 100)}%${isMuted() ? "（已静音）" : ""}`);
     return true;
@@ -193,4 +256,4 @@ defineSchema();
 
 globalThis.__sound = sound;
 
-export { sound, initSound, getMaster, setMaster, isMuted, setMuted, playTone, applyVolume };
+export { sound, initSound, getMaster, setMaster, isMuted, setMuted, isEffectsEnabled, getEffectsVolume, playTone, play, applyVolume };

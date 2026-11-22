@@ -28,6 +28,15 @@ function jsonFor(value) {
     return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+/**
+ * 包内资源的站点根相对路径。
+ * 生成的 HTML 会被注入宿主文档，`src="icon.webp"` 会按宿主目录解析成 /icon.webp（404）；
+ * 安装后插件固定位于 ./mods/<id>/，所以这里拼完整路径。
+ */
+function pluginAsset(record, file) {
+    return `./mods/${encodeURIComponent(record.id)}/${file}`;
+}
+
 /** data-window：尺寸、最小尺寸、拖动、缩放、标题栏都交给系统解析。 */
 export function windowAttr(record) {
     const w = record.window;
@@ -226,7 +235,7 @@ function windowHtml(record) {
     <header class="devp-bar" data-titlebar>
         ${TRAFFIC}
         <div class="devp-id">
-            <img src="icon.webp" alt="" width="18" height="18" draggable="false">
+            <img src="${esc(pluginAsset(record, "icon.webp"))}" alt="" width="18" height="18" draggable="false">
             <div class="devp-id__text">
                 <span class="devp-id__name">${esc(record.name)}</span>
                 <span class="devp-id__host">${esc(hostOf(record.url))}</span>
@@ -297,7 +306,7 @@ function pageHtml(record) {
     <header class="devp-bar" data-titlebar>
         ${TRAFFIC}
         <div class="devp-id">
-            <img src="icon.webp" alt="" width="18" height="18" draggable="false">
+            <img src="${esc(pluginAsset(record, "icon.webp"))}" alt="" width="18" height="18" draggable="false">
             <div class="devp-id__text">
                 <span class="devp-id__name">${esc(record.name)}</span>
                 <span class="devp-id__host">${esc(record.description || "page")}</span>
@@ -336,7 +345,8 @@ ${userCode}
 export function buildManifest(record) {
     const updated = new Date().toISOString().slice(0, 10);
     const summary = record.description || "";
-    return {
+    const isLink = record.kind === "shortcut";
+    const manifest = {
         id: record.id,
         name: record.name,
         version: "1.0.0",
@@ -359,6 +369,9 @@ export function buildManifest(record) {
             screenshots: [],
         },
     };
+    // 站点型应用：仍注册成普通应用（启动台有图标），但内核打开时直接跳宿主浏览器。
+    if (isLink) manifest.link = record.url;
+    return manifest;
 }
 
 /**

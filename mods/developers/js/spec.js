@@ -90,6 +90,11 @@ export const SPEC_SCHEMA_DOC = {
             properties: {
                 letter: { type: "string", maxLength: 2 },
                 color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+                style: {
+                    type: "string",
+                    enum: ["brand", "letter", "brand-letter"],
+                    description: "brand: logo only; letter: letters only; brand-letter: logo above letters.",
+                },
                 data: { type: "string", description: "Optional data:image/... URL. Omit to use the letter icon." },
             },
         },

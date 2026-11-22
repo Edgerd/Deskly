@@ -55,7 +55,7 @@ const ENTRIES = [
         tier: "native", owner: "window-manager.js",
     },
     {
-        id: "spotlight", keys: "⌥Space / F4", label: "打开聚焦",
+        id: "spotlight", keys: "双击⌃（左） / F4", label: "打开聚焦",
         tier: "native", owner: "spotlight.js",
     },
     {
@@ -67,6 +67,7 @@ const ENTRIES = [
         tier: "native", owner: "dock.js",
     },
     { id: "mission", keys: "⌃↑", label: "窗口总览", tier: "native", owner: "wm/overview.js" },
+    { id: "missionF3", keys: "F3", label: "窗口总览（调度中心键）", tier: "native", owner: "wm/overview.js" },
     { id: "cycleSpaces", keys: "⌃← / ⌃→", label: "全屏空间轮换", tier: "native", owner: "window-manager.js" },
     { id: "switchApp", keys: "⌘Tab", label: "切换应用", tier: "planned" },
     { id: "screenshot", keys: "⌘⇧5", label: "截屏", tier: "planned" },

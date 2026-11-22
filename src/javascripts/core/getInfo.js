@@ -13,7 +13,8 @@
 
 import { FS } from "../fs/index.js";
 import { i18n } from "../i18n.js";
-import { FOLDER_ICON, GENERIC_DOC_ICON } from "../paths.js";
+import { FOLDER_ICON } from "../paths.js";
+import { fileIconFor } from "../file-type-icons.js";
 
 const t = (key, fallback) => i18n.t(key, fallback);
 
@@ -175,7 +176,7 @@ async function open(items) {
     // 先用已知字段占位，避免面板空白等 IO（stat 是异步的）
     const first = list[0];
     panel.els.name.textContent = list.length > 1 ? `${list.length} ${t("info.items", "个项目")}` : first.name;
-    panel.els.icon.src = first.type === "folder" ? FOLDER_ICON : GENERIC_DOC_ICON;
+    panel.els.icon.src = first.type === "folder" ? FOLDER_ICON : fileIconFor(first.name);
     setField(panel.els, "kind", describeKind(first));
     setField(panel.els, "size", "—");
     setField(panel.els, "where", FS.parentOf(first.path));

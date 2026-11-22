@@ -7,7 +7,7 @@
  */
 
 import { ensureJSZip } from "../../../src/javascripts/vendor.js";
-import { installZip, uninstall, verifyInstall } from "../../../src/javascripts/store-api.js";
+import { installZip, installMany, uninstall, verifyInstall } from "../../../src/javascripts/store-api.js";
 import { buildFiles } from "./templates.js";
 import { dataUrlToBlob, iconDataUrl } from "./icon.js";
 
@@ -68,9 +68,39 @@ export async function installRecord(record, opts = {}) {
     return result;
 }
 
-export async function uninstallRecord(id) {
-    const result = await uninstall(id);
-    return result;
+/**
+ * 批量安装 / 重新安装：所有包一起交给系统层，只弹一次确认框。
+ * @param {object[]} records 归一化记录
+ * @param {{overwrite?:boolean, onProgress?:Function}} opts
+ */
+export async function installRecords(records, opts = {}) {
+    const files = [];
+    for (const record of records) {
+        try {
+            files.push(await packRecord(record));
+        } catch (err) {
+            return { ok: false, reason: (err && err.message) || String(err) };
+        }
+    }
+    return installMany(files, { overwrite: opts.overwrite === true, onProgress: opts.onProgress });
+}
+
+/**
+ * 卸载：确认框由系统层弹（apps:uninstall），这里不再自己弹第二次。
+ * @param {string} id 插件 id
+ * @param {{confirm?:boolean}} opts
+ */
+export async function uninstallRecord(id, opts = {}) {
+    try {
+        const res = await Deskly.apps.uninstall(id, opts);
+        if (res && typeof res === "object") {
+            if (res.ok) return { ok: true, ...(res.value || {}) };
+            return { ok: false, reason: res.reason || "uninstall-failed", code: res.code, denied: !!res.denied };
+        }
+    } catch (err) {
+        return { ok: false, reason: (err && err.message) || String(err), code: err && err.code };
+    }
+    return uninstall(id);
 }
 
 /** 快捷方式直接在宿主浏览器开新标签页；窗口/页面走系统启动入口。 */

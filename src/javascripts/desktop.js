@@ -19,7 +19,8 @@
 
 import { isNativeContextMenuEnabled } from "./contextMenuSettings.js";
 import { i18n } from "./i18n.js";
-import { FOLDER_ICON, GENERIC_DOC_ICON } from "./paths.js";
+import { FOLDER_ICON } from "./paths.js";
+import { fileIconFor } from "./file-type-icons.js";
 import { OSFS } from "./osfs.js";
 import { FS } from "./fs/index.js";
 import { DSStore } from "./fs/dsstore.js";
@@ -143,7 +144,7 @@ function buildItem(entry) {
     } else if (Shortcuts.isShortcutName(entry.name)) {
         // 桌面快捷方式：显示名剥掉 .webloc.json，图标取目标应用图标
         label.textContent = entry.name.slice(0, -Shortcuts.EXT.length);
-        img.src = GENERIC_DOC_ICON;
+        img.src = fileIconFor(entry.name);
         Shortcuts.read(entry.path).then((parsed) => {
             if (!parsed || !el.isConnected) return;
             const icon = getIconForName(parsed.appId);
@@ -151,16 +152,17 @@ function buildItem(entry) {
         }).catch(() => {});
     } else {
         label.textContent = entry.name;
+        const fallback = fileIconFor(entry.name);
         if (IMG_EXTS.has(extOf(entry.name))) {
-            // 图片缩略图：读文件转 objectURL；失败退回通用图标
+            // 图片缩略图：读文件转 objectURL；失败退回按扩展名生成的类型图标
             FS.read(entry.path).then((file) => {
                 if (!file || !el.isConnected) return;
                 const url = URL.createObjectURL(file);
                 img.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
                 img.src = url;
-            }).catch(() => { img.src = GENERIC_DOC_ICON; });
+            }).catch(() => { img.src = fallback; });
         }
-        img.src = GENERIC_DOC_ICON;
+        img.src = fallback;
     }
     return el;
 }
@@ -452,6 +454,40 @@ document.addEventListener("mouseup", (e) => {
 });
 
 let dropHighlighted = null;
+/**
+ * 指针拖拽落在访达窗口上时的目标目录。
+ * 访达插件与桌面同在主文档，所以这里能用 elementFromPoint 直接命中它的 DOM。
+ * 优先级：文件夹条目 → 侧边栏项 → 内容区空白（列视图按所在栏，其余按当前标签页）。
+ * @param {number} x 视口坐标
+ * @param {number} y 视口坐标
+ * @returns {{el: HTMLElement, path: string}|null}
+ */
+function finderDropTargetAt(x, y) {
+    const over = document.elementFromPoint(x, y);
+    if (!over || !over.closest) return null;
+    const win = over.closest('.window[data-plugin-id="finder"]');
+    if (!win) return null;
+    const entryEl = over.closest(".entry[data-path]");
+    if (entryEl) {
+        // 文件条目不是落点：与访达内部拖拽一致，只能放进文件夹
+        return entryEl.dataset.type === "folder" ? { el: entryEl, path: entryEl.dataset.path } : null;
+    }
+    const sideEl = over.closest(".sidebar-item[data-path], .sidebar-favorite[data-path]");
+    if (sideEl) {
+        const path = sideEl.dataset.path;
+        if (!path || path === "/最近使用") return null;   // 虚拟视图没有真实目录，放进去无处落盘
+        return { el: sideEl, path };
+    }
+    const body = over.closest("#list-body");
+    if (body) {
+        const pane = over.closest(".column-pane[data-dir]");
+        if (pane) return { el: body, path: pane.dataset.dir };
+        const tab = win.querySelector(".tab.active[data-path]");
+        if (tab && tab.dataset.path) return { el: body, path: tab.dataset.path };
+    }
+    return null;
+}
+
 function highlightDropTarget(e) {
     clearDropHighlight();
     const over = document.elementFromPoint(e.clientX, e.clientY);
@@ -465,6 +501,13 @@ function highlightDropTarget(e) {
         }
         return;
     }
+    // 访达：文件夹条目 / 侧边栏目录 / 内容区空白
+    const finderTarget = finderDropTargetAt(e.clientX, e.clientY);
+    if (finderTarget) {
+        finderTarget.el.classList.add("dnd-drop-target");
+        dropHighlighted = finderTarget.el;
+        return;
+    }
     const folderEl = over && over.closest ? over.closest(".item") : null;
     if (folderEl && !drag.items.some(({ el }) => el === folderEl)) {
         const entry = entries.find((en) => en.path === folderEl.dataset.path);
@@ -474,7 +517,10 @@ function highlightDropTarget(e) {
     if (trash) { trash.classList.add("drop-target"); dropHighlighted = trash; }
 }
 function clearDropHighlight() {
-    if (dropHighlighted) { dropHighlighted.classList.remove("drop-target"); dropHighlighted = null; }
+    if (dropHighlighted) {
+        dropHighlighted.classList.remove("drop-target", "dnd-drop-target");
+        dropHighlighted = null;
+    }
 }
 
 /**
@@ -528,6 +574,29 @@ async function handleDrop(e, current) {
         }
         return;
     }
+    // 落在访达：文件夹条目 / 侧边栏目录 / 内容区空白 → 移入目标目录（⌥ = 复制）
+    const finderTarget = finderDropTargetAt(e.clientX, e.clientY);
+    if (finderTarget) {
+        const dir = FS.normalizePath(finderTarget.path);
+        for (const { entry } of current.items) {
+            const src = FS.normalizePath(entry.path);
+            // 自己、自己的子目录、本来就在该目录里：都不动（与访达内部拖拽口径一致）
+            if (src === dir || (src !== "/" && dir.startsWith(`${src}/`)) || FS.parentOf(src) === dir) continue;
+            if (e.altKey) {
+                await FS.copy(src, await uniquePathIn(dir, entry.name)).catch((err) => {
+                    console.warn("[desktop] ⌥ 复制到访达失败：", src, err);
+                });
+                continue;
+            }
+            await FS.move(src, FS.joinPath(dir, entry.name)).catch((err) => {
+                if (err.code === "EEXIST") return;   // 同名冲突跳过该项（不覆盖）
+                throw err;
+            });
+        }
+        return;
+    }
+    // 落在访达窗口但不在可接收区域（标题栏、工具条、文件条目…）：原地放下，别写入桌面坐标
+    if (over && over.closest && over.closest('.window[data-plugin-id="finder"]')) return;
     const folderEl = over && over.closest ? over.closest(".item") : null;
     // 落在文件夹上：整组移入（⌥ = 复制）
     if (folderEl && !current.items.some(({ el }) => el === folderEl)) {

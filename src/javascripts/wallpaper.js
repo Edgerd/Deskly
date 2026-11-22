@@ -28,6 +28,7 @@
  */
 
 import { assetPath } from "./paths.js";
+import { settings } from "./settings.js";
 
 // 系统内置壁纸资源（默认壁纸同时是列表第一项，也是取不到配置时的回退）
 const WALLPAPER_DEFAULT = assetPath("images/Wallpaper.png");
@@ -396,6 +397,8 @@ const wallpaper = {
         const boot = window.__desklyWallpaperBoot;
         if (boot && typeof boot.release === "function") boot.release();
         bindTintEvents();
+        // 动态墙纸 / 图集轮换 / 主题配对 / 屏幕保护程序四台引擎随 init 一起点亮
+        startWallpaperEngines(config);
         logWallpaper("info", `壁纸就绪：${config?.type || "default"}${config?.name ? `（${config.name}）` : ""}`);
         if (isAutoBingEnabled()) applyDailyBing();
     },
@@ -615,6 +618,33 @@ const wallpaper = {
         }
         return finalUrl;
     },
+
+    /**
+     * 开关动态墙纸（设置项 wallpaper.dynamic 的 apply）。实现见下方引擎段。
+     * @param {boolean|string} on 是否开启
+     * @returns {boolean} 生效的开关状态
+     */
+    setDynamicEnabled(on) {
+        return setDynamicEnabled(on);
+    },
+
+    /**
+     * 用当前「图集墙纸」设置开始轮换并持久化 album 配置；列表为空返回 false。
+     * @returns {Promise<boolean>} 是否成功进入图集模式
+     */
+    async startAlbum() {
+        return startAlbumWallpaper();
+    },
+
+    /**
+     * 应用「随主题切换」的浅色/深色两张壁纸并持久化 themePair 配置。
+     * @param {string} light 浅色侧地址（系统壁纸 id 或任意图片地址）
+     * @param {string} dark 深色侧地址
+     * @returns {Promise<boolean>} 是否成功保存并应用
+     */
+    async setThemePair(light, dark) {
+        return saveThemePair(light, dark);
+    },
 };
 
 /**
@@ -753,6 +783,442 @@ async function applyDailyBing() {
  * @param {{type: string, url: string, name?: string}} config 壁纸配置
  * @returns {boolean} 是否持久化成功
  */
+// ---- 动态墙纸 / 图集 / 主题配对 / 屏幕保护程序引擎 ----
+//
+// 四台引擎都挂在同一个事实源上：localStorage 的壁纸配置（WALLPAPER_CONFIG_KEY）
+// 与设置中枢的 wallpaper.* / screensaver.* 定义。约束：
+//   1. 配置里的 url 一律是「可重放」的地址（系统资源路径 / 外链 / idb: 引用），
+//      objectURL 只用于当次显示，绝不落盘 —— 刷新后还能画回来；
+//   2. 动态墙纸开启时会「托管」配置（type:"dynamic"），关闭时按默认壁纸恢复；
+//   3. 屏保把 idleMinutes 当倒计时，activity 重置，与 lock.js 的空闲看门狗同思路。
+
+/** 动态墙纸默认时段表（与 settings-definitions.js 的 wallpaper.dynamicSet default 保持一致）。 */
+const DYNAMIC_FALLBACK_SLOTS = [
+    { from: 5, systemId: "sequoia-default" },
+    { from: 8, systemId: "sequoia-day" },
+    { from: 17, systemId: "sequoia-night" },
+];
+
+/** 屏幕保护程序的活动事件（任意一个都视为「有人的痕迹」）。 */
+const SCREENSAVER_IDLE_EVENTS = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"];
+
+/** 引擎运行期状态（模块单例；init 幂等，重复调用不会叠加定时器）。 */
+const engine = {
+    started: false,
+    dynamicTimer: null,
+    dynamicOn: false,
+    dynamicCurrent: "",      // 最近一次铺上的 systemId，避免每分钟重复淡入
+    albumTimer: null,
+    fadeTimer: null,
+    screensaverActive: false,
+    screensaverIdleTimer: null,
+    screensaverClockTimer: null,
+    screensaverNode: null,
+    screensaverSource: "overlay", // overlay（全屏盖住）/ wallpaper（铺进墙纸层）
+};
+
+/** 系统壁纸 id -> 资源地址；未知 id 返回 null。 */
+function systemIdToUrl(id) {
+    const hit = SYSTEM_WALLPAPERS.find((item) => item.id === String(id || ""));
+    return hit ? hit.url : null;
+}
+
+/**
+ * 把图集/主题配对里的「条目」归一成可持久化的地址：系统壁纸 id 换成资源路径，
+ * 其余（外链 / idb: 引用）原样返回。空输入返回空串。
+ * @param {string} entry 条目原文
+ * @returns {string} 可持久化地址
+ */
+function normalizeWallpaperEntry(entry) {
+    const text = String(entry || "").trim();
+    if (!text) return "";
+    return systemIdToUrl(text) || text;
+}
+
+/**
+ * 把条目解析成当次可显示地址：idb: 引用异步取本体换 objectURL，其余原样。
+ * @param {string} entry 已归一化条目
+ * @returns {Promise<string>} 可显示地址
+ */
+async function resolveWallpaperEntry(entry) {
+    const text = String(entry || "");
+    if (!text.startsWith(IDB_PREFIX)) return text;
+    const id = text.slice(IDB_PREFIX.length);
+    if (objectUrlCache.has(id)) return objectUrlCache.get(id);
+    const blob = await idbGetImage(id);
+    if (!blob) throw new Error(`图集条目本体缺失（${id}）`);
+    return objectUrlFor(id, blob);
+}
+
+/**
+ * 交叉淡入：把新地址铺到壁纸元素上的临时图层，淡入完成后换成正式背景并清图层。
+ * @param {string} url 可显示地址
+ * @returns {void}
+ */
+function crossFadeTo(url) {
+    if (!wallpaperElement) return;
+    ensureEngineStyle();
+    const layer = document.createElement("div");
+    layer.className = "wallpaper-fade";
+    layer.style.backgroundImage = `url("${String(url).replace(/"/g, "%22")}")`;
+    wallpaperElement.appendChild(layer);
+    // 双 rAF 确保初始透明度先被样式收编，再切到 1 才有过渡
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => { layer.style.opacity = "1"; });
+    });
+    if (engine.fadeTimer) clearTimeout(engine.fadeTimer);
+    engine.fadeTimer = setTimeout(() => {
+        wallpaper.setWallpaper(url);
+        layer.remove();
+        engine.fadeTimer = null;
+    }, 1300);
+}
+
+/**
+ * 按小时挑动态时段（纯函数，探针直接测）：取「from <= hour」里最近的一个；
+ * 凌晨（0-4 点）落在最后一个时段（夜色）。
+ * @param {Array<{from:number,systemId:string}>} slots 时段表
+ * @param {number} hour 当前小时 0-23
+ * @returns {{from:number,systemId:string}|null} 命中的时段
+ */
+function dynamicSlotForHour(slots, hour) {
+    const sorted = (Array.isArray(slots) ? slots : [])
+        .filter((slot) => slot && Number.isFinite(Number(slot.from)) && systemIdToUrl(slot.systemId))
+        .sort((a, b) => Number(a.from) - Number(b.from));
+    if (!sorted.length) return null;
+    let hit = sorted[0];
+    sorted.forEach((slot) => { if (hour >= Number(slot.from)) hit = slot; });
+    return hit;
+}
+
+/** 读图集地址列表（设置项 wallpaper.album，条目先归一化，空串丢弃）。 */
+function albumEntries() {
+    const raw = settings.get("wallpaper.album");
+    return (Array.isArray(raw) ? raw : [])
+        .map((entry) => normalizeWallpaperEntry(entry))
+        .filter(Boolean);
+}
+
+/** 读图集换图间隔（分钟，钳在 5-120；异常回退 30）。 */
+function albumIntervalMinutes() {
+    const value = Number(settings.get("wallpaper.albumInterval"));
+    if (!Number.isFinite(value)) return 30;
+    return Math.min(120, Math.max(5, Math.round(value)));
+}
+
+/** 停掉图集轮换定时器（配置被改成非 album 时自动收摊）。 */
+function stopAlbumRotation() {
+    if (engine.albumTimer) {
+        clearInterval(engine.albumTimer);
+        engine.albumTimer = null;
+    }
+}
+
+/** 图集轮换一步：算下一张、交叉淡入、把进度写回配置。 */
+async function advanceAlbum() {
+    const config = wallpaper.getWallpaperConfig();
+    if (!config || config.type !== "album") {
+        stopAlbumRotation();
+        return false;
+    }
+    const entries = albumEntries();
+    if (!entries.length) return false;
+    const nextIndex = ((Number(config.index) || 0) + 1) % entries.length;
+    const url = await resolveWallpaperEntry(entries[nextIndex]);
+    crossFadeTo(url);
+    persistConfigQuietly({ type: "album", url: entries[nextIndex], index: nextIndex, name: "图集" });
+    return true;
+}
+
+/**
+ * 进入图集模式：校验列表非空、铺第一张、持久化 album 配置并启动轮换定时器。
+ * @returns {Promise<boolean>} 是否成功
+ */
+async function startAlbumWallpaper() {
+    const entries = albumEntries();
+    if (!entries.length) {
+        warnLog("图集为空，未进入图集模式");
+        return false;
+    }
+    stopAlbumRotation();
+    const url = await resolveWallpaperEntry(entries[0]);
+    crossFadeTo(url);
+    persistConfigQuietly({ type: "album", url: entries[0], index: 0, name: "图集" });
+    engine.albumTimer = setInterval(() => { advanceAlbum(); }, albumIntervalMinutes() * 60 * 1000);
+    logWallpaper("info", `图集墙纸开始轮换：${entries.length} 张 / ${albumIntervalMinutes()} 分钟`);
+    return true;
+}
+
+/**
+ * 动态墙纸一步：按时段挑系统壁纸；配置未被托管（用户手选过其它壁纸）时先收编。
+ * @returns {Promise<void>}
+ */
+async function applyDynamicSlot() {
+    const slotsRaw = settings.get("wallpaper.dynamicSet");
+    const slots = (slotsRaw && Array.isArray(slotsRaw.slots) && slotsRaw.slots.length)
+        ? slotsRaw.slots
+        : DYNAMIC_FALLBACK_SLOTS;
+    const slot = dynamicSlotForHour(slots, new Date().getHours());
+    if (!slot) return;
+    const config = wallpaper.getWallpaperConfig();
+    if (!config || config.type !== "dynamic") {
+        const url = systemIdToUrl(slot.systemId);
+        persistConfigQuietly({ type: "dynamic", url, systemId: slot.systemId, name: "macOS 动态" });
+        wallpaper.setWallpaper(url);
+        engine.dynamicCurrent = slot.systemId;
+        return;
+    }
+    if (engine.dynamicCurrent === slot.systemId) return;
+    engine.dynamicCurrent = slot.systemId;
+    const url = systemIdToUrl(slot.systemId);
+    crossFadeTo(url);
+    persistConfigQuietly({ type: "dynamic", url, systemId: slot.systemId, name: "macOS 动态" });
+}
+
+/**
+ * 开关动态墙纸。开启时立即铺当前时段并启动分钟级定时器；
+ * 关闭时停表并把配置交还给默认壁纸（用户随后可以再手选）。
+ * @param {boolean|string} on 是否开启
+ * @returns {boolean} 生效后的开关状态
+ */
+function setDynamicEnabled(on) {
+    const enabled = Boolean(on) && on !== "off" && on !== "false" && on !== "0";
+    engine.dynamicOn = enabled;
+    if (engine.dynamicTimer) {
+        clearInterval(engine.dynamicTimer);
+        engine.dynamicTimer = null;
+    }
+    if (!enabled) {
+        engine.dynamicCurrent = "";
+        return false;
+    }
+    applyDynamicSlot();
+    engine.dynamicTimer = setInterval(() => { applyDynamicSlot(); }, 60 * 1000);
+    return true;
+}
+
+/** 当前主题侧（浅色/深色）：<html data-theme> 是 appearance.js 的产出。 */
+function currentThemeSide() {
+    return (document.documentElement.dataset.theme === "dark") ? "dark" : "light";
+}
+
+/**
+ * 按当前主题铺 themePair 对应侧的壁纸（配置不是 themePair 时直接返回 false）。
+ * @returns {Promise<boolean>} 是否应用了
+ */
+async function applyThemePair() {
+    const config = wallpaper.getWallpaperConfig();
+    if (!config || config.type !== "themePair") return false;
+    const entry = config[currentThemeSide()];
+    if (!entry || !entry.url) return false;
+    try {
+        const url = await resolveWallpaperEntry(entry.url);
+        wallpaper.setWallpaper(url);
+        applyTint(entry.url);
+        return true;
+    } catch (err) {
+        warnLog("主题配对壁纸读取失败：", err);
+        return false;
+    }
+}
+
+/**
+ * 保存并应用 themePair 配置（墙纸面板「随主题切换」的入口）。
+ * @param {string} light 浅色侧条目
+ * @param {string} dark 深色侧条目
+ * @returns {Promise<boolean>} 是否成功
+ */
+async function saveThemePair(light, dark) {
+    const lightUrl = normalizeWallpaperEntry(light);
+    const darkUrl = normalizeWallpaperEntry(dark);
+    if (!lightUrl && !darkUrl) return false;
+    const resolvedLight = lightUrl || darkUrl;
+    const resolvedDark = darkUrl || lightUrl;
+    persistConfigQuietly({
+        type: "themePair",
+        url: currentThemeSide() === "dark" ? resolvedDark : resolvedLight,
+        light: { url: resolvedLight, name: "浅色" },
+        dark: { url: resolvedDark, name: "深色" },
+        name: "随主题切换",
+    });
+    return applyThemePair();
+}
+
+/** 引擎公共样式（交叉淡入图层 / 屏保层），一次注入。 */
+function ensureEngineStyle() {
+    if (document.getElementById("deskly-wallpaper-engine-style")) return;
+    const style = document.createElement("style");
+    style.id = "deskly-wallpaper-engine-style";
+    style.textContent = `
+.wallpaper-fade { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0; transition: opacity 1.2s ease; pointer-events: none; }
+.wallpaper-screensaver { position: absolute; inset: 0; overflow: hidden; }
+.ss-screensaver-overlay { position: fixed; inset: 0; z-index: 2147482000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.ss-screensaver-inner { position: absolute; inset: -6%; background-size: cover; background-position: center; }
+.ss-screensaver-kenburns { animation: ss-kenburns 36s ease-in-out infinite alternate; }
+@keyframes ss-kenburns { from { transform: scale(1); } to { transform: scale(1.12) translate(1.5%, -1.5%); } }
+.ss-screensaver-gradient { position: absolute; inset: -20%; background: linear-gradient(120deg, #0f2027, #203a43 30%, #2c5364 55%, #1a2980 80%, #26d0ce); background-size: 300% 300%; animation: ss-gradient-pan 26s ease-in-out infinite; }
+@keyframes ss-gradient-pan { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+.ss-screensaver-clock { position: relative; color: #fff; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45); text-align: center; font: 600 96px/1.1 -apple-system, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+.ss-screensaver-clock small { display: block; margin-top: 10px; font: 400 20px/1.4 -apple-system, "SF Pro Text", "PingFang SC", sans-serif; opacity: 0.85; }
+html[data-reduce-motion="on"] .ss-screensaver-kenburns,
+html[data-reduce-motion="on"] .ss-screensaver-gradient { animation: none; }
+`;
+    document.head.appendChild(style);
+}
+
+/** 屏保素材：图集优先，其次三张系统壁纸；返回已归一化的条目列表。 */
+function screensaverEntries() {
+    const album = albumEntries();
+    if (album.length) return album;
+    return SYSTEM_WALLPAPERS.map((item) => item.url);
+}
+
+/** 结束屏保并按当前模式重新排程。 */
+function stopScreensaver() {
+    if (!engine.screensaverActive) return;
+    engine.screensaverActive = false;
+    if (engine.screensaverClockTimer) {
+        clearInterval(engine.screensaverClockTimer);
+        engine.screensaverClockTimer = null;
+    }
+    if (engine.screensaverNode) {
+        engine.screensaverNode.remove();
+        engine.screensaverNode = null;
+    }
+    armScreensaver();
+}
+
+/**
+ * 启动屏保：按模式构建时钟/渐变/照片内容，铺进全屏层或墙纸层。
+ * @returns {boolean} 是否真的启动了
+ */
+function startScreensaver() {
+    const mode = settings.get("screensaver.mode");
+    if (!mode || mode === "none" || engine.screensaverActive) return false;
+    ensureEngineStyle();
+    engine.screensaverActive = true;
+
+    const asWallpaper = Boolean(settings.get("screensaver.asWallpaper"));
+    const host = asWallpaper ? wallpaperElement : document.body;
+    if (!host) {
+        engine.screensaverActive = false;
+        return false;
+    }
+    engine.screensaverSource = asWallpaper ? "wallpaper" : "overlay";
+
+    const node = document.createElement("div");
+    node.className = asWallpaper ? "wallpaper-screensaver" : "ss-screensaver-overlay";
+
+    if (mode === "clock") {
+        const clock = document.createElement("div");
+        clock.className = "ss-screensaver-clock";
+        const paint = () => {
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, "0");
+            clock.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            const text = `${now.getMonth() + 1} 月 ${now.getDate()} 日 星期${"日一二三四五六"[now.getDay()]}`;
+            const dateLine = clock.querySelector("small");
+            if (dateLine) dateLine.textContent = text;
+            else clock.appendChild(Object.assign(document.createElement("small"), { textContent: text }));
+        };
+        paint();
+        node.appendChild(clock);
+        engine.screensaverClockTimer = setInterval(paint, 1000);
+    } else if (mode === "gradient") {
+        const gradient = document.createElement("div");
+        gradient.className = "ss-screensaver-gradient";
+        node.appendChild(gradient);
+    } else {
+        // 照片档：随机挑一张（图集优先，其次系统三张），Ken Burns 缓推
+        const entries = screensaverEntries();
+        const pick = entries[Math.floor(Math.random() * entries.length)] || DEFAULT_WALLPAPER;
+        const inner = document.createElement("div");
+        inner.className = "ss-screensaver-inner";
+        node.appendChild(inner);
+        resolveWallpaperEntry(pick).then((url) => {
+            inner.style.backgroundImage = `url("${String(url).replace(/"/g, "%22")}")`;
+            const reduceMotion = document.documentElement.dataset.reduceMotion === "on";
+            if (!reduceMotion) inner.classList.add("ss-screensaver-kenburns");
+        }).catch(() => {
+            inner.style.backgroundImage = `url("${DEFAULT_WALLPAPER}")`;
+        });
+    }
+
+    engine.screensaverNode = node;
+    host.appendChild(node);
+    return true;
+}
+
+/** 重新排程屏保空闲倒计时（模式为 none 或分钟数非法时不排）。 */
+function armScreensaver() {
+    if (engine.screensaverIdleTimer) {
+        clearTimeout(engine.screensaverIdleTimer);
+        engine.screensaverIdleTimer = null;
+    }
+    const mode = settings.get("screensaver.mode");
+    if (!mode || mode === "none") return;
+    const minutes = Number(settings.get("screensaver.idleMinutes"));
+    const delay = (Number.isFinite(minutes) && minutes >= 1 ? Math.min(60, minutes) : 10) * 60 * 1000;
+    engine.screensaverIdleTimer = setTimeout(() => {
+        engine.screensaverIdleTimer = null;
+        startScreensaver();
+    }, delay);
+}
+
+/** 活动回调：屏保在场就熄掉，无论如何重排倒计时。 */
+function handleScreensaverActivity() {
+    if (engine.screensaverActive) stopScreensaver();
+    else armScreensaver();
+}
+
+/** 绑定屏保活动监听与设置跟随（幂等：engine.eventsBound 守卫）。 */
+function bindEngineEvents() {
+    if (engine.eventsBound) return;
+    engine.eventsBound = true;
+    SCREENSAVER_IDLE_EVENTS.forEach((type) => {
+        window.addEventListener(type, handleScreensaverActivity, { passive: true, capture: true });
+    });
+    document.addEventListener("settings-changed", (event) => {
+        const key = String(event.detail?.key || "");
+        if (key === "screensaver.mode" || key === "screensaver.idleMinutes" || key === "screensaver.asWallpaper") {
+            if (engine.screensaverActive) stopScreensaver();
+            armScreensaver();
+        }
+        if (key === "wallpaper.albumInterval" && engine.albumTimer) {
+            stopAlbumRotation();
+            const config = wallpaper.getWallpaperConfig();
+            if (config && config.type === "album") {
+                engine.albumTimer = setInterval(() => { advanceAlbum(); }, albumIntervalMinutes() * 60 * 1000);
+            }
+        }
+        if (key === "appearance.theme") applyThemePair();
+    });
+    document.addEventListener("visibilitychange", () => {
+        // 转后台时不让屏保空转：停掉并重排（回来后再计一次完整空闲）
+        if (document.visibilityState === "hidden" && engine.screensaverActive) stopScreensaver();
+    });
+}
+
+/**
+ * 引擎总开关：init 时调用一次。
+ * 动态墙纸按设置点亮；图集模式残留配置续摆；themePair 按当前主题校正；屏保排程。
+ * @param {object} [config] init 已解析的当前配置
+ * @returns {void}
+ */
+function startWallpaperEngines(config) {
+    if (engine.started) return;
+    engine.started = true;
+    bindEngineEvents();
+    ensureEngineStyle();
+
+    if (settings.get("wallpaper.dynamic")) setDynamicEnabled(true);
+    if (config && config.type === "album" && albumEntries().length) {
+        engine.albumTimer = setInterval(() => { advanceAlbum(); }, albumIntervalMinutes() * 60 * 1000);
+    }
+    if (config && config.type === "themePair") applyThemePair();
+    armScreensaver();
+}
+
 function persistConfigQuietly(config) {
     const saved = safeSetItem(WALLPAPER_CONFIG_KEY, JSON.stringify(config));
     window.dispatchEvent(new CustomEvent("wallpaper-change", { detail: config }));
@@ -1020,8 +1486,10 @@ async function fetchBingAlt() {
 
 export { wallpaper };
 
-/** 测试探针专用：持久化闭环（存 → 重开 → 读回）的最小面。生产代码不应引用。 */
+/** 测试探针专用：持久化闭环（存 → 重开 → 读回）与动态/图集引擎纯函数的最小面。生产代码不应引用。 */
 export const __wallpaperInternals = {
     idbPutImage, idbGetImage, resolveConfigUrl, restoreConfig,
     IDB_PREFIX, IDB_NAME, IDB_STORE,
+    DYNAMIC_FALLBACK_SLOTS, systemIdToUrl, normalizeWallpaperEntry,
+    dynamicSlotForHour, albumEntries, albumIntervalMinutes, screensaverEntries,
 };

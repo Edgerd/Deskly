@@ -199,19 +199,15 @@ function effectiveBase() {
 }
 
 /**
- * 屏幕层：显示器亮度是压在整屏上的 multiply 层（等效于把底色按比例压暗），
- * 夜间护眼再叠一层暖色。任何底色在参与文字判定前都要过这里，否则「亮度调最低 +
- * 开夜间」会让判定停在错误的一侧。
+ * 屏幕层：显示器亮度是压在整屏上的 multiply 层（等效于把底色按比例压暗）。
+ * 任何底色在参与文字判定前都要过这里，否则「亮度调最低」会让判定停在错误的一侧。
  * @param {number[]} rgb 未经屏幕层处理的底色
  * @returns {number[]} 屏幕上真正呈现的底色
  */
 function applyScreen(rgb) {
     const brightness = Math.max(0.2, Math.min(1, Number(settings.get("display.brightness", 0.85)) || 0.85));
-    const shift = settings.get("display.nightShift", false) === true
-        ? Math.min(0.6, Number(settings.get("display.nightShiftIntensity", 0.25)) || 0) : 0;
     const dim = 0.55 + 0.45 * brightness;
-    const dark = rgb.map((v) => clamp255(v * dim));
-    return shift ? composite([255, 170, 90], dark, shift) : dark;
+    return rgb.map((v) => clamp255(v * dim));
 }
 
 /** 样式表上某个自定义属性的当前值（含 <html> 内联与继承）。 */
@@ -510,7 +506,7 @@ function bindSignals() {
     const watched = new Set([
         "appearance.blurLevel", "appearance.tintStrength", "appearance.tintHue",
         "appearance.wallpaper.tint", "appearance.theme", "display.brightness",
-        "display.nightShift", "display.nightShiftIntensity", "appearance.transparency",
+        "appearance.transparency",
     ]);
     document.addEventListener("settings-changed", (event) => {
         const key = event.detail && event.detail.key;

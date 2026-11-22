@@ -36,6 +36,21 @@
             font-size: 13px;
             font-family: "SFPro-Medium", "PingFangSC-Medium";
             margin-top: 5px;
+            // 外层用 direction: rtl 让图标从右往左填充，这个方向会继承到文件名：
+            // 换行后的续行按 RTL 起排，看上去像「居右」。文字方向必须显式复位。
+            direction: ltr;
+            text-align: center;
+            // 与图标列同宽：超长名字在列内换行，而不是把标签撑出列宽
+            width: 100%;
+            line-height: 1.3;
+            // 优先按空格/标点断行，中文等无空格串才逐字断开，避免把英文单词、扩展名拆散
+            overflow-wrap: anywhere;
+            word-break: normal;
+            // 最多三行后省略：标签不无限拉高，也就不会压到下一行的图标
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            overflow: hidden;
         }
     }
 }

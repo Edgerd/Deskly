@@ -2,7 +2,8 @@
  * contextMenu.js — 右键菜单与桌面新建文件
  */
 import { Z } from "../zindex.js";
-import { FOLDER_ICON, GENERIC_DOC_ICON } from "../paths.js";
+import { FOLDER_ICON } from "../paths.js";
+import { fileIconFor } from "../file-type-icons.js";
 import { appendDesktopItem, makeDraggable } from "./desktopItems.js";
 import { pressMenuItem } from "./menuFeedback.js";
 
@@ -55,6 +56,16 @@ function normalizeMenuItems(items) {
     });
     while (out.length && out[out.length - 1].type === "separator") out.pop();
     return out;
+}
+
+/**
+ * 主动关闭由 createContextMenu 创建的菜单。
+ * 直接 menu.remove() 会把 document 级关闭监听留在原处（闭包钉住已脱离文档的节点），
+ * 所以统一走 removeMenu，先注销监听再移除。
+ * @param {HTMLElement|null} menu 菜单元素
+ */
+export function closeContextMenu(menu) {
+    if (menu && menu.isConnected) removeMenu(menu);
 }
 
 /**
@@ -181,7 +192,7 @@ export function createDesktopFile(type, name = "未命名") {
     item.classList.add("item");
 
     const icon = document.createElement("img");
-    icon.src = type === "folder" ? FOLDER_ICON : GENERIC_DOC_ICON;
+    icon.src = type === "folder" ? FOLDER_ICON : fileIconFor(name);
 
     const nameEl = document.createElement("p");
     nameEl.textContent = name;

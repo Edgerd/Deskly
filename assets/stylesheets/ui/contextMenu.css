@@ -19,7 +19,8 @@
     line-height: 16px;
     font-family: "SFPro-Medium", "PingFangSC-Medium";
     margin: 1.5px 0;
-    border-radius: 5px;
+    /* 与 ui.css 的 .menu p 对齐：悬浮高亮的左右圆角略收圆一点 */
+    border-radius: 6px;
     padding: 3px 10px;
     cursor: pointer;
 }

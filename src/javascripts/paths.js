@@ -62,10 +62,6 @@ export const FOLDER_ICON = assetPath("icons/folder/Folder.webp");
 export const DOWNLOAD_ICON = assetPath("icons/folder/Download.webp");
 export const GENERIC_DOC_ICON = assetPath("images/GenericDocumentIcon.webp");
 
-// Siri 顶栏图标：彩色光球（WebP）。与「应用/启动台图标」区分——后者是
-// manifest.icon（mods/siri/Siri.webp），走 getIcon("siri")；顶栏要的是这张 Orb。
-export const SIRI_BAR_ICON = assetIcon("Siri-Orb");
-
 /* ── 旧式 App（非插件）残留目录 ──
    assets/apps/ 已清空，Safari 也早已插件化；下面三个只是 window.js 的 create()
    在「名字没注册成插件」时的兜底路径，走到那里必然 404 并弹提示。

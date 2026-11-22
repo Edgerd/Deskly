@@ -141,24 +141,23 @@ html[data-theme="dark"] {
   margin-right: 4px;
 }
 
-/* 居中标题 */
+/* 居中标题：占据导航与右侧按钮簇之间的剩余空间并居中；
+   窗口变窄时优先省略标题，而不是让绝对居中的文字压到视图/搜索按钮上。 */
 .finder-window-title {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
   font-size: 14px;
   font-weight: 600;
   color: var(--finder-text);
   white-space: nowrap;
-  pointer-events: none;
-  max-width: 50%;
   overflow: hidden;
   text-overflow: ellipsis;
+  pointer-events: none;
 }
 
-/* 弹性间距把右侧簇推到最右 */
-.tb-spacer { flex: 1; min-width: 8px; }
+/* 弹性间距已由标题自身承担，这里不再额外分配空间 */
+.tb-spacer { flex: 0 0 0; min-width: 0; }
 
 /* 导航按钮组 */
 .tb-nav { display: flex; align-items: center; gap: 2px; }
@@ -232,6 +231,10 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   flex-shrink: 0;
 }
 .tb-search.expanded { width: 210px; }
+/* 收起时只保留放大镜：输入框与范围按钮若只靠 overflow 裁剪，
+   绝对定位的范围文字会浮到放大镜上，看起来像两个控件叠在一起。 */
+.tb-search:not(.expanded) input,
+.tb-search:not(.expanded) .search-scope { display: none; }
 .tb-search input {
   flex: 1;
   min-width: 0;
@@ -244,7 +247,7 @@ html[data-theme="dark"] .view-btn.active { background: rgba(255, 255, 255, 0.16)
   color: var(--finder-text);
   transition: width 0.2s ease;
 }
-.tb-search.expanded input { width: 100%; }
+.tb-search.expanded input { width: 100%; padding-right: 74px; }
 .tb-search input::placeholder { color: var(--finder-text-tertiary); }
 
 /* 下拉弹层
@@ -713,3 +716,104 @@ html[data-theme="dark"] .sidebar-item.active { color: var(--finder-accent); }
 html[data-theme="dark"] .modal-btn { background: rgba(0, 0, 0, 0.3); border-color: rgba(255, 255, 255, 0.15); color: var(--finder-text); }
 html[data-theme="dark"] .modal-btn:hover { background: rgba(255, 255, 255, 0.12); }
 html[data-theme="dark"] .modal-btn.primary { background: var(--finder-accent); border-color: var(--finder-accent); color: #ffffff; }
+
+/* ---------- 状态栏 / 路径栏（F-44） ---------- */
+.finder-clip { position: relative; }
+.tb-search { position: relative; }
+.finder-statusbar {
+  height: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; font-size: 11px; color: var(--finder-text-tertiary);
+  border-top: 1px solid var(--finder-separator); background: var(--finder-titlebar-bg);
+}
+.finder-statusbar[hidden] { display: none; }
+.finder-pathbar {
+  height: 20px; flex-shrink: 0; display: flex; align-items: center; gap: 2px;
+  padding: 0 10px; font-size: 11px; color: var(--finder-text-tertiary);
+  border-top: 1px solid var(--finder-separator); background: var(--finder-titlebar-bg);
+  overflow: hidden; white-space: nowrap;
+}
+.finder-pathbar[hidden] { display: none; }
+.pathbar-crumb { cursor: var(--deskly-cursor, default); padding: 1px 4px; border-radius: 3px; }
+.pathbar-crumb:hover { background: var(--finder-hover); }
+.pathbar-crumb.active { color: var(--finder-text); font-weight: 600; }
+.pathbar-sep { opacity: 0.6; margin: 0 1px; }
+.pathbar-dots { cursor: var(--deskly-cursor, default); }
+
+/* ---------- 框选橡皮筋（F-38） ---------- */
+.finder-rubber-band {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: rgba(10, 132, 255, 0.12); border: 1px solid rgba(10, 132, 255, 0.55);
+  border-radius: 2px;
+}
+
+/* ---------- 隐藏文件 / 数量角标（F-42） ---------- */
+.entry.hidden-file { opacity: 0.45; }
+.entry-count-badge {
+  font-size: 10px; color: var(--finder-text-tertiary); margin-left: auto; padding-right: 6px;
+}
+.finder-content.grid-view .entry-count-badge { position: absolute; right: 8px; top: 4px; margin: 0; padding: 0; }
+
+/* ---------- 拖拽落点高亮（F-24） ---------- */
+.entry.dnd-drop-target { outline: 1.5px solid var(--finder-accent); outline-offset: -1.5px; background: var(--finder-hover); }
+.sidebar-item.dnd-drop-target { outline: 1.5px solid var(--finder-accent); outline-offset: -1.5px; border-radius: 6px; }
+.sidebar-favorite.dnd-drop-target { background: var(--finder-hover); }
+/* 桌面指针拖拽落在内容区空白 = 当前目录（列视图按所在栏目录） */
+#list-body.dnd-drop-target { box-shadow: inset 0 0 0 1.5px var(--finder-accent); }
+
+/* ---------- 撤销 toast（F-24/F-26） ---------- */
+.finder-undo-toast {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 14px;
+  background: rgba(28, 28, 30, 0.92); color: #fff; border-radius: 8px;
+  font-size: 12px; z-index: 30; box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}
+.finder-undo-toast button {
+  border: none; background: none; color: var(--finder-accent);
+  font-size: 12px; font-weight: 600; cursor: var(--deskly-cursor, pointer); padding: 2px 4px;
+}
+
+/* ---------- 搜索范围切换（F-36） ---------- */
+.search-scope {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; color: var(--finder-text-tertiary);
+  font-size: 10px; padding: 2px 4px; border-radius: 4px;
+  cursor: var(--deskly-cursor, pointer); white-space: nowrap;
+}
+.search-scope:hover { background: var(--finder-hover); color: var(--finder-text); }
+.search-scope.scope-disk { color: var(--finder-accent); }
+
+/* ---------- 分栏视图补充（F-34） ---------- */
+.column-pane-more {
+  border: none; background: transparent; color: var(--finder-text-tertiary);
+  font-size: 12px; margin-right: 6px; cursor: var(--deskly-cursor, pointer); padding: 0 4px;
+}
+.column-pane-empty { padding: 10px 12px; font-size: 11px; color: var(--finder-text-tertiary); }
+.column-view .entry.active-in-chain { color: var(--finder-accent); font-weight: 600; }
+
+/* ---------- 画廊视图补充（F-35） ---------- */
+.gallery-name {
+  position: absolute; top: 10px; left: 12px; max-width: 60%;
+  font-size: 12px; color: var(--finder-text); background: rgba(255,255,255,0.72);
+  padding: 3px 10px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+html[data-theme="dark"] .gallery-name { background: rgba(40,40,44,0.8); color: #f5f5f7; }
+.gallery-controls { position: absolute; right: 12px; bottom: 10px; display: flex; gap: 4px; }
+.gallery-controls button {
+  width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--finder-separator);
+  background: var(--finder-titlebar-bg); color: var(--finder-text); font-size: 13px; line-height: 1;
+  cursor: var(--deskly-cursor, pointer);
+}
+.gallery-controls button:hover { background: var(--finder-hover); }
+.gallery-emptytype { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--finder-text-tertiary); font-size: 12px; }
+.gallery-emptytype img { width: 72px; height: 72px; object-fit: contain; }
+.ql-media { max-width: 100%; max-height: 100%; }
+.ql-frame { width: 100%; height: 100%; border: none; }
+.ql-text { width: 100%; height: 100%; overflow: auto; padding: 16px 20px; font-size: 12px; margin: 0; white-space: pre-wrap; }
+.ql-zip { width: 100%; height: 100%; overflow: auto; padding: 12px 16px; font-size: 12px; }
+.ql-zip-list { margin: 6px 0 0; padding: 0 0 0 4px; list-style: none; }
+.ql-zip-item { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px dashed var(--finder-separator); }
+.ql-zip-size { color: var(--finder-text-tertiary); flex-shrink: 0; }
+
+/* ---------- 侧栏收藏（F-24/F-39） ---------- */
+.section-favorites { padding: 2px 0; }
+.item-icon-glyph { display: inline-flex; align-items: center; justify-content: center; width: 16px; }

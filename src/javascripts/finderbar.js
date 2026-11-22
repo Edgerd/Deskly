@@ -18,7 +18,6 @@ import { mountToFinderbar } from "./controlcenter.js";
 import { initDatetimePopover } from "./datetime_popover.js";
 import { pressMenuItem } from "./ui/menuFeedback.js";
 import { bringToFront } from "./zindex.js";
-import { assetPath, SIRI_BAR_ICON } from "./paths.js";
 import { dispatchMenuCommand } from "./ui/menuCommands.js";
 import { SESSION_ACTIONS } from "./session.js";
 import { listApps, displayNameFor } from "./app-registry.js";
@@ -99,6 +98,8 @@ const SUB_MENUS = {
             { label: "以画廊方式", shortcut: "⌘4", cmd: "finderViewMode('gallery')" },
             { separator: true },
             { label: "显示标签栏", cmd: "finderToggleTabBar" },
+            { label: "显示状态栏", cmd: "finderToggleStatusBar" },
+            { label: "显示路径栏", cmd: "finderTogglePathBar" },
             { separator: true },
             { label: "进入全屏", shortcut: "⌃⌘F", cmd: "toggleActiveWindowFullscreen()" },
             { label: "隐藏工具栏", disabled: true },
@@ -109,7 +110,7 @@ const SUB_MENUS = {
             { label: "桌面", shortcut: "⌘⇧⌥D", cmd: "finderNavigate('/桌面')" },
             { separator: true },
             { label: "下载", shortcut: "⌘⌥L", cmd: "finderNavigate('/下载')" },
-            { label: "应用程序", shortcut: "⌘⇧A", cmd: "finderNavigate('/')" },
+            { label: "应用程序", shortcut: "⌘⇧A", cmd: "finderNavigate('/应用程序')" },
             { label: "实用工具", shortcut: "⌘⇧U", disabled: true },
             { separator: true },
             { label: "废纸篓", i18nKey: "finderbar.goTrash", cmd: "finderNavigate('/废纸篓')" },
@@ -445,19 +446,36 @@ export function getShortcutMap() {
 }
 
 /**
- * 统一菜单来源解析：清单声明的顶层标题整组替换宿主默认集，未声明的标题保留。
- * 「只声明一个『文件』就只改『文件』」，插件不必为改一项而重抄七项菜单；
- * 宿主级的「应用 / 显示 / 窗口」仍由默认集提供，避免插件忘写导致窗口命令消失。
- * 「调试」不进任何一张菜单表，由 applyDeveloperMenu 按设置注入或摘除。
- * @returns {{order: string[], defs: Object}} 顶层菜单标题顺序与各项定义
- */
-/**
- * FS-03 补充：把当前全屏空间里的窗口追加到「窗口」菜单末尾（macOS 在「窗口」
- * 菜单里列出各全屏空间，点一项即切过去）。没有全屏窗口时菜单保持一字不动。
- * @param {{order: string[], defs: Object}} menus applyDeveloperMenu 的结果
+ * F-13：把「窗口」菜单里硬编码的左/右两项替换为 wm 提供的全量九分区条目。
+ * 数据源 windowTileMenuItems 由 window-manager 装配到 __wmApi；未就绪时保持原样。
+ * @param {{order: string[], defs: Object}} menus
  * @returns {{order: string[], defs: Object}}
  */
+function withTileMenu(menus) {
+    const api = globalThis.__wmApi;
+    if (!api || typeof api.windowTileMenuItems !== "function" || !menus.defs["窗口"]) return menus;
+    let tiles = [];
+    try { tiles = api.windowTileMenuItems(); } catch { return menus; }
+    if (!Array.isArray(tiles) || !tiles.length) return menus;
+    const items = [];
+    let inserted = false;
+    menus.defs["窗口"].forEach((item) => {
+        if (/^tileActiveWindow\(/.test(item.cmd || "")) {
+            if (!inserted) {
+                tiles.forEach((tile) => items.push({ label: tile.label, cmd: tile.cmd }));
+                inserted = true;
+            }
+            return;
+        }
+        items.push(item);
+    });
+    if (!inserted) return menus;
+    return { order: menus.order, defs: { ...menus.defs, "窗口": items } };
+}
+
+/** FS-03：把当前全屏空间里的窗口追加到「窗口」菜单末尾；没有全屏窗口时保持不变。 */
 function withSpacesMenu(menus) {
+    menus = withTileMenu(menus);
     const api = globalThis.__wmApi;
     if (!api || typeof api.spacesList !== "function" || !menus.defs["窗口"]) return menus;
     let list = [];
@@ -471,6 +489,13 @@ function withSpacesMenu(menus) {
     return { order: menus.order, defs: { ...menus.defs, "窗口": items } };
 }
 
+/**
+ * 统一菜单来源解析：清单声明的顶层标题整组替换宿主默认集，未声明的标题保留。
+ * 「只声明一个『文件』就只改『文件』」，插件不必为改一项而重抄七项菜单；
+ * 宿主级的「应用 / 显示 / 窗口」仍由默认集提供，避免插件忘写导致窗口命令消失。
+ * 「调试」不进任何一张菜单表，由 applyDeveloperMenu 按设置注入或摘除。
+ * @returns {{order: string[], defs: Object}} 顶层菜单标题顺序与各项定义
+ */
 function getMenusForApp(app) {
     const base = appMenu[app]
         ? { order: appMenu[app], defs: SUB_MENUS[app] || {} }
@@ -487,14 +512,15 @@ function getMenusForApp(app) {
     return withSpacesMenu(applyDeveloperMenu(order, defs));
 }
 
-// P0-5：wifi 装饰图已移除（无监听的死图），真实 Wi-Fi 状态在控制中心面板
-let appControl = ["switch.2", "magnifyingglass"];
+// F-01：右侧状态项不再有硬编码图标数组 —— 电池/音量/蓝牙/Wi-Fi/台前调度由
+// menubar-status.js 的声明式 STATUS_ITEMS 渲染；控制中心图标由 mountToFinderbar
+// 挂载；聚焦图标由 mods/spotlight 注册。这里不再追加任何无监听的装饰图。
 // 临时元素：由 updateMenu 动态创建的顶栏菜单项与下拉子菜单 DOM
 let tempMenuElements = [];
 
 export const finderbar = document.getElementById("finderbar");
 
-// 顶栏容器与日期控件（模块级，供 updateMenu / updateControl / updateTime 复用）
+// 顶栏容器与日期控件（模块级，供 updateMenu / updateTime 复用）
 let appMenuContainer = null;
 let appControlContainer = null;
 let timeControl = null;
@@ -531,7 +557,6 @@ function initFinderbar() {
     appControlContainer.appendChild(dateControl);
 
     updateMenu("访达");
-    updateControl();
     updateTime();
     scheduleClock();
     // addEventListener 而非 window.onload 赋值：client.js 也在 load 上挂处理器，
@@ -543,45 +568,6 @@ function initFinderbar() {
 
     // 在右侧状态栏挂载控制中心图标
     mountToFinderbar(appControlContainer, finderbar);
-
-    registerSiriIcon();
-}
-
-/**
- * Siri 顶栏图标：冷加载约定（dev/devdoc/cold-load.md「启动时只注册清单」）——
- * finderbar 此前在页面加载即 import 其脚本（渲染层 + 设置联动数百行），
- * 每个新标签页都在为此付费。siri 已入 plugin-manager BUILTIN_IDS，
- * 首次点击图标时才 import 脚本；图标显示不等待任何脚本加载。
- *
- * 顶栏图标用彩色光球 `assets/icons/Siri-Orb.webp`（SIRI_BAR_ICON，路径集中在 paths.js）。
- * 它与「应用/启动台图标」manifest.icon（mods/siri/Siri.webp）是两张不同的图，
- * 宿主侧不写死插件路径；旧的单色 SVG glyph（assets/images/siri.svg）已彻底删除，不再引用。
- */
-function registerSiriIcon() {
-    registerFinderbarIcon({
-        id: "siri",
-        icon: SIRI_BAR_ICON,
-        onClick: toggleSiri,
-        order: -1, // 靠右优先（row-reverse 下负值 = 更靠右）
-    });
-}
-
-let siriLoading = false;
-function toggleSiri() {
-    if (window.__siri) {
-        window.__siri.toggle();
-        return;
-    }
-    if (siriLoading) return; // 连点去重：脚本只 import 一次
-    siriLoading = true;
-    // 注意：finderbar.js 位于 src/javascripts/，需跳出两层到项目根再进 mods/
-    import("../../mods/siri/script.js")
-        .then(() => {
-            if (window.__siri) window.__siri.toggle();
-            else writeLog("warn", "Siri 脚本已加载但未暴露 window.__siri");
-        })
-        .catch((err) => writeLog("warn", "Siri 脚本加载失败", err))
-        .finally(() => { siriLoading = false; });
 }
 
 let openingMenu = null;
@@ -941,13 +927,9 @@ document.addEventListener("window:fullscreen", () => {
     }
 });
 
-function updateControl() {
-    appControl.forEach((control) => {
-        let nowControl = document.createElement("img");
-        nowControl.src = assetPath(`images/${control}.svg`);
-        appControlContainer.appendChild(nowControl);
-    });
-}
+// updateControl() 已删除（F-01）：旧的 appControl 数组渲染两张无监听装饰图
+//（switch.2 / magnifyingglass），真实图标由 mountToFinderbar（控制中心）与
+// mods/spotlight 注册提供。
 
 // ---- 插件顶栏图标注册接口：允许插件动态注册/注销右侧自定义图标 ----
 
@@ -1492,6 +1474,20 @@ function finderToggleTabBar() {
 }
 
 /**
+ * 切换访达状态栏显隐（偏好落 finder.showStatusBar，访达侧订阅 settings-changed 实时生效）。
+ */
+function finderToggleStatusBar() {
+    dispatchFinderCommand('toggle-status-bar');
+}
+
+/**
+ * 切换访达路径栏显隐（偏好落 finder.showPathBar）。
+ */
+function finderTogglePathBar() {
+    dispatchFinderCommand('toggle-path-bar');
+}
+
+/**
  * 前往文件夹（弹窗输入路径）。
  */
 function finderGoToFolder() {
@@ -1531,6 +1527,8 @@ window.__menuActions = {
     finderViewMode,
     finderNavigate,
     finderToggleTabBar,
+    finderToggleStatusBar,
+    finderTogglePathBar,
     finderGoToFolder,
     finderNewFolder,
     finderShowInfo,

@@ -13,14 +13,20 @@
  * 事件：每次增删成功后派发 document CustomEvent "trash-changed"（detail {empty}），
  * 消费方：trashIcon（满/空变体自动切换）、访达（列表刷新自管）。
  *
- * 分层：只 import osfs.js（叶子内核）；文案全由调用方提供（i18n 键），本模块零文案。
+ * 分层：只 import osfs.js / settings.js（叶子内核）；文案全由调用方提供（i18n 键），本模块零文案。
  * 伴生文件后缀常量导出，访达渲染 /废纸篓 列表时据此过滤，界面上永远看不见它。
  */
 
 import { OSFS } from "./osfs.js";
+import { settings } from "./settings.js";
 
 const TRASH_ROOT = OSFS.TOP.trash.path;
 const DOCS_ROOT = OSFS.TOP.documents.path;
+
+/** 自动清倒的保留天数：设置项与存储面板共用这一个口径。 */
+const AUTO_EMPTY_DAYS = 30;
+/** 每日维护记账槽：只记「上次清理的日期」，开关状态以设置中枢为唯一权威。 */
+const AUTO_EMPTY_STAMP = "trash-autoEmpty-last-run";
 
 /** 溯源伴生文件后缀（访达据此在 /废纸篓 视图里隐藏这些条目）。 */
 export const TRASH_ORIGIN_SUFFIX = ".deskly-origin";
@@ -169,6 +175,80 @@ export async function isTrashNotEmpty() {
     return entries.some((e) => !e.name.endsWith(TRASH_ORIGIN_SUFFIX));
 }
 
+/** 当日日期串（本地时区，YYYY-MM-DD），用于每日一次的自动清倒记账。 */
+function todayStamp() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * 清倒 /废纸篓 里超过保留天数的条目（伴生文件随条目一起删）。
+ * 条目没有时间戳时跳过：时间未知不等于「很旧」，不能把刚扔进来的东西抹掉。
+ * @param {number} [days] 保留天数
+ * @returns {Promise<{ok: boolean, removed: number}>}
+ */
+export async function pruneOldTrash(days = AUTO_EMPTY_DAYS) {
+    const keep = Number(days);
+    const span = (Number.isFinite(keep) && keep >= 0 ? keep : AUTO_EMPTY_DAYS) * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - span;
+    let entries = [];
+    try {
+        entries = await trashEntries();
+    } catch (err) {
+        if (err && err.name === "NeedsReauthError") throw err;
+        return { ok: false, removed: 0 };
+    }
+    let removed = 0;
+    for (const entry of entries) {
+        if (entry.name.endsWith(TRASH_ORIGIN_SUFFIX)) continue;
+        const modified = Number(entry.modified) || 0;
+        if (!modified || modified > cutoff) continue;
+        const ok = await OSFS.remove(entry.path, { recursive: true }).then(() => true).catch(() => false);
+        if (!ok) continue;
+        await OSFS.remove(entry.path + TRASH_ORIGIN_SUFFIX).catch(() => { /* 伴生随条目失效 */ });
+        removed += 1;
+    }
+    if (removed) dispatchChanged(await isTrashNotEmpty());
+    return { ok: true, removed };
+}
+
+/**
+ * 设置开启时每天清倒一次：记账用本地日期，跨天只清一次；开关本身以设置中枢为唯一权威。
+ * 失败不记日期，下次打开页面还会再试；不改变开关状态。
+ */
+async function runDailyMaintenance() {
+    if (!settings.get("trash.autoEmpty")) return;
+    let stamp = null;
+    try { stamp = localStorage.getItem(AUTO_EMPTY_STAMP); } catch (err) { stamp = null; }
+    if (stamp === todayStamp()) return;
+    try {
+        await OSFS.init();
+        const result = await pruneOldTrash(AUTO_EMPTY_DAYS);
+        if (result.ok) {
+            try { localStorage.setItem(AUTO_EMPTY_STAMP, todayStamp()); } catch (err) { /* 存不下就下次再来 */ }
+        }
+    } catch (err) {
+        if (err && err.name === "NeedsReauthError") return;
+        console.warn("[trash] 自动清倒过期项目失败：", err);
+    }
+}
+
+// 只在真实页面里启动维护：Node 侧求值（静态检查）不派发定时器。
+const CAN_MAINTAIN = typeof window !== "undefined" && typeof window.requestAnimationFrame === "function";
+if (CAN_MAINTAIN) {
+    // 刚打开开关时立刻生效一次，之后每天最多一次。
+    settings.on("trash.autoEmpty", (value) => { if (value) runDailyMaintenance(); });
+    // 定义表由 bootstrap 稍后登记，这里短轮询等它就位再跑当天的一次。
+    let tries = 0;
+    const kick = () => {
+        if (settings.has("trash.autoEmpty")) runDailyMaintenance();
+        else if (tries++ < 10) setTimeout(kick, 500);
+    };
+    kick();
+}
+
 /** 桌面 / 拖入的文件是否已有 OSFS 记录（/桌面 同名文件）。 */
 export function desktopPathFor(name) {
     return OSFS.joinPath(OSFS.TOP.desktop.path, String(name || ""));
@@ -180,6 +260,7 @@ globalThis.__trash = {
     putBack,
     dropFileToTrash,
     emptyTrash,
+    pruneOldTrash,
     isTrashNotEmpty,
     TRASH_ORIGIN_SUFFIX,
 };

@@ -1,11 +1,15 @@
-﻿/**
- * finder-contextmenu.js — 访达条目与空白区域右键菜单。新建文件夹 / 刷新走入口注入的回调（与工具栏菜单同一实现）；
- * 删除直接作用在真实目录上（插件私有的伪目录层已随存储重构移除）。依赖注入的 createContextMenu(x, y, items)。
+/**
+ * finder-contextmenu.js — 访达条目与空白区域右键菜单（保真清单 F-37）。
+ * 条目集合与动作内核共用 core/fileMenu.js（与桌面同一 provider 模型，同一命令语义），
+ * 访达只注入 hooks：打开 / 预览 / 重命名 / 新建文件夹 / 排序 / 简介 / 刷新。
+ * /废纸篓 的「放回原处」「清倒」与书签/应用条目的只读分支在本模块收口。
  */
 
 import { i18n } from '../../src/javascripts/i18n.js';
 import { FinderState } from './finder-state.js';
 import { FinderTags } from './finder-tags.js';
+import { buildFileMenuItems } from '../../src/javascripts/core/fileMenu.js';
+import { MenuProviders } from '../../src/javascripts/core/menuProviders.js';
 
 /* Q6 收口：只走 Deskly 公开 API（废纸篓/路径工具/存在性判定） */
 const Deskly = () => window.Deskly;
@@ -19,40 +23,74 @@ const unwrap = (env) => {
     return env.value;
 };
 const normalizePath = (p) => Deskly().fs.paths.normalize(p);
-const moveToTrash = async (p) => unwrap(await Deskly().fs.trash.moveToTrash(p));
 const putBack = async (p) => unwrap(await Deskly().fs.trash.putBack(p));
 const emptyTrash = async () => unwrap(await Deskly().fs.trash.empty());
-const TRASH_ORIGIN_SUFFIX = Deskly().fs.trash.originSuffix;
+// 常量在模块顶层立即求值：Deskly 未就绪（裸页单测 / node 冒烟）时退回内核同值，
+// 浏览器内核启动后由 os-api.js 提供真实值（trash.js:26 / osfs.js:33 一致）。
+const TRASH_ORIGIN_SUFFIX = Deskly()?.fs?.trash?.originSuffix ?? '.deskly-origin';
 const existsAt = async (p) => unwrap(await Deskly().fs.existsAt(p));
 
-const TRASH_ROOT = Deskly().fs.paths.trash; // /废纸篓
-
-/**
- * 内置顶层夹的路径集合（/文档、/下载、/图片、/桌面、/AppData、/废纸篓）。
- * 这些是内核现算、背后没有可删实体的节点；用户建在根上的普通文件夹不在此列，可以删。
- */
-const BUILTIN_TOP_PATHS = new Set([
-    Deskly().fs.paths.documents, Deskly().fs.paths.downloads, Deskly().fs.paths.pictures,
-    Deskly().fs.paths.desktop, Deskly().fs.paths.appdata, Deskly().fs.paths.trash,
-]);
-const isBuiltInTopPath = (path) => BUILTIN_TOP_PATHS.has(normalizePath(path));
+const TRASH_ROOT = Deskly()?.fs?.paths?.trash ?? '/废纸篓'; // /废纸篓
 
 const FinderContextMenu = (() => {
-    let _createContextMenu = null, onOpenEntry = null, onRefresh = null, onCreateFolder = null;
+    let onOpenEntry = null, onRefresh = null, onCreateFolder = null;
+    let hooks = {}; // { open, quickLook, rename, getInfo, sortBy, getSort }
+
+    /** @type {Function[]} 资源释放回调 */
+    let disposers = [];
+    function track(fn) { disposers.push(fn); }
+    function dispose() {
+        const list = disposers;
+        disposers = [];
+        list.forEach(fn => fn());
+    }
 
     /**
      * 初始化右键菜单。
      * @param {object} options
-     * @param {Function} options.createContextMenu 创建菜单函数
-     * @param {Function} [options.openEntry] 打开条目回调
+     * @param {Function} [options.openEntry] 打开单条目回调(entry)
      * @param {Function} [options.refresh] 刷新回调
      * @param {Function} [options.createFolder] 新建文件夹回调
+     * @param {object} [options.hooks] fileMenu 动作钩子（open/quickLook/rename/getInfo/sortBy/getSort）
      */
     function init(options = {}) {
-        _createContextMenu = options.createContextMenu || null;
+        dispose();
         onOpenEntry = options.openEntry || null;
         onRefresh = options.refresh || null;
         onCreateFolder = options.createFolder || null;
+        hooks = options.hooks || {};
+        track(FinderState.on('locale-changed', () => { /* 菜单每次右键重建，无需常驻刷新 */ }));
+    }
+
+    /** 当前目录是不是 /废纸篓。 @returns {boolean} */
+    function inTrash() {
+        const cur = FinderState.getState().currentPath;
+        return normalizePath(cur || '/') === TRASH_ROOT;
+    }
+
+    /** 选中集（含传入条目所在的多选）；menuItems 的 sel 形状见 menuProviders.js 文件头。 */
+    function selectionFor(entry) {
+        const sel = FinderState.getState().selectedPaths;
+        const rendered = FinderState.getState().entries || [];
+        let items;
+        if (entry && sel.size > 1 && sel.has(entry.path)) {
+            items = rendered.filter((e) => sel.has(e.path)).map(({ path, name, type }) => ({ path, name, type }));
+        } else {
+            const hit = rendered.find((e) => e.path === entry?.path);
+            items = [{ path: entry?.path, name: (hit && hit.name) || Deskly().fs.paths.baseName(entry?.path || ''), type: (hit && hit.type) || entry?.type || 'file' }];
+        }
+        return { location: 'finder', items, isBackground: false };
+    }
+
+    /** 书签 / 应用条目走只读分支：只留打开类动作，不出现移动/删除（F-40）。 */
+    function buildVirtualItems(sel) {
+        const item = sel.items[0];
+        const items = [{ label: i18n.t('common.open', '打开'), action: () => onOpenEntry?.(item) }];
+        if (item.type === 'app') {
+            items.push({ type: 'separator' });
+            items.push({ label: i18n.t('finder.showInfo', '显示简介'), action: () => hooks.getInfo?.(sel.items) });
+        }
+        return items;
     }
 
     /**
@@ -61,27 +99,19 @@ const FinderContextMenu = (() => {
      * @param {number} y
      */
     function showEmpty(x, y) {
-        if (!_createContextMenu) return;
-        const items = [
-            { label: i18n.t('finder.newFolder', '新建文件夹'), action: () => onCreateFolder?.() },
-        ];
-        // P0-4：在废纸篓里，空白处右键给出「清倒废纸篓」（真清倒，带确认）
+        const sel = { location: 'finder', items: [], isBackground: true };
+        const items = buildFileMenuItems(sel, {
+            newFolder: () => onCreateFolder?.(),
+            sortBy: (field) => hooks.sortBy?.(field),
+            getSort: () => hooks.getSort?.(),
+        });
         if (inTrash()) {
+            items.push({ type: 'separator' });
             items.push({ label: i18n.t('finder.emptyTrash', '清倒废纸篓...'), action: () => confirmEmptyTrash() });
         }
-        items.push(
-            { type: 'separator' },
-            { label: i18n.t('finder.showInfo', '显示简介'), disabled: true },
-            { type: 'separator' },
-            { label: i18n.t('common.refresh', '刷新'), action: () => onRefresh?.() },
-        );
-        _createContextMenu(x, y, items);
-    }
-
-    /** 当前目录是不是 /废纸篓。 @returns {boolean} */
-    function inTrash() {
-        const cur = FinderState.getState().currentPath;
-        return normalizePath(cur || '/') === TRASH_ROOT;
+        items.push({ type: 'separator' });
+        items.push({ label: i18n.t('common.refresh', '刷新'), action: () => onRefresh?.() });
+        Deskly().ui.contextMenu(x, y, items);
     }
 
     /** 清倒确认：__dialog.confirm 未就绪（裸页单测）时直接执行，不把用户卡在没反应。 */
@@ -95,8 +125,8 @@ const FinderContextMenu = (() => {
             if (!ok) return;
         }
         try {
-            const r = await emptyTrash();
-            if (r && r.ok) onRefresh?.();
+            await emptyTrash();
+            onRefresh?.();
         } catch (err) {
             if (err && err.name === 'NeedsReauthError') {
                 window.__dialog?.error?.(i18n.t('finder.title', '访达'),
@@ -108,56 +138,47 @@ const FinderContextMenu = (() => {
     }
 
     /**
-     * 显示条目右键菜单。
+     * 显示条目右键菜单（多选时文案随数量变化，走 fileMenu 的批量语义）。
      * @param {number} x
      * @param {number} y
      * @param {object} entry
      */
     async function showEntry(x, y, entry) {
-        if (!_createContextMenu) return;
-        const items = [
-            { label: i18n.t('common.open', '打开'), action: () => onOpenEntry?.(entry) },
-            { type: 'separator' },
-            { label: i18n.t('finder.showInfo', '显示简介'), action: () => Deskly().ui.showGetInfo([entry]) },
-        ];
-        if (isInTrash(entry)) {
-            // P0-4：废纸篓里的条目给「放回原处」（有溯源伴生才可用，拖入的原生文件没有）；
-            // 不提供「删除」——在废纸篓里只能清倒，与 macOS 一致。
+        // 先把点击项纳入选中（不破坏既有多选：已在选中集里则保持整组）
+        const selState = FinderState.getState();
+        if (!selState.selectedPaths.has(entry.path)) FinderState.selectSingle(entry.path);
+
+        const sel = selectionFor(entry);
+        if (entry.type === 'bookmark' || entry.type === 'app') {
+            Deskly().ui.contextMenu(x, y, buildVirtualItems(sel));
+            return;
+        }
+        const items = buildFileMenuItems(sel, {
+            open: (its) => { its.forEach((it) => onOpenEntry?.(it)); },
+            quickLook: (its) => hooks.quickLook?.(its),
+            rename: (item) => hooks.rename?.(item),
+            getInfo: (its) => hooks.getInfo?.(its),
+            refresh: () => onRefresh?.(),
+        });
+        if (inTrash()) {
+            // P0-4：废纸篓里的条目给「放回原处」（有溯源伴生才可用）；只能清倒，不能再次入篓
+            const trashItem = items.find((it) => it.id === 'trash');
+            if (trashItem) items.splice(items.indexOf(trashItem), 1);
             let hasOrigin = false;
             try { hasOrigin = await existsAt(entry.path + TRASH_ORIGIN_SUFFIX); } catch { hasOrigin = false; }
-            items.push({ type: 'separator' });
             items.push({
                 label: i18n.t('finder.putBack', '放回原处'),
                 disabled: !hasOrigin,
                 action: hasOrigin ? () => putBackAndRefresh(entry) : null,
             });
-        } else if (isDeletableFolder(entry) || entry.type === 'file') {
-            // P0-4：删除 = 移入废纸篓（可放回、访达可见），不再 OSFS.remove 硬删除。
-            // 文件此前整列右键都没有删除入口（手册 19 页「Delete 移入废纸篓」缺失），一并补上。
-            items.push({ type: 'separator' });
-            items.push({ label: i18n.t('common.delete', '删除'), action: () => moveToTrashAndRefresh(entry) });
         }
-        items.push({ type: 'separator' });
-        items.push({ label: i18n.t('common.refresh', '刷新'), action: () => onRefresh?.() });
-        _createContextMenu(x, y, items);
-    }
-
-    /** 条目是否位于 /废纸篓 内（含直接子项）。 @param {object} entry @returns {boolean} */
-    function isInTrash(entry) {
-        const p = normalizePath(entry.path || '');
-        return p === TRASH_ROOT || p.startsWith(TRASH_ROOT + '/');
-    }
-
-    /** 删除 = 移入废纸篓（P0-4）。移动失败时弹错误而不是静默。 @param {object} entry */
-    async function moveToTrashAndRefresh(entry) {
-        const r = await moveToTrash(entry.path).catch(() => ({ ok: false }));
-        if (!r.ok) {
-            window.__dialog?.error?.(i18n.t('finder.title', '访达'),
-                i18n.t('finder.trashMoveFailed', '移入废纸篓失败，请重试或重新授权。'));
-            return;
+        // 把 fileMenu 的「移到废纸篓」挪到菜单尾部（原版顺序：…拷贝路径/共享 → 分隔 → 删除）
+        const trashItem = items.find((it) => it.id === 'trash');
+        if (trashItem) {
+            items.splice(items.indexOf(trashItem), 1);
+            items.push({ type: 'separator' }, trashItem);
         }
-        FinderTags.clearTagsForPath(entry.path);
-        onRefresh?.();
+        Deskly().ui.contextMenu(x, y, items);
     }
 
     /** 放回原处（P0-4）。 @param {object} entry */
@@ -172,20 +193,7 @@ const FinderContextMenu = (() => {
         }
     }
 
-    /**
-     * 是否给删除入口。
-     * @param {object} entry
-     * @returns {boolean}
-     */
-    function isDeletableFolder(entry) {
-        if (entry.type !== 'folder') return false;
-        // 收藏夹/最近使用是虚拟节点，背后没有可删实体
-        if (entry.bookmark || entry.bookmarkRoot || entry.recent) return false;
-        // 只保护内置顶层夹；用户建在根上的普通文件夹照删不误
-        return !isBuiltInTopPath(entry.path);
-    }
-
-    return { init, showEmpty, showEntry };
+    return { init, dispose, showEmpty, showEntry };
 })();
 
 export { FinderContextMenu };

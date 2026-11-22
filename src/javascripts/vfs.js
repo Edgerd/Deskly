@@ -13,6 +13,7 @@
 
 import { OSFS } from "./osfs.js";
 import { FS } from "./fs/index.js";
+import { listApps } from "./app-registry.js";
 
 /** 旧版「桌面」虚拟文件的行（`{path, name, content}`）由 osfs 的 rowContent 双读兼容，
  *  路径也仍在同一棵树上（/桌面 至今是根目录下的顶层夹），所以这里不需要迁移步骤。 */
@@ -21,6 +22,8 @@ import { FS } from "./fs/index.js";
 
 const BOOKMARKS_PATH = "/收藏夹";
 const RECENT_PATH = "/最近使用";
+/** /应用程序 虚拟目录（保真清单 F-41）：已注册插件列表的文件树视图，双击即 openApp。 */
+export const APPS_PATH = "/应用程序";
 const BOOKMARKS_KEY = "webstartos_vfs_bookmarks";
 
 /** 根目录下的可见顶层夹（路径来自 osfs.TOP，这里只补图标与显示属性）。 */
@@ -205,19 +208,36 @@ async function list(path) {
     const norm = OSFS.normalizePath(path);
     if (norm === "/") return listRoot();
     if (norm === RECENT_PATH) return getRecentFiles(50);
+    if (norm === APPS_PATH) return listInstalledApps();
     if (norm === BOOKMARKS_PATH || norm.startsWith(`${BOOKMARKS_PATH}/`)) return getBookmarkChildren(norm);
     // 隐藏名统一在门面过滤：.DS_Store（桌面坐标 sidecar）与原子写暂存件
     // 对访达/桌面/搜索永远不可见（Q1 决策），判定口径唯一来自 FS.isHiddenName。
     return (await OSFS.list(norm)).filter((e) => !FS.isHiddenName(e.name));
 }
 
+/** /应用程序 内容：全部已注册插件（含系统应用），type:'app' 供访达双击直启。 */
+function listInstalledApps() {
+    return listApps().map((rec) => ({
+        name: rec.name || rec.appId,
+        type: "app",
+        path: `${APPS_PATH}/${rec.appId}`,
+        appId: rec.appId,
+        icon: rec.icon || null,
+        modified: null,
+        size: null,
+        appEntry: true,
+    }));
+}
+
 async function readFile(path) {
     const norm = OSFS.normalizePath(path);
-    if (norm === BOOKMARKS_PATH || norm.startsWith(`${BOOKMARKS_PATH}/`) || norm === RECENT_PATH) return null;
+    if (norm === BOOKMARKS_PATH || norm.startsWith(`${BOOKMARKS_PATH}/`) || norm === RECENT_PATH || norm === APPS_PATH || norm.startsWith(`${APPS_PATH}/`)) return null;
     return OSFS.read(norm);
 }
 
 async function isFile(path) {
+    const norm = OSFS.normalizePath(path);
+    if (norm === BOOKMARKS_PATH || norm === RECENT_PATH || norm === APPS_PATH) return false;
     const entry = await OSFS.stat(path);
     return Boolean(entry) && entry.type === "file";
 }
@@ -326,6 +346,7 @@ const VFS = {
     TOP_FOLDERS,
     BOOKMARKS_PATH,
     RECENT_PATH,
+    APPS_PATH,
     AUTH,
     /**
      * 现在把文件存在哪。

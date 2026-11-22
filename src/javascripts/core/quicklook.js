@@ -25,7 +25,9 @@
 import { FS } from "../fs/index.js";
 import { registerPlugin } from "../app-registry.js";
 import { i18n } from "../i18n.js";
-import { FOLDER_ICON, GENERIC_DOC_ICON, glyph } from "../paths.js";
+import { ensureJSZip } from "../vendor.js";
+import { FOLDER_ICON, glyph } from "../paths.js";
+import { fileIconFor } from "../file-type-icons.js";
 
 /* 系统应用登记：只做可见性声明，没有窗口入口（openApp 到它会安全落空）。 */
 // 没有 mods/quicklook/ 目录，必须显式声明图标；否则 getIcon 会兜底拼
@@ -160,7 +162,7 @@ function renderFallback(container, stat) {
     const wrap = document.createElement("div");
     wrap.className = "ql-fallback";
     const icon = document.createElement("img");
-    icon.src = stat.type === "folder" ? FOLDER_ICON : GENERIC_DOC_ICON;
+    icon.src = stat.type === "folder" ? FOLDER_ICON : fileIconFor(stat.name);
     const name = document.createElement("p");
     name.className = "ql-folder-name";
     name.textContent = stat.name;
@@ -300,7 +302,8 @@ async function fillIndexSheet() {
         if (i === index) cell.classList.add("active");
         const thumb = document.createElement("img");
         const ext = extOf(path);
-        thumb.src = IMG_EXTS.has(ext) ? GENERIC_DOC_ICON : (ext === "" ? FOLDER_ICON : GENERIC_DOC_ICON);
+        // 无扩展名视为文件夹；其余按扩展名生成类型图标，图片缩略图就绪后再替换
+        thumb.src = ext === "" ? FOLDER_ICON : fileIconFor(path);
         thumb.alt = "";
         if (IMG_EXTS.has(ext)) {
             // 图片给真缩略；读不到就停在通用图标
@@ -434,5 +437,39 @@ registerProvider({ id: "builtin.pdf", match: (s) => (s.type !== "folder" && s.ex
 registerProvider({ id: "builtin.audio", match: (s) => (s.type !== "folder" && ["mp3", "wav", "ogg", "m4a", "flac", "aac"].includes(s.ext) ? 10 : 0), render: renderMedia("audio") });
 registerProvider({ id: "builtin.video", match: (s) => (s.type !== "folder" && ["mp4", "webm", "mov", "mkv"].includes(s.ext) ? 10 : 0), render: renderMedia("video") });
 registerProvider({ id: "builtin.folder", match: (s) => (s.type === "folder" ? 5 : 0), render: renderFolder });
+
+/* 压缩包预览（保真清单 F-45）：JSZip 只读条目列表，不落盘不解压 */
+registerProvider({
+    id: "builtin.zip",
+    match: (s) => (s.type !== "folder" && ["zip"].includes(s.ext) ? 10 : 0),
+    render: async (container, stat, ctx) => {
+        const file = await ctx.readFile();
+        const JSZip = await ensureJSZip();
+        const zip = await JSZip.loadAsync(file);
+        const count = Object.keys(zip.files).length;
+        const list = document.createElement("div");
+        list.className = "ql-zip";
+        const head = document.createElement("p");
+        head.className = "ql-folder-meta";
+        head.textContent = t("quicklook.zipMeta", `共 ${count} 个条目（只读预览）`).replace("{n}", String(count));
+        list.appendChild(head);
+        const ul = document.createElement("ul");
+        ul.className = "ql-zip-list";
+        for (const entry of Object.values(zip.files)) {
+            const li = document.createElement("li");
+            li.className = "ql-zip-item";
+            li.textContent = entry.dir ? `${entry.name}/` : entry.name;
+            if (!entry.dir && typeof entry._data?.uncompressedSize === "number") {
+                const size = document.createElement("span");
+                size.className = "ql-zip-size";
+                size.textContent = formatSize(entry._data.uncompressedSize);
+                li.appendChild(size);
+            }
+            ul.appendChild(li);
+        }
+        list.appendChild(ul);
+        container.appendChild(list);
+    },
+});
 
 export { QuickLook };

@@ -13,6 +13,7 @@ const DEFAULT_VIEW = {
     tagFilter: null,           // 当前标签过滤色（如 '红色'），null 表示不过滤
     sortBy: 'name',            // name | date | size | kind
     sortAsc: true,             // 排序方向
+    galleryNames: true,        // 画廊视图显示文件名（⌘J 查看选项，原版点名）
 };
 
 const FinderState = (() => {
@@ -21,7 +22,9 @@ const FinderState = (() => {
         currentPath: '/',
         entries: [],               // 当前目录条目缓存
         selectedPaths: new Set(),  // 选中项路径集合
+        anchorPath: null,          // Shift 连选锚点
         searchQuery: '',           // 搜索关键词
+        searchResults: null,       // 递归搜索结果集（F-36）：null = 未启用，数组 = 优先渲染
         error: null,               // 最近一次目录读取失败的可见提示（null 表示无错误）
         tabs: [],                  // 标签页列表 [{ id, path, history, historyIndex, 视图选项 }]
         activeTabId: null,         // 当前激活标签页 ID
@@ -111,6 +114,7 @@ const FinderState = (() => {
             tagFilter: base.tagFilter,
             sortBy: base.sortBy,
             sortAsc: base.sortAsc,
+            galleryNames: base.galleryNames,
         };
         state.tabs.push(tab);
         emit('tab-changed', state.tabs);
@@ -149,6 +153,52 @@ const FinderState = (() => {
         state.activeTabId = next ? next.id : null;
         emit('tab-changed', state.tabs);
         return next || null;
+    }
+
+    /**
+     * 恢复持久化的标签页（F-43）：用路径数组整表重建（每页历史从落点重新开始）。
+     * @param {string[]} paths
+     * @param {number} [activeIdx] 恢复后激活的序号
+     * @returns {string|null} 激活标签的路径（调用方导航过去）
+     */
+    function restoreTabs(paths, activeIdx = 0) {
+        state.tabs = [];
+        state.tabSeq = 0;
+        (paths && paths.length ? paths : ['/']).forEach((p) => {
+            const base = viewOf();
+            state.tabs.push({
+                id: ++state.tabSeq,
+                path: p,
+                history: [p],
+                historyIndex: 0,
+                viewMode: base.viewMode,
+                groupBy: base.groupBy,
+                tagFilter: base.tagFilter,
+                sortBy: base.sortBy,
+                sortAsc: base.sortAsc,
+                galleryNames: base.galleryNames,
+            });
+        });
+        const idx = Math.min(Math.max(activeIdx, 0), state.tabs.length - 1);
+        state.activeTabId = state.tabs[idx].id;
+        emit('tab-changed', state.tabs);
+        return state.tabs[idx].path;
+    }
+
+    /**
+     * 拖动重排标签页（F-43）：把 fromId 挪到 toIndex 位置（其余相对顺序不变）。
+     * @param {number} fromId
+     * @param {number} toIndex
+     */
+    function reorderTabs(fromId, toIndex) {
+        const from = state.tabs.findIndex(t => t.id === fromId);
+        if (from === -1) return false;
+        const clamped = Math.min(Math.max(toIndex, 0), state.tabs.length - 1);
+        if (clamped === from) return false;
+        const [tab] = state.tabs.splice(from, 1);
+        state.tabs.splice(clamped, 0, tab);
+        emit('tab-changed', state.tabs);
+        return true;
     }
 
     // ---------- 路径与历史 ----------
@@ -329,6 +379,7 @@ const FinderState = (() => {
         state.entries = entries || [];
         state.error = error || null;
         state.selectedPaths.clear();
+        state.anchorPath = null;
         emit('entries-changed', state.entries);
     }
 
@@ -339,6 +390,7 @@ const FinderState = (() => {
     function selectSingle(path) {
         state.selectedPaths.clear();
         state.selectedPaths.add(path);
+        state.anchorPath = path;
         emit('selection-changed', state.selectedPaths);
     }
 
@@ -346,8 +398,50 @@ const FinderState = (() => {
     function clearSelection() {
         if (!state.selectedPaths.size) return;
         state.selectedPaths.clear();
+        state.anchorPath = null;
         emit('selection-changed', state.selectedPaths);
     }
+
+    /** Command/Ctrl 点选：切换单项，锚点落到该项。 */
+    function toggleSelect(path) {
+        if (state.selectedPaths.has(path)) state.selectedPaths.delete(path);
+        else state.selectedPaths.add(path);
+        state.anchorPath = path;
+        emit('selection-changed', state.selectedPaths);
+    }
+
+    /** Shift 连选：anchor → path 的可见顺序区间（ordered 为当前渲染序列）。 */
+    function selectRange(path, ordered) {
+        const from = state.anchorPath || path;
+        const a = ordered.findIndex((e) => e.path === from);
+        const b = ordered.findIndex((e) => e.path === path);
+        if (a < 0 || b < 0) { selectSingle(path); return; }
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        state.selectedPaths.clear();
+        ordered.slice(lo, hi + 1).forEach((e) => state.selectedPaths.add(e.path));
+        emit('selection-changed', state.selectedPaths);
+    }
+
+    /** 整组替换选中集（框选 / 全选 / 键盘扩选共用）。 */
+    function setSelection(paths, anchor) {
+        state.selectedPaths.clear();
+        (paths || []).forEach((p) => state.selectedPaths.add(p));
+        if (anchor !== undefined) state.anchorPath = anchor;
+        emit('selection-changed', state.selectedPaths);
+    }
+
+    /** 全选给定路径集合。 */
+    function selectAll(paths) {
+        setSelection(paths, paths && paths.length ? paths[0] : null);
+    }
+
+    /** 画廊「显示文件名」开关（按标签页记忆）。 */
+    function setGalleryNames(on) {
+        const tab = activeTab();
+        if (tab) tab.galleryNames = Boolean(on);
+        emit('view-changed', getViewMode());
+    }
+    function getGalleryNames() { return viewOf().galleryNames !== false; }
 
     /**
      * 设置搜索关键词。
@@ -359,6 +453,15 @@ const FinderState = (() => {
     }
 
     /**
+     * 写入递归搜索结果集（F-36）：views 在 searchQuery 非空时优先渲染这份列表。
+     * @param {Array|null} results null = 清空（回落到当前目录过滤）
+     */
+    function setSearchResults(results) {
+        state.searchResults = Array.isArray(results) ? results : null;
+        emit('search-results-changed', state.searchResults);
+    }
+
+    /**
      * 复位上一次开窗会话的易变状态（入口脚本每次 init 时调用）。
      * 标签页列表在同一页面会话内保留（保留用户的多标签浏览状态），
      * 路径归位到「上次激活标签」，使重开窗口不再把标签路径覆盖成根目录。
@@ -367,6 +470,7 @@ const FinderState = (() => {
         state.entries = [];
         state.selectedPaths.clear();
         state.searchQuery = '';
+        state.searchResults = null;
         state.error = null;
         if (!state.tabs.length) addTab('/');
         if (!activeTab()) state.activeTabId = state.tabs[state.tabs.length - 1].id;
@@ -376,12 +480,15 @@ const FinderState = (() => {
 
     return {
         getState, pathLabel,
-        addTab, setActiveTab, closeTab,
+        addTab, setActiveTab, closeTab, restoreTabs, reorderTabs,
         setCurrentPath, navigate, goBack, goForward, goUp,
         canGoBack, canGoForward, parentPath,
         setViewMode, getViewMode, setGroupBy, getGroupBy,
         setTagFilter, getTagFilter, setSort, getSort,
         setEntries, selectSingle, clearSelection, setSearch, reset,
+        toggleSelect, selectRange, setSelection, selectAll,
+        setGalleryNames, getGalleryNames,
+        setSearchResults,
         on, off, emit,
     };
 })();

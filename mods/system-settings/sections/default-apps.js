@@ -170,24 +170,35 @@ function typeRow(entry, options) {
 /** 重建整页内容（改绑后要刷新来源标签与计数）。 */
 let paneRoot = null;
 let countRow = null;
+/** 本实例只看哪一截："files" 文件类型 / "protocols" 协议与网页 / "all" 两截都要。 */
+let kindMode = "all";
 
+/**
+ * 重建内容。
+ * 「文件类型」与「协议与网页」拆成两个子页后，每页只画自己那一截；
+ * 「恢复默认」是全局动作，只在文件类型页出现一次，避免两页各摆一颗同样的按钮。
+ * @returns {void}
+ */
 function render() {
     if (!paneRoot) return;
     const options = appOptions();
     const entries = listTypes();
     const exts = entries.filter((e) => !e.key.endsWith(":"));
     const protos = entries.filter((e) => e.key.endsWith(":"));
+    const showExts = kindMode !== "protocols";
+    const showProtos = kindMode !== "files";
 
     paneRoot.textContent = "";
-    paneRoot.append(
-        exts.length
+    paneRoot.append(...[
+        showExts && exts.length
             ? group(exts.map((e) => typeRow(e, options)), { title: t("ss.defaultApps.files", "文件类型") })
             : null,
-        protos.length
+        showProtos && protos.length
             ? group(protos.map((e) => typeRow(e, options)), { title: t("ss.defaultApps.protocols", "协议与网页") })
             : null,
-        !entries.length ? note("ss.defaultApps.empty", "暂无可打开的文件类型。") : null,
-        group([
+        !entries.length || (kindMode === "files" && !exts.length) || (kindMode === "protocols" && !protos.length)
+            ? note("ss.defaultApps.empty", "暂无可打开的文件类型。") : null,
+        kindMode === "protocols" ? null : group([
             countRow = statusRow({
                 label: t("ss.defaultApps.countRow", "已自定义"),
                 value: String(exts.concat(protos).filter((e) => e.source === "user").length),
@@ -206,15 +217,18 @@ function render() {
                 },
             }),
         ], { title: t("ss.defaultApps.restoreGroup", "恢复默认") }),
-    );
+    ].filter(Boolean));
 }
 
 /**
  * 构建面板。
+ * @param {object} [_ctx] 外壳上下文（未使用）
+ * @param {"all"|"files"|"protocols"} [kind] 只看哪一截
  * @returns {HTMLElement} 面板根元素
  */
-export function build() {
+export function build(_ctx, kind = "all") {
     usePaneStyle(paneId, CSS);
+    kindMode = kind;
     const root = el("div", { class: "ss-pane ss-defaultapps ss-da-open" });
     paneRoot = root;
     render();

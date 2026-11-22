@@ -165,6 +165,28 @@ export function row(spec) {
 }
 
 /**
+ * 跳转行（iOS 式）：整行可点，左侧图标、中间标题、右侧 >。
+ * 用于打开当前面板的子页；子页返回靠工具栏后退（历史栈）。
+ * @param {object} spec {label, hint, icon, onOpen}
+ * @returns {HTMLElement} 行按钮
+ */
+export function paneLink(spec = {}) {
+    const main = el("div", { class: "ss-row__main" });
+    if (spec.label) main.append(el("p", { class: "ss-row__label", text: spec.label }));
+    if (spec.hint) main.append(el("p", { class: "ss-row__hint", text: spec.hint }));
+    const node = el("button", {
+        class: "ss-linkrow",
+        attrs: { type: "button" },
+        aria: spec.label ? { label: spec.label } : null,
+    },
+        spec.icon ? el("img", { class: "ss-linkrow__icon", attrs: { src: spec.icon, alt: "" } }) : null,
+        main,
+        el("span", { class: "ss-linkrow__chevron", attrs: { "aria-hidden": "true" } }));
+    node.addEventListener("click", () => { if (typeof spec.onOpen === "function") spec.onOpen(); });
+    return node;
+}
+
+/**
  * 圆角卡片分组：若干行共用一个背景，与 macOS 偏好设置一致。
  * @param {Array<HTMLElement>} rows 行元素
  * @param {object} [opts] {title, tone} tone: "plain" 时不加内边距（用于列表）

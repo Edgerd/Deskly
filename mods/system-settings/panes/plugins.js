@@ -24,9 +24,11 @@ import { settings } from "../../../src/javascripts/settings.js";
 import { log } from "../../../src/javascripts/log.js";
 import { load, unload, openApp } from "../../../src/javascripts/plugin-manager.js";
 import { listEntries, getEntry, setEnabled, PLACEHOLDER_ICON } from "../../../src/javascripts/store-api.js";
+import { store as notifyStore } from "../../../src/javascripts/notifications/store.js";
 import {
-    t, el, note, group, section, row, autoRow, statusRow, usePaneStyle, track,
+    t, el, note, group, section, row, autoRow, statusRow, paneLink, usePaneStyle, track,
 } from "../ui.js";
+import { childPanes } from "../registry.js";
 
 /** 面板 id 是身份不是文案，不能改（见文件头注释）。 */
 export const paneId = "plugins";
@@ -35,7 +37,7 @@ export const paneId = "plugins";
 const STATUS_MS = 4000;
 
 /** 四语言文案。术语统一为 App：界面不再把应用叫作扩展/插件。 */
-export const messages = {
+const ownMessages = {
     "zh-CN": {
         ss: {
             plugins: {
@@ -87,6 +89,9 @@ export const messages = {
                 sizeLabel: "占用",
                 updatedLabel: "更新时间",
                 filesCount: "{n} 个文件",
+                notifGroup: "通知",
+                notifAllow: "允许通知",
+                notifInCenter: "在通知中心显示",
             },
         },
     },
@@ -141,6 +146,9 @@ export const messages = {
                 sizeLabel: "Size",
                 updatedLabel: "Updated",
                 filesCount: "{n} files",
+                notifGroup: "Notifications",
+                notifAllow: "Allow notifications",
+                notifInCenter: "Show in Notification Center",
             },
         },
     },
@@ -195,6 +203,9 @@ export const messages = {
                 sizeLabel: "容量",
                 updatedLabel: "更新日",
                 filesCount: "{n} 個のファイル",
+                notifGroup: "通知",
+                notifAllow: "通知を許可",
+                notifInCenter: "通知センターに表示",
             },
         },
     },
@@ -249,10 +260,16 @@ export const messages = {
                 sizeLabel: "占多大",
                 updatedLabel: "上次打扮",
                 filesCount: "{n} 个文件喵",
+                notifGroup: "通知喵",
+                notifAllow: "允许通知喵",
+                notifInCenter: "收进通知中心喵",
             },
         },
     },
 };
+
+/** 面板词条：App 本体（默认应用已拆到二级页，各自注册语言包）。 */
+export const messages = ownMessages;
 
 /**
  * 面板私有样式：只引用 style.css 里已有的 --ss-* 令牌与全局强调色，
@@ -335,6 +352,9 @@ const CSS = `
     background: var(--ss-danger-bg); color: var(--ss-danger);
 }
 .ss-plugins .ss-apps__link { color: var(--accent); font-size: 12.5px; overflow-wrap: anywhere; }
+.ss-plugins .ss-apps__notify { display: flex; align-items: center; gap: 16px; }
+.ss-plugins .ss-apps__notify-pair { display: inline-flex; align-items: center; gap: 6px; }
+.ss-plugins .ss-apps__notify-cap { font-size: 11px; color: var(--ss-text-tertiary); white-space: nowrap; }
 /* 空态落在无内边距的分组里（.ss-group--plain），自己补上行的左右留白，不然贴到卡片边 */
 .ss-plugins .ss-group--plain .ss-note { padding: 10px 12px; }
 
@@ -380,7 +400,9 @@ export function build(context) {
     if (!keep) { trail = [""]; step = 0; }
 
     root = el("div", { class: "ss-pane ss-plugins" });
-    topWrap = el("div", { class: "ss-plugins__top" }, ...buildOfficeBrandSection(), ...buildSettingSections());
+    // 默认应用（文件类型 / 协议与网页）拆成子页，这里用 iOS 式跳转行做入口。
+    topWrap = el("div", { class: "ss-plugins__top" },
+        ...buildPaneLinks(ctx), ...buildOfficeBrandSection(), ...buildSettingSections());
     viewHost = el("div", { class: "ss-plugins__view" });
     root.append(topWrap, viewHost);
 
@@ -501,7 +523,21 @@ function focusRow(id) {
     if (hit) hit.focus();
 }
 
-/* ───────────────────────── 上半部：App 注册的设置项 + 统计 ───────────────────────── */
+/* ───────────────────────── 上半部：子页入口 + App 注册的设置项 + 统计 ───────────────────────── */
+
+/**
+ * 子页入口：iOS 式跳转行（图标 + 标题 + >），点整行进入「文件类型 / 协议与网页」。
+ * @param {object} ctx 外壳上下文
+ * @returns {Array<HTMLElement>} 分组节点数组
+ */
+function buildPaneLinks(ctx) {
+    const links = childPanes(paneId).map((child) => paneLink({
+        label: t(child.i18nKey, child.label),
+        icon: child.icon,
+        onOpen: () => { if (ctx && typeof ctx.selectPane === "function") ctx.selectPane(child.id); },
+    }));
+    return links.length ? [group(links)] : [];
+}
 
 /**
  * App 自己 define() 的设置项（按 owner 分组）+ 统计行。
@@ -652,6 +688,9 @@ function buildDetail(id) {
     if (entry.store && entry.store.usage) box.append(section("ss.plugins.secUsage", "使用方法", bodyOf(el("p", { class: "ss-apps__para", text: entry.store.usage }))));
     if (entry.apps.length) box.append(section("ss.plugins.secApps", "包含的应用", bodyOf(appChips(entry))));
     box.append(section("ss.plugins.secPerms", "权限", permBlock(entry.permissions)));
+    // 逐应用的通知开关从「通知」面板搬到这里：开关属于这个 App，就该长在它的详情页里。
+    const notify = notificationBlock(entry);
+    if (notify) box.append(notify);
     box.append(section("ss.plugins.secInfo", "信息", group(infoRows(entry))));
     if (entry.store && entry.store.homepage) box.append(section("ss.plugins.secHome", "主页", bodyOf(homeLink(entry.store.homepage))));
     return box;
@@ -779,6 +818,66 @@ function permBlock(permissions) {
         return row({ label: String(perm.label || perm.name), hint: String(perm.hint || ""), control: chip });
     });
     return group(rows, { tone: "plain" });
+}
+
+/**
+ * 详情页的通知开关：值仍落 notify.apps（notifications/store.js），只是入口换了地方。
+ * 单应用条目用两条带标题的行；一个插件包含多个应用时按应用逐行摆一对开关。
+ * @param {object} entry 条目
+ * @returns {HTMLElement|null} 分组元素；条目没有可开关的应用时返回 null
+ */
+function notificationBlock(entry) {
+    // 单应用插件的 listEntries().apps 是空数组（registry 只把「套件子应用」放进 apps），
+    // 这时用插件 id 当 appId —— 通知中枢对单应用插件登记的就是这个 id。
+    const apps = (entry.apps && entry.apps.length)
+        ? entry.apps.filter((app) => app && app.appId)
+        : (entry.id ? [{ appId: entry.id, name: entry.name }] : []);
+    if (!apps.length) return null;
+    const title = t("ss.plugins.notifGroup", "通知");
+    const allowText = t("ss.plugins.notifAllow", "允许通知");
+    const centerText = t("ss.plugins.notifInCenter", "在通知中心显示");
+
+    if (apps.length === 1) {
+        const appId = apps[0].appId;
+        const cfg = notifyStore.appConfig(appId);
+        return group([
+            row({ label: allowText, control: notifySwitch("", cfg.enabled, (v) => notifyStore.setAppConfig(appId, { enabled: v })) }),
+            row({ label: centerText, control: notifySwitch("", cfg.inCenter, (v) => notifyStore.setAppConfig(appId, { inCenter: v })) }),
+        ], { title });
+    }
+
+    return group(apps.map((app) => {
+        const cfg = notifyStore.appConfig(app.appId);
+        return row({
+            label: String(app.name || app.appId),
+            control: el("div", { class: "ss-apps__notify" },
+                notifySwitch(allowText, cfg.enabled, (v) => notifyStore.setAppConfig(app.appId, { enabled: v })),
+                notifySwitch(centerText, cfg.inCenter, (v) => notifyStore.setAppConfig(app.appId, { inCenter: v }))),
+        });
+    }), { title });
+}
+
+/**
+ * 通知开关：结构与「通知」面板里的同款一致（.ss-switch + 可选小标题）。
+ * @param {string} label 小标题（空串表示不显示）
+ * @param {boolean} isOn 当前值
+ * @param {(value:boolean)=>void} onToggle 切换回调
+ * @returns {HTMLElement} 开关元素
+ */
+function notifySwitch(label, isOn, onToggle) {
+    const sw = el("button", {
+        class: "ss-switch",
+        aria: { role: "switch", label: label || "notification", checked: isOn ? "true" : "false" },
+        attrs: { type: "button" },
+    }, el("span", { class: "ss-switch__knob" }));
+    sw.dataset.on = isOn ? "true" : "false";
+    sw.addEventListener("click", () => {
+        sw.dataset.on = sw.dataset.on === "true" ? "false" : "true";
+        sw.setAttribute("aria-checked", sw.dataset.on);
+        onToggle(sw.dataset.on === "true");
+    });
+    if (!label) return sw;
+    return el("span", { class: "ss-apps__notify-pair" }, sw, el("span", { class: "ss-apps__notify-cap", text: label }));
 }
 
 /**

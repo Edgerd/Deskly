@@ -88,7 +88,7 @@ html[data-theme="dark"] .settings {
 
 /* ===== 外壳 ===== */
 .settings.window {
-    /* 尺寸由 manifest.window（715×570）经 window.js 内联写死，这里只给缩放下界；
+    /* 尺寸由根节点 data-window（715×570）经 window.js 内联写死，这里只给缩放下界；
        不再自己算 top/left —— 居中是 window.js centerWindow() 的职责，
        旧版硬写 calc(50% - 285px) 与它抢同一个属性。 */
     min-width: 620px;
@@ -418,6 +418,17 @@ html[data-theme="dark"] .settings .ss-item--on .ss-item__icon {
     white-space: nowrap;
 }
 
+/* 子项（通用 › 储存 / 时间与地区 / 关于本机）：左侧留出层级缩进，图标略小。 */
+.settings .ss-item--child {
+    padding-left: 26px;
+}
+
+.settings .ss-item--child .ss-item__icon {
+    width: 16px;
+    height: 16px;
+    opacity: 0.6;
+}
+
 /* 边栏图标大小：appearance.sidebar.size 写在 <html data-sidebar-size> 上，
    这条规则必须继续对本插件侧栏生效（旧版靠 .selection .icon 选择器，改名后就断了）。 */
 html[data-sidebar-size="small"] .settings .ss-item__icon {
@@ -534,8 +545,68 @@ html[data-sidebar-size="large"] .settings .ss-item {
     white-space: nowrap;
 }
 
+/* 跳转行（iOS 式）：整行是一个按钮，左侧图标、中间标题、右侧 >。
+   用于「通用 › 储存 / 时间与地区 / 关于本机」与「App › 文件类型 / 协议与网页」，
+   点击进入子页；子页用工具栏的后退键回到父页。 */
+.settings .ss-linkrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border: 0;
+    background: transparent;
+    color: var(--ss-text);
+    font: inherit;
+    font-size: 13px;
+    text-align: start;
+    cursor: pointer;
+}
+
+/* 同一张卡片里的跳转行之间沿用 .ss-row 的分隔线口径。 */
+.settings .ss-linkrow + .ss-linkrow { border-top: 1px solid var(--ss-row-divider); }
+.settings .ss-linkrow:hover { background: var(--ss-hover); }
+.settings .ss-linkrow:active { background: var(--ss-pressed); }
+.settings .ss-linkrow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.settings .ss-linkrow__icon {
+    flex: 0 0 auto;
+    width: 19px;
+    height: 19px;
+    opacity: 0.85;
+    /* registry 的 glyph() 是白色单色 SVG：浅色模式压黑，深色模式再反白。 */
+    -webkit-filter: brightness(0) saturate(100%);
+    filter: brightness(0) saturate(100%);
+}
+
+html[data-theme="dark"] .settings .ss-linkrow__icon {
+    -webkit-filter: brightness(0) invert(1);
+    filter: brightness(0) invert(1);
+    opacity: 0.78;
+}
+
+/* 彩色方块图标（pane-icons 的 data-tile）不参与压黑 / 反白。 */
+.settings .ss-linkrow__icon[data-tile],
+html[data-theme="dark"] .settings .ss-linkrow__icon[data-tile] {
+    -webkit-filter: none;
+    filter: none;
+    opacity: 1;
+}
+
+.settings .ss-linkrow .ss-row__main { flex: 1 1 auto; min-width: 0; }
+
+.settings .ss-linkrow__chevron {
+    flex: 0 0 auto;
+    width: 9px;
+    height: 14px;
+    background: var(--ss-text-tertiary);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'%3E%3Cpath d='M1.4 1.2 7 7l-5.6 5.8' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'%3E%3Cpath d='M1.4 1.2 7 7l-5.6 5.8' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 .settings .ss-panes {
     flex: 1 1 auto;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -618,6 +689,12 @@ html[data-sidebar-size="large"] .settings .ss-item {
     font-size: 11.5px;
     line-height: 1.5;
     color: var(--ss-text-secondary);
+}
+
+/* 直接落在分组卡片里的说明 / 空态（如「没有超过 10 MB 的文件」）：
+   补上与 .ss-row 一致的四周内边距，不贴着卡片边缘。 */
+.settings .ss-group > .ss-note {
+    padding: 10px 12px;
 }
 
 /* 分组卡片 */

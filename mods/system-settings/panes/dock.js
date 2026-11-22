@@ -14,8 +14,9 @@ import * as trashIcon from "../../../src/javascripts/trashIcon.js";
 import { log } from "../../../src/javascripts/log.js";
 import {
     el, t, group, actionRow, bind, row,
-    controlSwitch, controlSlider, controlSegmented, usePaneStyle,
+    controlSwitch, controlSlider, controlSegmented, usePaneStyle, paneLink,
 } from "../ui.js";
+import { childPanes } from "../registry.js";
 
 export const paneId = "dock";
 
@@ -341,14 +342,20 @@ function buildTrashPicker() {
 }
 
 /**
- * 构建「桌面与程序坞」面板。
- * @param {object} ctx 外壳上下文
- * @returns {HTMLElement} 面板根元素
+ * 造一个程序坞系列页面的根节点（共用同一套私有样式作用域）。
+ * @param {string} id 当前子页 id
+ * @returns {HTMLElement} 根节点
  */
-export function build(ctx) {
+function pageRoot(id) {
     usePaneStyle(paneId, PANE_CSS);
-    const root = el("div", { class: "ss-pane ss-pane-dock", dataset: { pane: paneId } });
+    return el("div", { class: "ss-pane ss-pane-dock", dataset: { pane: id } });
+}
 
+/**
+ * 程序坞：图标大小、位置、自动隐藏、放大、最小化效果与指示灯。
+ * @returns {HTMLElement} 分组元素
+ */
+function dockGroup() {
     const positionLabels = {
         left: t("ss.dock.left", "左侧"),
         bottom: t("ss.dock.bottom", "底部"),
@@ -366,6 +373,51 @@ export function build(ctx) {
     const minimizeOptions = (minimizeDefinition.values || ["genie", "scale"])
         .map((value) => ({ value, label: minimizeLabels[value] || value }));
 
+    return group([
+        controlSlider("dock.size", {
+            label: t("ss.dock.size", "图标大小"),
+            units: "px",
+        }),
+        controlSegmented("dock.position", {
+            label: t("ss.dock.position", "位置"),
+            options: positionOptions,
+        }),
+        controlSwitch("dock.autohide", {
+            label: t("ss.dock.autohide", "自动显示和隐藏程序坞"),
+        }),
+        controlSwitch("dock.zoom", {
+            label: t("ss.dock.zoom", "程序坞放大"),
+        }),
+        controlSlider("dock.zoom.amount", {
+            label: t("ss.dock.amount", "放大倍数"),
+            units: "倍",
+        }),
+        controlSegmented("dock.minimize.effect", {
+            label: t("ss.dock.minimize", "最小化窗口使用"),
+            options: minimizeOptions,
+        }),
+        // F-16：最小化窗口的落点（dock.js 消费 dock-minimize-style-change）
+        controlSegmented("dock.minimizeStyle", {
+            label: t("ss.dock.minStyle", "最小化窗口时"),
+            options: [
+                { value: "app", label: t("ss.dock.minStyleApp", "放入应用图标") },
+                { value: "tile", label: t("ss.dock.minStyleTile", "放在程序坞右侧") },
+            ],
+        }),
+        controlSwitch("dock.show.indicators", {
+            label: t("ss.dock.indicators", "显示应用指示灯"),
+        }),
+        controlSwitch("dock.show.recent", {
+            label: t("ss.dock.recent", "显示最近使用的应用"),
+        }),
+    ], { title: t("ss.dock.dock", "程序坞") });
+}
+
+/**
+ * 桌面：台前调度桌面项、废纸篓图标、原生右键菜单与恢复默认顺序。
+ * @returns {HTMLElement} 分组元素
+ */
+function desktopGroup() {
     const resetRow = actionRow({
         label: t("ss.dock.resetTitle", "程序坞排列"),
         buttonText: t("ss.dock.resetButton", "恢复默认顺序"),
@@ -385,76 +437,63 @@ export function build(ctx) {
         },
     });
 
-    root.append(
-        group([
-            controlSlider("dock.size", {
-                label: t("ss.dock.size", "图标大小"),
-                units: "px",
-            }),
-            controlSegmented("dock.position", {
-                label: t("ss.dock.position", "位置"),
-                options: positionOptions,
-            }),
-            controlSwitch("dock.autohide", {
-                label: t("ss.dock.autohide", "自动显示和隐藏程序坞"),
-            }),
-            controlSwitch("dock.zoom", {
-                label: t("ss.dock.zoom", "程序坞放大"),
-            }),
-            controlSlider("dock.zoom.amount", {
-                label: t("ss.dock.amount", "放大倍数"),
-                units: "倍",
-            }),
-            controlSegmented("dock.minimize.effect", {
-                label: t("ss.dock.minimize", "最小化窗口使用"),
-                options: minimizeOptions,
-            }),
-            controlSwitch("dock.show.indicators", {
-                label: t("ss.dock.indicators", "显示应用指示灯"),
-            }),
-            controlSwitch("dock.show.recent", {
-                label: t("ss.dock.recent", "显示最近使用的应用"),
-            }),
-        ], { title: t("ss.dock.dock", "程序坞") }),
+    return group([
+        controlSwitch("desktop.stage.showDesktopItems", {
+            label: t("ss.dock.stageDesktop", "在桌面上显示项目"),
+        }),
+        controlSegmented("desktop.stage.clickWallpaper", {
+            label: t("ss.dock.stageWallpaper", "点按墙纸显示桌面"),
+            options: [
+                { value: "always", label: t("ss.dock.wpAlways", "始终") },
+                { value: "stageOnly", label: t("ss.dock.wpStageOnly", "仅台前调度中") },
+            ],
+        }),
+        row({
+            label: t("ss.dock.trash", "废纸篓图标"),
+            control: buildTrashPicker(),
+            stack: true,
+        }),
+        controlSwitch("general.nativeContextMenu", {
+            label: t("ss.dock.context", "显示原生右键菜单"),
+        }),
+        resetRow,
+    ], { title: t("ss.dock.desktop", "桌面") });
+}
 
-        group([
-            controlSwitch("desktop.stage.showDesktopItems", {
-                label: t("ss.dock.stageDesktop", "在桌面上显示项目"),
-            }),
-            controlSegmented("desktop.stage.clickWallpaper", {
-                label: t("ss.dock.stageWallpaper", "点按墙纸显示桌面"),
-                options: [
-                    { value: "always", label: t("ss.dock.wpAlways", "始终") },
-                    { value: "stageOnly", label: t("ss.dock.wpStageOnly", "仅台前调度中") },
-                ],
-            }),
-            row({
-                label: t("ss.dock.trash", "废纸篓图标"),
-                control: buildTrashPicker(),
-                stack: true,
-            }),
-            controlSwitch("general.nativeContextMenu", {
-                label: t("ss.dock.context", "显示原生右键菜单"),
-            }),
-            resetRow,
-        ], { title: t("ss.dock.desktop", "桌面") }),
+/**
+ * 台前调度：开关、窗口排列方式与最近使用。
+ * @returns {HTMLElement} 分组元素
+ */
+function stageGroup() {
+    return group([
+        controlSwitch("controlcenter.stage", {
+            label: t("ss.dock.stage", "台前调度"),
+        }),
+        controlSegmented("desktop.stage.windowMode", {
+            label: t("ss.dock.stageMode", "显示应用程序窗口"),
+            options: [
+                { value: "all", label: t("ss.dock.stageModeAll", "一次全部") },
+                { value: "one", label: t("ss.dock.stageModeOne", "一次一个") },
+            ],
+        }),
+        controlSwitch("desktop.stage.showRecent", {
+            label: t("ss.dock.stageRecent", "显示最近使用的应用"),
+        }),
+    ], { title: t("ss.dock.stage", "台前调度") });
+}
 
-        // FS-07：台前调度（键定义在 wm/stage-manager.js，这里只渲染；主入口在本面板）
+/**
+ * 窗口与启动台：平铺开关 + 启动台尺寸。
+ * @returns {Array<HTMLElement>} 两个分组
+ */
+function windowsGroups() {
+    return [
+        // F-13：窗口平铺（键定义在 wm/interactions.js，这里只渲染）
         group([
-            controlSwitch("controlcenter.stage", {
-                label: t("ss.dock.stage", "台前调度"),
+            controlSwitch("desktop.tileOnDrag", {
+                label: t("ss.dock.tileOnDrag", "拖到屏幕边缘时平铺窗口"),
             }),
-            controlSegmented("desktop.stage.windowMode", {
-                label: t("ss.dock.stageMode", "显示应用程序窗口"),
-                options: [
-                    { value: "all", label: t("ss.dock.stageModeAll", "一次全部") },
-                    { value: "one", label: t("ss.dock.stageModeOne", "一次一个") },
-                ],
-            }),
-            controlSwitch("desktop.stage.showRecent", {
-                label: t("ss.dock.stageRecent", "显示最近使用的应用"),
-            }),
-        ], { title: t("ss.dock.stage", "台前调度") }),
+        ], { title: t("ss.dock.window", "窗口") }),
 
         group([
             // 两项都走 event 通道（启动台是插件，没有常驻 owner）：这里只经 settings.set
@@ -468,7 +507,61 @@ export function build(ctx) {
                 units: "px",
             }),
         ], { title: t("ss.dock.launchpad", "启动台") }),
-    );
+    ];
+}
 
+/**
+ * 构建「桌面与程序坞」父页：只摆二级入口。
+ * @param {object} ctx 外壳上下文
+ * @returns {HTMLElement} 面板根元素
+ */
+export function build(ctx) {
+    const root = pageRoot(paneId);
+    const links = childPanes(paneId).map((child) => paneLink({
+        label: t(child.i18nKey, child.label),
+        icon: child.icon,
+        onOpen: () => { if (ctx && typeof ctx.selectPane === "function") ctx.selectPane(child.id); },
+    }));
+    if (links.length) root.append(group(links));
+    return root;
+}
+
+/**
+ * 「程序坞」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildDock() {
+    const root = pageRoot("dock-main");
+    root.append(dockGroup());
+    return root;
+}
+
+/**
+ * 「桌面」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildDesktop() {
+    const root = pageRoot("dock-desktop");
+    root.append(desktopGroup());
+    return root;
+}
+
+/**
+ * 「台前调度」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildStage() {
+    const root = pageRoot("dock-stage");
+    root.append(stageGroup());
+    return root;
+}
+
+/**
+ * 「窗口与启动台」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildWindows() {
+    const root = pageRoot("dock-windows");
+    root.append(...windowsGroups());
     return root;
 }

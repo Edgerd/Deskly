@@ -1,4 +1,4 @@
-/**
+﻿/**
  * settings-definitions.js — 既有 owner 模块的设置定义表（schema 单一来源）
  *
  * 本文件把「键名 / 存储槽 / 类型 / 默认值 / 合法取值 / 生效函数 / 界面控件元数据」
@@ -9,7 +9,7 @@
  *    默认开启，这里的 default 就得是 true；写反会让从没碰过该设置的用户在升级后翻转。
  * 2. **`event` 与 `apply` 二选一**：owner 自己会广播事件的（appearance/cursor/wallpaper 等）
  *    只填 `apply`，由 owner 发事件，避免同一事件派发两次；owner 只有监听没有 setter 的
- *    （dock.js 的 7 个布局项、siri）填 `event`，由设置中枢按旧格式补发，owner 零改动。
+ *    （dock.js 的 7 个布局项）填 `event`，由设置中枢按旧格式补发，owner 零改动。
  * 3. **新模块自带定义**：锁屏、声音、显示器、聚焦搜索等新内核模块在自己文件里
  *    `settings.define()`，不塞进本表 —— owner 才是取值范围的权威。
  *
@@ -27,12 +27,34 @@ import { setNativeContextMenuEnabled } from "./contextMenuSettings.js";
 import { wallpaper } from "./wallpaper.js";
 import { i18n } from "./i18n.js";
 import { setValue as setControlCenterValue, CONTROL_CENTER_FIELDS } from "./controlcenter.js";
+import { initUsageTracker } from "./usage-tracker.js";
 
 /** 强调色候选（与 appearance.js 的 COLOR_MAP 同序，色值由界面侧的 swatches 呈现）。 */
 const ACCENT_KEYS = ["multicolor", "blue", "purple", "pink", "red", "orange", "yellow", "green", "gray"];
 
-/** 控制中心各字段归属哪个面板：专注模式相关两项有独立面板，其余留在控制中心。 */
-const FOCUS_FIELDS = ["focus", "focusMode"];
+/** 控制中心各字段统一留在控制中心面板。 */
+
+/**
+ * 界面整体缩放落到 <html> 的 style.zoom（Chromium 支持布局级缩放）。
+ * 100% 时清掉内联值；Node 环境（settings-fulltest）没有 document，直接跳过。
+ * @param {number} value 90..150 的百分比
+ * @returns {void}
+ */
+function applyZoom(value) {
+    if (typeof document === "undefined") return;
+    const pct = Number(value);
+    document.documentElement.style.zoom = (Number.isFinite(pct) && pct !== 100) ? String(pct / 100) : "";
+}
+
+/**
+ * 增强对比度落到 <html data-contrast>，规则（抬亮 --text-* 令牌）在 main.css。
+ * @param {boolean} on 是否开启
+ * @returns {void}
+ */
+function applyContrast(on) {
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.contrast = on ? "high" : "off";
+}
 
 /**
  * 注册全部既有 owner 的设置定义。
@@ -93,7 +115,7 @@ function initSettingsSchema() {
         // ── 通用 general.* ───────────────────────────────────────────────
         {
             key: "general.language", slot: "webstartos_language", type: "string", default: "zh-CN",
-            values: ["zh-CN", "en", "ja-JP", "cat"], control: "dropdown", pane: "general", group: "通用", order: 10,
+            values: ["zh-CN", "en", "ja-JP", "cat"], control: "dropdown", pane: "datetime", group: "通用", order: 10,
             label: "语言",
             apply: (value) => { if (i18n.getLanguage() !== value) i18n.setLanguage(value); },
         },
@@ -105,20 +127,20 @@ function initSettingsSchema() {
         },
         {
             key: "general.timeFormat", type: "string", default: "24h", values: ["24h", "12h"],
-            valuesLabel: ["24 小时", "12 小时"], control: "segmented", pane: "general", group: "通用", order: 20,
+            valuesLabel: ["24 小时", "12 小时"], control: "segmented", pane: "datetime", group: "通用", order: 20,
             label: "时间格式",
             apply: () => window.dispatchEvent(new CustomEvent("datetime-format-change")),
         },
         {
             key: "general.showSeconds", type: "boolean", default: false,
-            control: "switch", pane: "general", group: "通用", order: 30,
+            control: "switch", pane: "datetime", group: "通用", order: 30,
             label: "显示秒",
             apply: () => window.dispatchEvent(new CustomEvent("datetime-format-change")),
         },
         {
             key: "general.weekStart", type: "number", default: 1, min: 0, max: 1, step: 1,
             values: [0, 1], valuesLabel: ["周日", "周一"], control: "segmented",
-            pane: "general", group: "通用", order: 40,
+            pane: "datetime", group: "通用", order: 40,
             label: "周起始日",
             apply: () => window.dispatchEvent(new CustomEvent("datetime-format-change")),
         },
@@ -150,6 +172,14 @@ function initSettingsSchema() {
             values: ["genie", "scale"], valuesLabel: ["神奇效果", "缩放淡出"],
             control: "segmented", pane: "dock", group: "程序坞", order: 45,
             label: "最小化窗口使用", event: "dock-minimize-effect-change",
+        },
+        {
+            // F-16：最小化窗口的落点。app = 吸入应用图标（出厂默认，落点是带运行指示灯的
+            // 那枚图标）；tile = 程序坞分隔条右侧的独立磁贴区。消费方 dock.js。
+            key: "dock.minimizeStyle", slot: "dock-minimize-style", type: "string", default: "app",
+            values: ["app", "tile"], valuesLabel: ["放入应用图标", "放在程序坞右侧"],
+            control: "segmented", pane: "dock", group: "程序坞", order: 46,
+            label: "最小化窗口时", event: "dock-minimize-style-change",
         },
         {
             key: "dock.zoom.amount", slot: "dock-zoom-amount", type: "number", default: 1.8, min: 1.1, max: 3, step: 0.1,
@@ -184,6 +214,13 @@ function initSettingsSchema() {
             values: TRASH_KEYS, control: "cards", pane: "dock", group: "桌面", order: 100,
             label: "废纸篓图标", apply: (value) => setTrashIcon(value),
         },
+        {
+            // 与存储面板的推荐项共用同一个槽位：面板上的开关和这里的定义是同一条设置，
+            // 真正的清理由 trash.js 的 pruneOldTrash 执行（见 trash.js 的设置监听）。
+            key: "trash.autoEmpty", slot: "trash-autoEmpty", type: "boolean", default: false,
+            control: "switch", pane: "dock", group: "桌面", order: 105,
+            label: "自动清倒废纸篓", hint: "抹掉超过 30 天的项目",
+        },
 
         // ── 启动台 launchpad.* ──────────────────────────────────────────
         // 启动台是插件（关闭即卸载），没有常驻 owner 可读值生效，因此这里只登记
@@ -203,14 +240,62 @@ function initSettingsSchema() {
         {
             key: "wallpaper.config", slot: "wallpaper-config", type: "json",
             default: { type: "default", url: "", name: "Sequoia 经典" },
-            control: "json", pane: "wallpaper", group: "墙纸", order: 10, hidden: true,
+            control: "json", pane: "appearance", group: "墙纸", order: 10, hidden: true,
             label: "当前墙纸",
         },
         {
             key: "wallpaper.autoBing", type: "boolean", default: false,
-            control: "switch", pane: "wallpaper", group: "墙纸", order: 20,
+            control: "switch", pane: "appearance", group: "墙纸", order: 20,
             label: "Bing 每日墙纸",
             apply: (value) => wallpaper.setAutoBing(value),
+        },
+        {
+            // macOS 式动态墙纸：wallpaper.js 的引擎按时段在系统三张壁纸间自动切换。
+            key: "wallpaper.dynamic", type: "boolean", default: false,
+            control: "switch", pane: "appearance", group: "墙纸", order: 30,
+            label: "动态墙纸",
+            apply: (value) => wallpaper.setDynamicEnabled(value),
+        },
+        {
+            // 动态时段表（小时 -> 系统壁纸 id）：黎明 5-8 经典 / 白天 8-17 白昼 / 17 点起夜色。
+            // 黄昏与深夜共用夜色一张图，所以视觉上是三档；表留成数据，将来可换多套素材。
+            key: "wallpaper.dynamicSet", type: "json",
+            default: {
+                slots: [
+                    { from: 5, systemId: "sequoia-default" },
+                    { from: 8, systemId: "sequoia-day" },
+                    { from: 17, systemId: "sequoia-night" },
+                ],
+            },
+            control: "json", pane: "appearance", group: "墙纸", order: 40, hidden: true,
+            label: "动态时段表",
+        },
+        {
+            // 图集墙纸：地址数组按 albumInterval 分钟轮换，交叉淡入由 wallpaper.js 完成。
+            key: "wallpaper.album", type: "json", default: [],
+            control: "json", pane: "appearance", group: "墙纸", order: 50, hidden: true,
+            label: "图集地址列表",
+        },
+        {
+            key: "wallpaper.albumInterval", type: "number", default: 30, min: 5, max: 120, step: 5,
+            control: "slider", units: "分钟", pane: "appearance", group: "墙纸", order: 60,
+            label: "图集换图间隔",
+        },
+
+        // ── 辅助功能 accessibility.*（无独立 owner，生效函数就地写 <html>） ─
+        {
+            // 界面整体缩放：写 <html> 的 style.zoom，Chromium 原生支持，布局随缩放重排。
+            key: "accessibility.zoom", type: "number", default: 100, min: 90, max: 150, step: 5,
+            control: "slider", units: "%", pane: "accessibility", group: "视觉", order: 10,
+            label: "缩放",
+            apply: (value) => applyZoom(value),
+        },
+        {
+            // 增强对比度：抬高 --text-* 令牌不透明度、窗口描边加深，规则见 main.css 的 data-contrast 块。
+            key: "accessibility.contrast", type: "boolean", default: false,
+            control: "switch", pane: "accessibility", group: "视觉", order: 20,
+            label: "增强对比度",
+            apply: (value) => applyContrast(value),
         },
 
         // ── 光标 cursor.* ────────────────────────────────────────────────
@@ -257,11 +342,37 @@ function initSettingsSchema() {
             label: "回弹强度",
         },
 
-        // ── Siri siri.* ─────────────────────────────────────────────────
+        // ── 统一 AI ai.* ───────────────────────────────────────────────
         {
-            key: "siri.orb.size", slot: "siri-orb-size", type: "number", default: 120, min: 64, max: 240, step: 2,
-            control: "slider", units: "px", pane: "siri", group: "Siri", order: 10,
-            label: "光球大小", event: "siri-orb-size-change",
+            key: "ai.provider", type: "string", default: "deepseek",
+            values: ["deepseek", "openai", "moonshot", "qwen", "ollama", "custom"],
+            pane: "siri", group: "AI 服务", order: 20, hidden: true, label: "服务商",
+        },
+        {
+            key: "ai.model", type: "string", default: "",
+            pane: "siri", group: "AI 服务", order: 21, hidden: true, label: "模型",
+        },
+        {
+            key: "ai.baseUrl", type: "string", default: "",
+            pane: "siri", group: "AI 服务", order: 22, hidden: true, label: "服务地址",
+        },
+        {
+            key: "ai.keys", type: "json", default: {},
+            pane: "siri", group: "AI 服务", order: 23, hidden: true, label: "密钥",
+        },
+        {
+            key: "ai.temperature", type: "number", default: 1, min: 0, max: 2, step: 0.1,
+            control: "slider", pane: "siri", group: "高级", order: 30, label: "温度",
+        },
+        {
+            key: "ai.thinking", type: "string", default: "medium",
+            values: ["off", "low", "medium", "high"],
+            valuesLabel: ["关闭", "低", "中", "高"],
+            pane: "siri", group: "高级", order: 31, label: "思考强度",
+        },
+        {
+            key: "ai.maxTokens", type: "number", default: 4096, min: 512, max: 8192, step: 256,
+            control: "slider", units: "tokens", pane: "siri", group: "高级", order: 32, label: "最多输出",
         },
 
         // ── 办公套件品牌包 office.* ─────────────────────────────────────
@@ -277,8 +388,8 @@ function initSettingsSchema() {
             slot: "webstartos_controlcenter",
             jsonPath: field.path,
             control: field.type === "boolean" ? "switch" : (field.values ? "dropdown" : "slider"),
-            pane: FOCUS_FIELDS.includes(field.path) ? "focus" : "controlcenter",
-            group: FOCUS_FIELDS.includes(field.path) ? "专注模式" : "控制中心",
+            pane: "controlcenter",
+            group: "控制中心",
             apply: (value) => setControlCenterValue(field.path, value),
         })),
 
@@ -300,6 +411,27 @@ function initSettingsSchema() {
             control: "slider", format: "ms", pane: "notifications", group: "通知", order: 30,
             label: "通知停留时长",
             apply: (value) => window.dispatchEvent(new CustomEvent("notify-config-change", { detail: { key: "duration", value } })),
+        },
+
+        // ── 屏幕使用时间 screenTime.*（账本与停用时间引擎在 usage-tracker.js） ─
+        {
+            key: "screenTime.enabled", type: "boolean", default: true,
+            control: "switch", pane: "screenTime", group: "屏幕使用时间", order: 10,
+            label: "记录使用情况",
+        },
+        {
+            // 停用时间：{enabled,start,end,days}，days 为 0-6（周日=0）。
+            // 到点由 usage-tracker 发一条真实横幅，并弹出可用口令解除的闸门。
+            key: "screenTime.downtime", type: "json",
+            default: { enabled: false, start: "23:00", end: "07:00", days: [1, 2, 3, 4, 5] },
+            control: "json", pane: "screenTime", group: "屏幕使用时间", order: 20, hidden: true,
+            label: "停用时间计划",
+        },
+        {
+            // 停用期间仍可使用的应用（[{id,name}]，由面板勾选写入）。
+            key: "screenTime.allowAlways", type: "json", default: [],
+            control: "json", pane: "screenTime", group: "屏幕使用时间", order: 30, hidden: true,
+            label: "始终允许的应用",
         },
 
         // ── 键盘 keyboard.* ─────────────────────────────────────────────
@@ -353,6 +485,11 @@ function initSettingsSchema() {
     // 否则首屏要等到用户第一次拨动开关才会带上 data-* 属性。
     document.documentElement.dataset.reduceMotion = settings.get("appearance.reduceMotion") ? "on" : "off";
     document.documentElement.dataset.transparency = settings.get("appearance.transparency") ? "on" : "off";
+    // 辅助功能两项同理：缩放与对比度只有 CSS/DOM 消费者，开机先把当前值铺上。
+    applyZoom(settings.get("accessibility.zoom"));
+    applyContrast(settings.get("accessibility.contrast"));
+    // 屏幕使用时间的账本与停用时间引擎随 boot 一起点亮（内部自带幂等与 Node 环境短路）。
+    initUsageTracker();
     return count;
 }
 

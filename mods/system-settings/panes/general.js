@@ -1,48 +1,28 @@
 /**
- * panes/general.js — 「通用」面板：语言、时间、设置存储读数，以及备份 / 恢复 / 恢复默认三条真实动作
+ * panes/general.js — 「通用」面板：子页导航（储存 / 时间与地区 / 关于本机）+ 备份恢复 + 软件更新
  *
- * 与旧版的区别：没有一处 localStorage 字面量。读写全经 ui.js 的 bind()，动作全调设置中枢的
- * snapshot / restore / resetAll / storage，备份出来的就是中枢能认回去的格式
- * （旧版界面与内核各写各的键，写错一个字符就静默失效）。
- * 语言选项每次 build() 重新取自 i18n.getSupportedLanguages()（旧版算在模块求值时，切语言后冻在旧语言里）。
+ * 语言与时间设置已经拆到子面板「时间与地区」，存储明细拆到「储存」，更新日志拆到「关于本机」。
+ * 三个子页在本页顶部以 iOS 式跳转行（图标 + 标题 + >）列出，点整行进入子页；
+ * 返回走工具栏后退键。
  */
 
 import { settings } from "../../../src/javascripts/settings.js";
-import { i18n } from "../../../src/javascripts/i18n.js";
 import { log } from "../../../src/javascripts/log.js";
+import { VERSION } from "../../../src/javascripts/version.js";
+import { getSystemChangelog, latestGroup, versionLabel } from "../../../src/javascripts/changelog.js";
 import {
-    el, t, group, note, statusRow, actionRow,
-    controlSwitch, controlSegmented, controlDropdown, usePaneStyle, track,
+    el, t, group, note, statusRow, actionRow, paneLink, usePaneStyle, track,
 } from "../ui.js";
-import { build as buildStorage, messages as storageMessages } from "../sections/storage.js";
-import { build as buildWhatsNew, messages as whatsNewMessages } from "../sections/whats-new.js";
+import { childPanes } from "../registry.js";
+
 
 export const paneId = "general";
 
-/** 四语言词典按 ss 顶层合并，供同一面板里并入了多个模块的场景使用。 */
-function mergedMessages(...dicts) {
-    const out = {};
-    for (const dict of dicts) {
-        for (const [lang, values] of Object.entries(dict || {})) {
-            out[lang] = out[lang] || { ss: {} };
-            out[lang].ss = { ...out[lang].ss, ...(values.ss || {}) };
-        }
-    }
-    return out;
-}
-
 /** 面板语言包：四种语言都给全；注册失败时每个调用点还有中文回退。 */
-const ownMessages = {
+export const messages = {
     "zh-CN": {
         ss: {
             general: {
-                language: "语言",
-                time: "日期与时间", timeFormat: "时间格式", time24: "24 小时", time12: "12 小时",
-                showSeconds: "显示秒",
-                weekStart: "周起始日", sunday: "周日", monday: "周一",
-                storage: "存储", storageKeys: "已登记设置项", storageBytes: "占用空间",
-                storageEstimate: "存储配额", storageUnavailable: "不可用",
-                storageDegraded: "本机存储不可用，改动刷新后会丢失。",
                 lastWrite: "最近写入",
                 backup: "备份与恢复", backupTitle: "备份设置",
                 backupButton: "导出备份", backupBusy: "正在导出…",
@@ -57,19 +37,20 @@ const ownMessages = {
                 resetAskBody: "此操作不可撤销，请先导出备份。",
                 resetCancelled: "已取消，未改动任何设置",
                 resetOk: "已恢复 {n} 项默认值",
+                updateTitle: "软件更新",
+                updateCurrent: "当前版本",
+                updateLatest: "最新发布",
+                updateState: "更新状态",
+                updateUpToDate: "已是最新",
+                updateNewer: "有新版本 {v}",
+                updateCheckFailed: "未能读取发布信息",
+                updateNote: "Deskly 是网页应用，没有应用内检查更新的通道；新版本随仓库发布，可在「关于本机」里查看更新日志。",
             },
         },
     },
     en: {
         ss: {
             general: {
-                language: "Language",
-                time: "Date & Time", timeFormat: "Time Format", time24: "24-hour", time12: "12-hour",
-                showSeconds: "Show Seconds",
-                weekStart: "First Day of Week", sunday: "Sunday", monday: "Monday",
-                storage: "Storage", storageKeys: "Registered Settings", storageBytes: "Space Used",
-                storageEstimate: "Storage Quota", storageUnavailable: "Unavailable",
-                storageDegraded: "Local storage is unavailable; changes are lost on reload.",
                 lastWrite: "Last Change",
                 backup: "Backup & Restore", backupTitle: "Back Up Settings",
                 backupButton: "Export Backup", backupBusy: "Exporting…",
@@ -84,19 +65,20 @@ const ownMessages = {
                 resetAskBody: "This cannot be undone. Export a backup first.",
                 resetCancelled: "Cancelled; nothing was changed",
                 resetOk: "{n} settings reset to default",
+                updateTitle: "Software Update",
+                updateCurrent: "Current version",
+                updateLatest: "Latest release",
+                updateState: "Update status",
+                updateUpToDate: "Up to date",
+                updateNewer: "New version {v} available",
+                updateCheckFailed: "Release info unavailable",
+                updateNote: "Deskly is a web app with no in-app update channel; releases ship with the repository. See About This Mac for the changelog.",
             },
         },
     },
     "ja-JP": {
         ss: {
             general: {
-                language: "言語",
-                time: "日付と時刻", timeFormat: "時刻の形式", time24: "24時間", time12: "12時間",
-                showSeconds: "秒を表示",
-                weekStart: "週の始まり", sunday: "日曜日", monday: "月曜日",
-                storage: "ストレージ", storageKeys: "登録済みの設定項目", storageBytes: "使用量",
-                storageEstimate: "ストレージ割当", storageUnavailable: "利用できません",
-                storageDegraded: "端末の保存領域が使えず、変更は再読み込みで失われます。",
                 lastWrite: "最終変更",
                 backup: "バックアップと復元", backupTitle: "設定をバックアップ",
                 backupButton: "バックアップを書き出す", backupBusy: "書き出し中…",
@@ -111,19 +93,20 @@ const ownMessages = {
                 resetAskBody: "取り消せません。先にバックアップをおすすめします。",
                 resetCancelled: "中止しました。変更はありません",
                 resetOk: "{n} 項目を初期化しました",
+                updateTitle: "ソフトウェア・アップデート",
+                updateCurrent: "現在のバージョン",
+                updateLatest: "最新リリース",
+                updateState: "更新状態",
+                updateUpToDate: "最新です",
+                updateNewer: "新バージョン {v}",
+                updateCheckFailed: "リリース情報を読めません",
+                updateNote: "Deskly はウェブアプリのため、アプリ内の更新確認はありません。更新履歴は「この Mac について」で確認できます。",
             },
         },
     },
     cat: {
         ss: {
             general: {
-                language: "主人要用的語言喵",
-                time: "日期與時間喵", timeFormat: "時間怎麼讀喵", time24: "24 小時喵", time12: "12 小時喵",
-                showSeconds: "把秒也露出來喵",
-                weekStart: "一週從哪天開始喵", sunday: "星期日喵", monday: "星期一喵",
-                storage: "存储喵", storageKeys: "記在冊的設定項喵", storageBytes: "占地兒多少喵",
-                storageEstimate: "存储配额喵", storageUnavailable: "喵用不上喵",
-                storageDegraded: "本機存储唔聽用，改動一刷新就冇咗喵~",
                 lastWrite: "最後寫咗邊項喵",
                 backup: "备份與恢復喵", backupTitle: "幫主人存一份喵",
                 backupButton: "导出备份喵", backupBusy: "正在打包喵…",
@@ -138,13 +121,18 @@ const ownMessages = {
                 resetAskBody: "清晒就翻唔返㗎，建議先存一份备份喵~",
                 resetCancelled: "沒動任何東西喵~",
                 resetOk: "{n} 項回到初始喵~",
+                updateTitle: "軟體更新喵",
+                updateCurrent: "現在的版本喵",
+                updateLatest: "最新發布喵",
+                updateState: "更新狀態喵",
+                updateUpToDate: "已經是最新喵",
+                updateNewer: "有新版本 {v} 喵",
+                updateCheckFailed: "發布資訊讀不出喵",
+                updateNote: "Deskly 是網頁喵，冇有應用內檢查更新的通道喵；最近改動看「呢部機嘅檔案喵」喵。",
             },
         },
     },
 };
-
-/** 通用面板并入了存储与新功能两块，语言包一起注册。 */
-export const messages = mergedMessages(ownMessages, storageMessages, whatsNewMessages);
 
 /** 面板私有样式：只影响本面板；样式节点由 ui.usePaneStyle 按面板 id 复用。 */
 const PANE_CSS = `
@@ -166,20 +154,23 @@ function tf(key, fallback, values) {
     );
 }
 
-/** 字节数说成人类可读的一段文本。 */
-function formatBytes(bytes) {
-    const n = Number(bytes);
-    if (!Number.isFinite(n) || n < 0) return "—";
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
-
 /** 备份文件名里的时间戳（本地时区；不用 ISO 的冒号，免得 Windows 落盘失败）。 */
 function stamp() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+/** 语义化版本比较：a 大于 b 返回 1，相等 0，小于 -1；非数字段按 0 处理。 */
+function compareVersions(a, b) {
+    const pa = String(a || "").split(/[.\-]/).map((part) => Number(part) || 0);
+    const pb = String(b || "").split(/[.\-]/).map((part) => Number(part) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+        const diff = (pa[i] || 0) - (pb[i] || 0);
+        if (diff) return diff > 0 ? 1 : -1;
+    }
+    return 0;
 }
 
 /**
@@ -251,42 +242,7 @@ export function build(ctx) {
     usePaneStyle(paneId, PANE_CSS);
     const root = el("div", { class: "ss-pane ss-pane-general", dataset: { pane: paneId } });
 
-    // 语言选项每次构建重新取一遍；当前值不在支持列表里（历史遗留值）也要能显示出来
-    const languageOptions = i18n.getSupportedLanguages().map((item) => ({ value: item.code, label: item.label }));
-    const currentLanguage = String(settings.get("general.language") || "zh-CN");
-    if (!languageOptions.some((option) => option.value === currentLanguage)) {
-        languageOptions.unshift({ value: currentLanguage, label: currentLanguage });
-    }
-
-    const keysRow = statusRow({ label: t("ss.general.storageKeys", "已登记设置项"), value: "—" });
-    const bytesRow = statusRow({ label: t("ss.general.storageBytes", "占用空间"), value: "—" });
-    const quotaRow = statusRow({ label: t("ss.general.storageEstimate", "存储配额"), value: "…" });
     const lastRow = statusRow({ label: t("ss.general.lastWrite", "最近写入"), value: "—" });
-    const degradedNote = note("ss.general.storageDegraded", "本机存储不可用，改动刷新后会丢失。");
-    degradedNote.hidden = true;
-
-    /** 刷新存储读数；订阅者会在任何一次写入后被叫到。 */
-    const refreshStorage = (detail) => {
-        const info = settings.storage();
-        keysRow.setValue(String(info.keys));
-        bytesRow.setValue(formatBytes(info.bytes));
-        degradedNote.hidden = !info.degraded;
-        if (detail && detail.key) lastRow.setValue(detail.key);
-    };
-    refreshStorage();
-    track(settings.subscribe(refreshStorage));
-
-    if (navigator.storage && typeof navigator.storage.estimate === "function") {
-        navigator.storage.estimate()
-            .then((estimate) => {
-                const usage = formatBytes(estimate.usage || 0);
-                const quota = formatBytes(estimate.quota || 0);
-                quotaRow.setValue(`${usage} / ${quota}`);
-            })
-            .catch((err) => log.debug("plugin/system-settings", "存储配额查询失败", err));
-    } else {
-        quotaRow.setValue(t("ss.general.storageUnavailable", "不可用"));
-    }
 
     const fileInput = el("input", {
         class: "ss-pane-general__file",
@@ -331,7 +287,6 @@ export function build(ctx) {
             const text = tf("ss.general.restoreDone", `已恢复 ${result.restored} 项`, { n: result.restored })
                 + (result.skipped.length ? tf("ss.general.restoreSkipped", `，跳过 ${result.skipped.length} 项未识别`, { m: result.skipped.length }) : "");
             lastRow.setValue(text);
-            refreshStorage();
             log.info("plugin/system-settings", `从备份恢复设置：${text}`);
         },
     });
@@ -353,50 +308,55 @@ export function build(ctx) {
             }
             const count = settings.resetAll();
             lastRow.setValue(tf("ss.general.resetOk", `已恢复 ${count} 项默认值`, { n: count }));
-            refreshStorage();
             log.info("plugin/system-settings", `已按用户要求恢复全部默认，共 ${count} 项`);
         },
     });
 
-    root.append(
-        group([
-            controlDropdown("general.language", {
-                label: t("ss.general.language", "语言"),
-                options: languageOptions,
-            }),
-        ], { title: t("ss.general.languageGroup", "语言") }),
+    // ── 软件更新：版本单一来源是 version.js；最新发布号来自更新日志。
+    //    网页应用没有应用内检查更新的通道，这里只做「当前版本 ↔ 日志最新发布」的对比，
+    //    不假装能下载安装 —— 状态行只给事实。
+    const currentVerRow = statusRow({ label: t("ss.general.updateCurrent", "当前版本"), value: `v${VERSION}` });
+    const latestVerRow = statusRow({ label: t("ss.general.updateLatest", "最新发布"), value: "…" });
+    const updateStateRow = statusRow({ label: t("ss.general.updateState", "更新状态"), value: "…" });
 
-        group([
-            controlSegmented("general.timeFormat", {
-                label: t("ss.general.timeFormat", "时间格式"),
-                options: [
-                    { value: "24h", label: t("ss.general.time24", "24 小时") },
-                    { value: "12h", label: t("ss.general.time12", "12 小时") },
-                ],
-            }),
-            controlSwitch("general.showSeconds", {
-                label: t("ss.general.showSeconds", "显示秒"),
-            }),
-            controlSegmented("general.weekStart", {
-                label: t("ss.general.weekStart", "周起始日"),
-                options: [
-                    { value: 0, label: t("ss.general.sunday", "周日") },
-                    { value: 1, label: t("ss.general.monday", "周一") },
-                ],
-            }),
-        ], { title: t("ss.general.time", "日期与时间") }),
+    let updateAlive = true;
+    track(() => { updateAlive = false; });
+    getSystemChangelog().then((data) => {
+        if (!updateAlive) return;
+        const latest = latestGroup(data);
+        if (!latest) {
+            latestVerRow.setValue(t("ss.general.updateCheckFailed", "未能读取发布信息"));
+            updateStateRow.setValue(t("ss.general.updateCheckFailed", "未能读取发布信息"));
+            return;
+        }
+        const latestText = latest.unreleased ? versionLabel(latest.version) : `v${latest.version}`;
+        latestVerRow.setValue(latestText);
+        // 未发布组意味着当前工作区就是最新；已发布组再做一次语义化版本比较
+        if (latest.unreleased || compareVersions(VERSION, latest.version) >= 0) {
+            updateStateRow.setValue(t("ss.general.updateUpToDate", "已是最新"));
+        } else {
+            updateStateRow.setValue(tf("ss.general.updateNewer", `有新版本 ${latestText}`, { v: latestText }));
+        }
+    }).catch((err) => {
+        log.debug("plugin/system-settings", "读取更新日志失败", err);
+        latestVerRow.setValue("—");
+        updateStateRow.setValue(t("ss.general.updateCheckFailed", "未能读取发布信息"));
+    });
 
-        // 用量读数只留两条；根目录、配额比例与 App 数据的明细紧跟其后。
-        group([keysRow, bytesRow], { title: t("ss.general.storage", "存储") }),
-        degradedNote,
+    // 子页入口：顺序与注册表 order 一致（储存 → 时间与地区 → 关于本机）。
+    const links = childPanes(paneId).map((child) => paneLink({
+        label: t(child.i18nKey, child.label),
+        icon: child.icon,
+        onOpen: () => { if (ctx && typeof ctx.selectPane === "function") ctx.selectPane(child.id); },
+    }));
 
-        buildStorage(ctx),
-
+    root.append(...[
+        links.length ? group(links) : null,
         group([backupRow, restoreRow, resetRow, lastRow], { title: t("ss.general.backup", "备份与恢复") }),
         fileInput,
-
-        buildWhatsNew(),
-    );
+        group([currentVerRow, latestVerRow, updateStateRow], { title: t("ss.general.updateTitle", "软件更新") }),
+        note("ss.general.updateNote", "Deskly 是网页应用，没有应用内检查更新的通道；新版本随仓库发布，可在「关于本机」里查看更新日志。"),
+    ].filter(Boolean));
 
     return root;
 }

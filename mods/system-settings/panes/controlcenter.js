@@ -8,9 +8,11 @@
 
 import { settings } from "../../../src/javascripts/settings.js";
 import { toggle as toggleControlCenter } from "../../../src/javascripts/controlcenter.js";
+import { resetLayout } from "../../../src/javascripts/menubar-status.js";
 import {
-    t, el, note, group, autoRow, actionRow, statusRow, usePaneStyle, track,
+    t, el, note, group, autoRow, actionRow, statusRow, usePaneStyle, track, paneLink,
 } from "../ui.js";
+import { childPanes } from "../registry.js";
 
 export const paneId = "controlcenter";
 
@@ -33,6 +35,10 @@ export const messages = {
                 unavailableValue: "不可用",
                 onState: "开",
                 offState: "关",
+                menubarHint: "在菜单栏横向拖动状态项可调整顺序；按住 Command（Ctrl）把它拖出菜单栏即可移除，移除后点通知可撤销。",
+                menubarReset: "恢复默认状态项",
+                menubarResetHint: "重新显示全部状态项并复位顺序",
+                menubarResetBtn: "恢复默认",
             },
         },
     },
@@ -54,6 +60,10 @@ export const messages = {
                 unavailableValue: "Unavailable",
                 onState: "on",
                 offState: "off",
+                menubarHint: "Drag status items horizontally in the menu bar to reorder. Hold Command (Ctrl) and drag one out of the menu bar to remove it; click the notification to undo.",
+                menubarReset: "Restore default status items",
+                menubarResetHint: "Show all status items again and reset their order",
+                menubarResetBtn: "Restore Defaults",
             },
         },
     },
@@ -75,6 +85,10 @@ export const messages = {
                 unavailableValue: "利用不可",
                 onState: "入",
                 offState: "切",
+                menubarHint: "メニューバーのステータス項目を左右にドラッグすると並び順を変更できます。Command（Ctrl）を押しながらバーの外へドラッグすると削除でき、通知をクリックすると元に戻せます。",
+                menubarReset: "ステータス項目を初期状態に戻す",
+                menubarResetHint: "すべてのステータス項目を再表示し、並び順をリセットします",
+                menubarResetBtn: "初期設定に戻す",
             },
         },
     },
@@ -96,6 +110,10 @@ export const messages = {
                 unavailableValue: "用不了喵",
                 onState: "开着喵",
                 offState: "关啦喵",
+                menubarHint: "在菜单栏左右拖状态项就能换位置喵；按住 Command（Ctrl）把它拖出菜单栏就是移除喵，点通知可以撤销喵。",
+                menubarReset: "把状态项恢复成默认喵",
+                menubarResetHint: "重新显示全部状态项并把顺序摆回原样喵",
+                menubarResetBtn: "恢复默认喵",
             },
         },
     },
@@ -107,8 +125,7 @@ const MENUBAR_KEY_CANDIDATES = ["controlcenter.menubarIcon", "controlcenter.show
 /** menubar.show* 的标签走全局语言包（定义里的 label 是模块求值期的中文兜底）。 */
 const MENUBAR_LABEL_KEYS = {
     "menubar.showBattery": ["menubar.showBattery", "电池"],
-    "menubar.showVolume": ["menubar.showVolume", "音量"],
-    "menubar.showBluetooth": ["menubar.showBluetooth", "蓝牙"],
+    "controlcenter.stageInMenuBar": ["menubar.showStage", "台前调度"],
 };
 
 const CSS = `
@@ -116,17 +133,28 @@ const CSS = `
 `;
 
 /**
- * 构建控制中心面板。
- * @returns {HTMLElement} 面板根元素
+ * 造一个控制中心系列页面的根节点（共用同一套私有样式作用域）。
+ * @param {string} id 当前子页 id
+ * @returns {HTMLElement} 根节点
  */
-export function build() {
+function pageRoot(id) {
     usePaneStyle(paneId, CSS);
+    return el("div", { class: "ss-pane ss-controlcenter", dataset: { pane: id } });
+}
 
+/**
+ * 收集本面板的定义与取行工具。
+ * @returns {object} 定义列表与 rowFor 等
+ */
+function collectDefs() {
     const allDefs = settings.list({ prefix: "controlcenter." }).filter((def) => def && !def.hidden);
     // 菜单栏状态项（menubar.show*）由 menubar-status.js 自持定义、归到本面板：
     // 它们不是 controlcenter.* 键，单独取出来在「菜单栏状态项」分组里渲染。
+    // controlcenter.stageInMenuBar（FS-07）虽是 controlcenter.* 键，但语义是
+    // 「台前调度状态项是否常驻菜单栏」，归入同一分组。
     const menubarDefs = settings.list({ pane: paneId })
-        .filter((def) => def && !def.hidden && !String(def.key).startsWith("controlcenter."));
+        .filter((def) => def && !def.hidden
+            && (!String(def.key).startsWith("controlcenter.") || def.key === "controlcenter.stageInMenuBar"));
     // 浏览器无法控制的字段（Wi-Fi 开关、蓝牙、隔空投送、飞行模式、屏幕镜像）不再渲染成开关：
     // 它们只会翻转一个没人消费的布尔，属于「看起来能用其实不能用」（F-20）。
     const defs = allDefs.filter((def) => !def.unavailable);
@@ -149,6 +177,55 @@ export function build() {
         return autoRow(pair ? { ...def, label: t(pair[0], pair[1]) } : def);
     };
 
+    return { allDefs, defs, unavailableDefs, rowFor, menubarRowFor };
+}
+
+/**
+ * 「控制中心」子页：菜单栏图标 + 台前调度等开关。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildSwitches() {
+    const root = pageRoot("controlcenter-switches");
+    const { rowFor } = collectDefs();
+    const controlRows = [buildMenubarRow(), rowFor("controlcenter.stage")].filter(Boolean);
+    if (controlRows.length) root.append(group(controlRows, { title: t("ss.controlcenter.switches", "控制中心") }));
+    else root.append(note("ss.controlcenter.empty", "控制中心目前没有可用的设置项。"));
+    return root;
+}
+
+/**
+ * 「菜单栏状态项」子页：逐项开关、拖动说明与复位。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildMenubar() {
+    const root = pageRoot("controlcenter-menubar");
+    const { menubarRowFor } = collectDefs();
+    const menubarRows = ["menubar.showBattery", "controlcenter.stageInMenuBar"]
+        .map(menubarRowFor).filter(Boolean);
+    if (!menubarRows.length) return root;
+    // F-02：逐项开关 + 拖拽说明 + 恢复默认。拖动与 Command 拖出只存在于菜单栏本体，
+    // 面板里放一行说明与一键复位，行为与说明永远来自同一份实现（menubar-status.js）。
+    root.append(group([
+        ...menubarRows,
+        note("ss.controlcenter.menubarHint", "在菜单栏横向拖动状态项可调整顺序；按住 Command（Ctrl）把它拖出菜单栏即可移除，移除后点通知可撤销。"),
+        actionRow({
+            label: t("ss.controlcenter.menubarReset", "恢复默认状态项"),
+            hint: t("ss.controlcenter.menubarResetHint", "重新显示全部状态项并复位顺序"),
+            buttonText: t("ss.controlcenter.menubarResetBtn", "恢复默认"),
+            onAction: () => { resetLayout(); },
+        }),
+    ], { title: t("ss.controlcenter.menubarGroup", "菜单栏状态项") }));
+    return root;
+}
+
+/**
+ * 「实时状态」子页：当前摘要、打开按钮，以及浏览器控制不了的项。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildLive() {
+    const root = pageRoot("controlcenter-live");
+    const { allDefs, defs, unavailableDefs } = collectDefs();
+
     const liveRow = statusRow({
         label: t("ss.controlcenter.live", "当前状态"),
         value: "—",
@@ -160,28 +237,7 @@ export function build() {
         if (detail && detail.key && detail.key.startsWith("controlcenter.")) paintLive();
     }));
 
-    const menubarRow = buildMenubarRow();
-
-    // 只摆放方案里列出的项；浏览器控制不了的字段单独落到「不可用」，不做成开关。
-    const controlRows = [
-        menubarRow,
-        rowFor("controlcenter.focus"),
-        rowFor("controlcenter.stage"),
-    ].filter(Boolean);
-    const menubarRows = [
-        "menubar.showBattery",
-        "menubar.showVolume",
-        "menubar.showBluetooth",
-        "controlcenter.stageInMenuBar",
-    ].map(menubarRowFor).filter(Boolean);
-
-    const sections = [];
-    if (controlRows.length) sections.push(group(controlRows, { title: t("ss.controlcenter.switches", "控制中心") }));
-    if (menubarRows.length) {
-        sections.push(group(menubarRows, { title: t("ss.controlcenter.menubarGroup", "菜单栏状态项") }));
-    }
-
-    sections.push(group([
+    root.append(group([
         liveRow,
         actionRow({
             label: t("ss.controlcenter.open", "打开控制中心"),
@@ -197,15 +253,30 @@ export function build() {
             const bi = order.indexOf(String(b.key).replace(/^controlcenter\./, ""));
             return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
         });
-        sections.push(group([
+        root.append(group([
             note("ss.controlcenter.unavailableNote", "以下项目由系统控制，浏览器扩展无法切换"),
             ...sorted.map((def) => statusRow({ label: def.label, value: t("ss.controlcenter.unavailableValue", "不可用") })),
         ], { title: t("ss.controlcenter.unavailableTitle", "不可用") }));
     }
 
-    if (!allDefs.length) sections.push(note("ss.controlcenter.empty", "控制中心目前没有可用的设置项。"));
+    if (!allDefs.length) root.append(note("ss.controlcenter.empty", "控制中心目前没有可用的设置项。"));
+    return root;
+}
 
-    return el("div", { class: "ss-pane ss-controlcenter" }, ...sections);
+/**
+ * 构建「控制中心」父页：只摆二级入口。
+ * @param {object} ctx 外壳上下文
+ * @returns {HTMLElement} 面板根元素
+ */
+export function build(ctx) {
+    const root = pageRoot(paneId);
+    const links = childPanes(paneId).map((child) => paneLink({
+        label: t(child.i18nKey, child.label),
+        icon: child.icon,
+        onOpen: () => { if (ctx && typeof ctx.selectPane === "function") ctx.selectPane(child.id); },
+    }));
+    if (links.length) root.append(group(links));
+    return root;
 }
 
 /**

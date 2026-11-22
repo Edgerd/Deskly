@@ -17,8 +17,10 @@ import {
     el, t, group, statusRow,
     controlCards, controlSwatches, controlDropdown, controlRadio, controlSwitch,
     controlSegmented, controlSlider, controlColor, track,
-    usePaneStyle,
+    usePaneStyle, paneLink,
 } from "../ui.js";
+import { build as buildWallpaper, messages as wallpaperMessages } from "../sections/wallpaper.js";
+import { childPanes } from "../registry.js";
 
 export const paneId = "appearance";
 
@@ -41,7 +43,19 @@ const COLOR_MAP = {
     gray: "#8D8D8D",
 };
 
-export const messages = {
+/** 四语言词典按 ss 顶层合并：外观面板并入了整块墙纸面板的词条。 */
+function mergedMessages(...dicts) {
+    const out = {};
+    for (const dict of dicts) {
+        for (const [lang, values] of Object.entries(dict || {})) {
+            out[lang] = out[lang] || { ss: {} };
+            out[lang].ss = { ...out[lang].ss, ...(values.ss || {}) };
+        }
+    }
+    return out;
+}
+
+const ownMessages = {
     "zh-CN": {
         ss: {
             pane: { appearance: "外观" },
@@ -192,6 +206,9 @@ export const messages = {
     },
 };
 
+/** 面板词条：外观本体 + 并进来的墙纸面板。 */
+export const messages = mergedMessages(ownMessages, wallpaperMessages);
+
 /**
  * 颜色名的中文回退：与 messages 里的 ss.appearance.colors.* 一一对应，
  * 语言包没注册上时界面仍是正确的中文而不是裸键名。
@@ -335,14 +352,20 @@ function surfaceStrip() {
 }
 
 /**
- * 构建「外观」面板。
- * @param {object} ctx 外壳上下文
- * @returns {HTMLElement} 面板根元素
+ * 造一个外观系列页面的根节点（共用同一套私有样式作用域）。
+ * @param {string} id 当前子页 id
+ * @returns {HTMLElement} 根节点
  */
-export function build(ctx) {
+function pageRoot(id) {
     usePaneStyle(paneId, PANE_CSS);
-    const root = el("div", { class: "ss-pane ss-pane-appearance", dataset: { pane: paneId } });
+    return el("div", { class: "ss-pane ss-pane-appearance", dataset: { pane: id } });
+}
 
+/**
+ * 颜色与主题：明暗外观、当前生效档位、强调色、高亮颜色。
+ * @returns {HTMLElement} 分组元素
+ */
+function colorGroup() {
     const themeLabel = {
         light: t("ss.appearance.light", "浅色"),
         dark: t("ss.appearance.dark", "深色"),
@@ -373,6 +396,45 @@ export function build(ctx) {
         color: key === "accent" ? undefined : accentColor(highlightDefinition, key),
     }));
 
+    // 「自动」到底解析成了哪一档，由 appearance.js 写在 <html data-theme-resolved> 上；
+    // 订阅它广播的事件，面板里的读数就永远和真实生效值一致（包括系统明暗变化的时候）。
+    const resolvedRow = statusRow({
+        label: t("ss.appearance.themeResolved", "当前生效"),
+        value: document.documentElement.dataset.themeResolved || "—",
+    });
+    const onThemeResolved = () => {
+        resolvedRow.setValue(document.documentElement.dataset.themeResolved
+            || document.documentElement.getAttribute("data-theme") || "—");
+    };
+    window.addEventListener("appearance-theme-change", onThemeResolved);
+    track(() => window.removeEventListener("appearance-theme-change", onThemeResolved));
+
+    return group([
+        controlCards("appearance.theme", {
+            label: t("ss.appearance.theme", "外观"),
+            options: themeOptions.map((value) => ({
+                value,
+                label: themeLabel[value] || value,
+                image: themeImages[value] || themeImages.light,
+            })),
+        }),
+        resolvedRow,
+        controlSwatches("appearance.accent", {
+            label: t("ss.appearance.accent", "强调色"),
+            colors: swatches,
+        }),
+        controlDropdown("appearance.highlight", {
+            label: t("ss.appearance.highlight", "高亮颜色"),
+            options: highlightOptions,
+        }),
+    ]);
+}
+
+/**
+ * 侧栏与模糊：边栏图标大小、全站模糊等级，以及表面小样。
+ * @returns {HTMLElement} 分组元素
+ */
+function surfaceGroup() {
     const sidebarDefinition = settings.info("appearance.sidebar.size") || {};
     const sidebarLabels = {
         small: t("ss.appearance.small", "小"),
@@ -382,20 +444,29 @@ export function build(ctx) {
     const sidebarOptions = (sidebarDefinition.values || ["small", "medium", "large"])
         .map((value) => ({ value, label: sidebarLabels[value] || value }));
 
-    const scrollbarDefinition = settings.info("appearance.scrollbars") || {};
-    const scrollbarLabels = {
-        auto: t("ss.appearance.scrollbarsAuto", "自动"),
-        "when-scrolling": t("ss.appearance.scrollbarsWhenScrolling", "滚动时"),
-        always: t("ss.appearance.scrollbarsAlways", "始终"),
-    };
-    const scrollbarOptions = (scrollbarDefinition.values || ["auto", "when-scrolling", "always"])
-        .map((value) => ({ value, label: scrollbarLabels[value] || value }));
+    return group([
+        // 只有三档，分段控件比下拉少一次点按。
+        controlSegmented("appearance.sidebar.size", {
+            label: t("ss.appearance.sidebar", "边栏图标大小"),
+            options: sidebarOptions,
+        }),
+        controlSegmented("appearance.blurLevel", {
+            label: t("ss.appearance.blur", "模糊等级"),
+            options: blurOptions(),
+        }),
+        surfaceStrip(),
+    ]);
+}
 
-    // 表面系统（src/javascripts/surface.js）的三项参数：档位、取值范围、格式化都从定义里读，
-    // 这一层只管排位置与给译文，绝不在这儿再抄一份 0/1/2/3/4 或 min/max/step。
+/**
+ * 窗口与菜单栏：墙纸着色、菜单栏跟随取色 —— 两处都是「半透明表面怎么染」。
+ * @returns {Array<HTMLElement>} 两个分组
+ */
+function tintGroups() {
+    // 表面系统（src/javascripts/surface.js）的参数：取值范围与格式化都从定义里读，
+    // 这一层只管排位置与给译文，绝不在这儿再抄一份 min/max/step。
     const strengthDefinition = settings.info("appearance.tintStrength") || {};
     const hueDefinition = settings.info("appearance.tintHue") || {};
-    const surfacePreviewRow = surfaceStrip();
 
     // 菜单栏：跟随壁纸取色的五个设置项。档位表与范围全部读定义（menubar-tint.js 注册），
     // 面板只排位置、给译文，不另抄一份 0–100。
@@ -434,62 +505,7 @@ export function build(ctx) {
     gateRow(menubarBlurRow, () => Number(settings.get("menubar.opacity", 0)) < 100);
     gateRow(menubarBackgroundRow, () => Number(settings.get("menubar.opacity", 0)) >= 100);
 
-    // 「自动」到底解析成了哪一档，由 appearance.js 写在 <html data-theme-resolved> 上；
-    // 订阅它广播的事件，面板里的读数就永远和真实生效值一致（包括系统明暗变化的时候）。
-    const resolvedRow = statusRow({
-        label: t("ss.appearance.themeResolved", "当前生效"),
-        value: document.documentElement.dataset.themeResolved || "—",
-    });
-    const onThemeResolved = () => {
-        resolvedRow.setValue(document.documentElement.dataset.themeResolved
-            || document.documentElement.getAttribute("data-theme") || "—");
-    };
-    window.addEventListener("appearance-theme-change", onThemeResolved);
-    track(() => window.removeEventListener("appearance-theme-change", onThemeResolved));
-
-    root.append(
-        group([
-            controlCards("appearance.theme", {
-                label: t("ss.appearance.theme", "外观"),
-                options: themeOptions.map((value) => ({
-                    value,
-                    label: themeLabel[value] || value,
-                    image: themeImages[value] || themeImages.light,
-                })),
-            }),
-            resolvedRow,
-            controlSwatches("appearance.accent", {
-                label: t("ss.appearance.accent", "强调色"),
-                colors: swatches,
-            }),
-            controlDropdown("appearance.highlight", {
-                label: t("ss.appearance.highlight", "高亮颜色"),
-                options: highlightOptions,
-            }),
-            // 只有三档，分段控件比下拉少一次点按。
-            controlSegmented("appearance.sidebar.size", {
-                label: t("ss.appearance.sidebar", "边栏图标大小"),
-                options: sidebarOptions,
-            }),
-            controlSegmented("appearance.blurLevel", {
-                label: t("ss.appearance.blur", "模糊等级"),
-                options: blurOptions(),
-            }),
-            surfacePreviewRow,
-        ]),
-
-        // 同一组键的快捷副本：主入口在「桌面与程序坞」，这里改的是同一个值。
-        group([
-            controlSlider("dock.size", {
-                label: t("ss.appearance.dockSizeShortcut", "程序坞图标大小"),
-                units: "px",
-            }),
-            controlSlider("launchpad.icon.size", {
-                label: t("ss.appearance.lpSizeShortcut", "启动台图标大小"),
-                units: "px",
-            }),
-        ], { title: t("ss.appearance.desktopItems", "桌面元素") }),
-
+    return [
         group([
             controlSwitch("appearance.wallpaper.tint", {
                 label: t("ss.appearance.tint", "允许墙纸为窗口着色"),
@@ -515,6 +531,35 @@ export function build(ctx) {
             menubarOpacityRow,
             menubarBackgroundRow,
         ], { title: t("ss.appearance.menubar.group", "菜单栏") }),
+    ];
+}
+
+/**
+ * 桌面与滚动：程序坞 / 启动台图标大小的快捷副本、滚动条与动效。
+ * @returns {Array<HTMLElement>} 两个分组
+ */
+function desktopGroups() {
+    const scrollbarDefinition = settings.info("appearance.scrollbars") || {};
+    const scrollbarLabels = {
+        auto: t("ss.appearance.scrollbarsAuto", "自动"),
+        "when-scrolling": t("ss.appearance.scrollbarsWhenScrolling", "滚动时"),
+        always: t("ss.appearance.scrollbarsAlways", "始终"),
+    };
+    const scrollbarOptions = (scrollbarDefinition.values || ["auto", "when-scrolling", "always"])
+        .map((value) => ({ value, label: scrollbarLabels[value] || value }));
+
+    return [
+        // 同一组键的快捷副本：主入口在「桌面与程序坞」，这里改的是同一个值。
+        group([
+            controlSlider("dock.size", {
+                label: t("ss.appearance.dockSizeShortcut", "程序坞图标大小"),
+                units: "px",
+            }),
+            controlSlider("launchpad.icon.size", {
+                label: t("ss.appearance.lpSizeShortcut", "启动台图标大小"),
+                units: "px",
+            }),
+        ], { title: t("ss.appearance.desktopItems", "桌面元素") }),
 
         group([
             controlSegmented("appearance.scrollbars", {
@@ -528,8 +573,73 @@ export function build(ctx) {
                 label: t("ss.appearance.transparency", "降低透明度时关闭毛玻璃"),
             }),
         ], { title: t("ss.appearance.scrollGroup", "滚动与动效") }),
-    );
+    ];
+}
 
+/**
+ * 构建「外观」父页：只放二级入口，具体设置按主题拆到子页。
+ * @param {object} ctx 外壳上下文
+ * @returns {HTMLElement} 面板根元素
+ */
+export function build(ctx) {
+    const root = pageRoot(paneId);
+    const links = childPanes(paneId).map((child) => paneLink({
+        label: t(child.i18nKey, child.label),
+        icon: child.icon,
+        onOpen: () => { if (ctx && typeof ctx.selectPane === "function") ctx.selectPane(child.id); },
+    }));
+    if (links.length) root.append(group(links));
+    return root;
+}
+
+/**
+ * 「颜色与主题」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildColors() {
+    const root = pageRoot("appearance-colors");
+    root.append(colorGroup());
+    return root;
+}
+
+/**
+ * 「侧栏与模糊」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildSurface() {
+    const root = pageRoot("appearance-surface");
+    root.append(surfaceGroup());
+    return root;
+}
+
+/**
+ * 「窗口与菜单栏」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildTint() {
+    const root = pageRoot("appearance-tint");
+    root.append(...tintGroups());
+    return root;
+}
+
+/**
+ * 「桌面与滚动」子页。
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildDesktop() {
+    const root = pageRoot("appearance-desktop");
+    root.append(...desktopGroups());
+    return root;
+}
+
+/**
+ * 「墙纸」子页：整块复用 wallpaper 分节。
+ * @param {object} ctx 外壳上下文
+ * @returns {HTMLElement} 面板根元素
+ */
+export function buildWallpaperPage(ctx) {
+    const root = pageRoot("appearance-wallpaper");
+    root.append(buildWallpaper(ctx));
     return root;
 }
 

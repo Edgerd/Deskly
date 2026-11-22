@@ -60,6 +60,7 @@ const SHELL_MESSAGES = {
             group: {
                 account: "Edgerd 账户", connectivity: "网络与连接", alerts: "通知与专注",
                 system: "通用与外观", desktop: "桌面与显示器", peripherals: "键盘与鼠标",
+                developer: "开发者",
             },
         },
     },
@@ -77,6 +78,7 @@ const SHELL_MESSAGES = {
             group: {
                 account: "Edgerd Account", connectivity: "Network & Connections", alerts: "Notifications & Focus",
                 system: "General & Appearance", desktop: "Desktop & Displays", peripherals: "Keyboard & Mouse",
+                developer: "Developer",
             },
         },
     },
@@ -94,6 +96,7 @@ const SHELL_MESSAGES = {
             group: {
                 account: "Edgerd アカウント", connectivity: "ネットワークと接続", alerts: "通知と集中モード",
                 system: "一般と外観", desktop: "デスクトップとディスプレイ", peripherals: "キーボードとマウス",
+                developer: "開発者",
             },
         },
     },
@@ -111,6 +114,7 @@ const SHELL_MESSAGES = {
             group: {
                 account: "Edgerd 账户喵", connectivity: "网络同连接喵", alerts: "通知同专注喵",
                 system: "通用同外观喵", desktop: "桌面同显示器喵", peripherals: "键盘同鼠标喵",
+                developer: "开发者喵",
             },
         },
     },
@@ -298,7 +302,8 @@ function itemRow(entry) {
         }, { once: true });
     }
     const row = el("button", {
-        class: "ss-item",
+        // 子项（registry 里带 parent 的条目）缩进一层：侧栏呈现「通用 › 储存 / 时间与地区 / 关于本机」的树。
+        class: `ss-item${entry.parent ? " ss-item--child" : ""}`,
         attrs: { type: "button" },
         dataset: { pane: entry.id },
     },
@@ -336,7 +341,10 @@ function refreshSidebarLabels() {
  */
 function applyFilter(query) {
     const text = String(query || "").trim();
-    const matched = text ? new Set(matchPanes(text).map((p) => p.id)) : null;
+    // 子项（通用 › 储存…）不在左栏；搜到子项时把它的父项一起点亮，侧栏才不会空成一片。
+    const matched = text
+        ? new Set(matchPanes(text).flatMap((p) => (p.parent ? [p.id, p.parent] : [p.id])))
+        : null;
     let visible = 0;
     shell.groups.forEach(({ title, body, rows }) => {
         let shown = 0;
@@ -513,10 +521,17 @@ function openPane(id, params) {
     return openApp("系统设置");
 }
 
-/** 标记侧栏选中态（用类名与 aria-current，不依赖旧版的 .selection.focus）。 */
+/**
+ * 标记侧栏选中态（用类名与 aria-current，不依赖旧版的 .selection.focus）。
+ * 子项（带 parent）不在左栏，选中态落在它的一级面板上。
+ * @param {string} id 当前面板 id
+ * @returns {void}
+ */
 function markActive(id) {
+    const entry = findPane(id);
+    const rootId = entry && entry.parent ? entry.parent : id;
     shell.rows.forEach((row, key) => {
-        const on = key === id;
+        const on = key === rootId;
         row.classList.toggle("ss-item--on", on);
         if (on) row.setAttribute("aria-current", "page");
         else row.removeAttribute("aria-current");

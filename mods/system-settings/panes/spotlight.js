@@ -31,9 +31,12 @@ export const messages = {
                 manual: "使用手册",
                 resultGroup: "结果与历史",
                 hotkey: "快捷键",
-                hotkeyCmdSpace: "Command + 空格",
-                hotkeyCtrlSpace: "Control + 空格",
-                hotkeyAltSpace: "Option + 空格",
+                hotkeyDoubleCtrlLeft: "双击 Control（左）",
+                hotkeyDoubleCtrlRight: "双击 Control（右）",
+                hotkeyDoubleAltLeft: "双击 Option（左）",
+                hotkeyDoubleAltRight: "双击 Option（右）",
+                hotkeyDoubleShiftLeft: "双击 Shift（左）",
+                hotkeyDoubleShiftRight: "双击 Shift（右）",
                 hotkeyOff: "不设",
                 max: "最多显示结果",
                 keepHistory: "保留搜索历史",
@@ -62,9 +65,12 @@ export const messages = {
                 manual: "User Guide",
                 resultGroup: "Results & History",
                 hotkey: "Keyboard Shortcut",
-                hotkeyCmdSpace: "Command + Space",
-                hotkeyCtrlSpace: "Control + Space",
-                hotkeyAltSpace: "Option + Space",
+                hotkeyDoubleCtrlLeft: "Double-tap Control (Left)",
+                hotkeyDoubleCtrlRight: "Double-tap Control (Right)",
+                hotkeyDoubleAltLeft: "Double-tap Option (Left)",
+                hotkeyDoubleAltRight: "Double-tap Option (Right)",
+                hotkeyDoubleShiftLeft: "Double-tap Shift (Left)",
+                hotkeyDoubleShiftRight: "Double-tap Shift (Right)",
                 hotkeyOff: "Off",
                 max: "Maximum Results",
                 keepHistory: "Keep Search History",
@@ -93,9 +99,12 @@ export const messages = {
                 manual: "ユーザガイド",
                 resultGroup: "結果と履歴",
                 hotkey: "ショートカットキー",
-                hotkeyCmdSpace: "Command + Space",
-                hotkeyCtrlSpace: "Control + Space",
-                hotkeyAltSpace: "Option + Space",
+                hotkeyDoubleCtrlLeft: "Control（左）をダブルタップ",
+                hotkeyDoubleCtrlRight: "Control（右）をダブルタップ",
+                hotkeyDoubleAltLeft: "Option（左）をダブルタップ",
+                hotkeyDoubleAltRight: "Option（右）をダブルタップ",
+                hotkeyDoubleShiftLeft: "Shift（左）をダブルタップ",
+                hotkeyDoubleShiftRight: "Shift（右）をダブルタップ",
                 hotkeyOff: "なし",
                 max: "結果の最大表示数",
                 keepHistory: "検索履歴を保存",
@@ -124,9 +133,12 @@ export const messages = {
                 manual: "说明书喵",
                 resultGroup: "结果和历史喵",
                 hotkey: "召唤按键喵",
-                hotkeyCmdSpace: "Command 加空格喵",
-                hotkeyCtrlSpace: "Control 加空格喵",
-                hotkeyAltSpace: "Option 加空格喵",
+                hotkeyDoubleCtrlLeft: "连按两下 Control（左）喵",
+                hotkeyDoubleCtrlRight: "连按两下 Control（右）喵",
+                hotkeyDoubleAltLeft: "连按两下 Option（左）喵",
+                hotkeyDoubleAltRight: "连按两下 Option（右）喵",
+                hotkeyDoubleShiftLeft: "连按两下 Shift（左）喵",
+                hotkeyDoubleShiftRight: "连按两下 Shift（右）喵",
                 hotkeyOff: "不按也行喵",
                 max: "最多给主人看几条喵",
                 keepHistory: "记住搜过的词喵",
@@ -147,7 +159,12 @@ export const messages = {
 };
 
 /** 候选快捷键：与 spotlight.js 里 spotlight.hotkey 的 values 一致（写别的取值会被中枢按候选值拒绝）。 */
-const HOTKEY_FALLBACK = ["cmd+space", "ctrl+space", "alt+space", "off"];
+const HOTKEY_FALLBACK = [
+    "double-ctrl-left", "double-ctrl-right",
+    "double-alt-left", "double-alt-right",
+    "double-shift-left", "double-shift-right",
+    "off",
+];
 
 const CSS = `
 .ss-spotlight .ss-spotlight__status { font-variant-numeric: tabular-nums; }
@@ -246,9 +263,12 @@ function clearHistory(stateRowWithSetter) {
  */
 function hotkeyLabelFor(value, fallback) {
     const labels = {
-        "cmd+space": t("ss.spotlight.hotkeyCmdSpace", "Command + 空格"),
-        "ctrl+space": t("ss.spotlight.hotkeyCtrlSpace", "Control + 空格"),
-        "alt+space": t("ss.spotlight.hotkeyAltSpace", "Option + 空格"),
+        "double-ctrl-left": t("ss.spotlight.hotkeyDoubleCtrlLeft", "双击 Control（左）"),
+        "double-ctrl-right": t("ss.spotlight.hotkeyDoubleCtrlRight", "双击 Control（右）"),
+        "double-alt-left": t("ss.spotlight.hotkeyDoubleAltLeft", "双击 Option（左）"),
+        "double-alt-right": t("ss.spotlight.hotkeyDoubleAltRight", "双击 Option（右）"),
+        "double-shift-left": t("ss.spotlight.hotkeyDoubleShiftLeft", "双击 Shift（左）"),
+        "double-shift-right": t("ss.spotlight.hotkeyDoubleShiftRight", "双击 Shift（右）"),
         off: t("ss.spotlight.hotkeyOff", "不设"),
     };
     return labels[value] || fallback || String(value);

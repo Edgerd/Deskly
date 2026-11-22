@@ -10,7 +10,7 @@
 
 import { sound } from "../../../src/javascripts/sound.js";
 import {
-    t, el, group, controlSwitch, controlSlider, actionRow, statusRow, usePaneStyle,
+    t, el, group, note, controlSwitch, controlSlider, actionRow, statusRow, usePaneStyle,
 } from "../ui.js";
 
 export const paneId = "sound";
@@ -25,6 +25,10 @@ export const messages = {
                 muted: "静音",
                 device: "输出设备",
                 deviceValue: "跟随浏览器",
+                effectsGroup: "提示音音效",
+                effects: "提示音音效",
+                effectsVolume: "提示音音量",
+                silentNote: "倒废纸篓、音量反馈等音色暂未配素材，请求时保持安静；素材到位后自动出声。",
                 testGroup: "试听",
                 test: "播放测试音",
                 testBtn: "播放",
@@ -39,6 +43,10 @@ export const messages = {
                 muted: "Mute",
                 device: "Output device",
                 deviceValue: "Browser default",
+                effectsGroup: "Sound Effects",
+                effects: "Alert sounds",
+                effectsVolume: "Alert volume",
+                silentNote: "Some cues (empty Trash, volume feedback) have no sound files yet and stay silent until assets are added.",
                 testGroup: "Test",
                 test: "Play test tone",
                 testBtn: "Play",
@@ -53,6 +61,10 @@ export const messages = {
                 muted: "ミュート",
                 device: "出力デバイス",
                 deviceValue: "ブラウザ既定",
+                effectsGroup: "効果音",
+                effects: "警告音",
+                effectsVolume: "警告音の音量",
+                silentNote: "ゴミ箱を空にする等の一部の音はまだ素材がなく、追加されるまで鳴りません。",
                 testGroup: "試聴",
                 test: "テスト音を再生",
                 testBtn: "再生",
@@ -67,6 +79,10 @@ export const messages = {
                 muted: "静音",
                 device: "输出设备",
                 deviceValue: "听浏览器的",
+                effectsGroup: "提示音喵",
+                effects: "提示音开关喵",
+                effectsVolume: "提示音大小喵",
+                silentNote: "倒废纸篓、音量反馈这些音还没配素材喵，先安安静静的；素材到了自然就响喵。",
                 testGroup: "听一下喵",
                 test: "播放测试音",
                 testBtn: "放来听喵",
@@ -100,6 +116,16 @@ export function build() {
             controlSwitch("sound.muted", { label: t("ss.sound.muted", "静音") }),
             deviceRow,
         ], { title: t("ss.sound.outputGroup", "输出") }),
+
+        // 提示音门控（F-50）：开关与音量都由 sound.js 的定义落地，playTone 真消费
+        group([
+            controlSwitch("sound.effects", { label: t("ss.sound.effects", "提示音音效") }),
+            controlSlider("sound.effectsVolume", {
+                label: t("ss.sound.effectsVolume", "提示音音量"),
+                min: 0, max: 1, step: 0.01, format: "percent",
+            }),
+            note("ss.sound.silentNote", "倒废纸篓、音量反馈等音色暂未配素材，请求时保持安静；素材到位后自动出声。"),
+        ], { title: t("ss.sound.effectsGroup", "提示音音效") }),
 
         group([
             actionRow({

@@ -1,16 +1,20 @@
 /**
- * panes/notifications.js — 「系统设置 › 通知」面板
+ * panes/notifications.js — 「系统设置 › 通知」面板（F-17）
  *
- * 三件事都有真实落点：
+ * 五件事都有真实落点：
  * 1. notify.* 写入广播 `notify-config-change`，ui/notification.js 据此决定横幅/声音/停留时长。
  * 2. 系统级授权走 permissions.js（浏览器 Notification 权限），不支持或被拒绝如实显示，不做假成功。
  * 3. 「发送测试通知」真调 window.__notify.show。时长滑块只在「允许通知」打开时出现。
+ * 4. 「横幅样式」三态（横幅/提醒/无）写 notify.bannerStyle（notifications/store.js 登记）：
+ *    提醒=常驻到点掉，无=不弹横幅只落通知中心。
+ * 5. 逐应用的通知开关已搬进「App › 应用详情」：开关属于某个 App，就长在它的详情页里，
+ *    「通知」面板只保留全局开关（横幅、声音、样式、权限、测试）。
  */
 
 import { permissions } from "../../../src/javascripts/permissions.js";
 import { glyph } from "../../../src/javascripts/paths.js";
 import {
-    t, el, group, bind, controlSwitch, controlSlider, actionRow, statusRow, usePaneStyle,
+    t, el, group, bind, controlSwitch, controlSlider, controlDropdown, actionRow, statusRow, usePaneStyle,
 } from "../ui.js";
 
 export const paneId = "notifications";
@@ -51,6 +55,10 @@ export const messages = {
                 stateUnsupported: "当前环境不支持",
                 stateUnknown: "未知",
                 requestFailed: "请求失败：",
+                styleGroup: "横幅样式",
+                styleBanner: "横幅",
+                styleAlert: "提醒",
+                styleNone: "无",
             },
         },
     },
@@ -79,6 +87,10 @@ export const messages = {
                 stateUnsupported: "Not supported here",
                 stateUnknown: "Unknown",
                 requestFailed: "Request failed: ",
+                styleGroup: "Banner style",
+                styleBanner: "Banner",
+                styleAlert: "Alert",
+                styleNone: "None",
             },
         },
     },
@@ -107,6 +119,10 @@ export const messages = {
                 stateUnsupported: "この環境では未対応",
                 stateUnknown: "不明",
                 requestFailed: "要求に失敗：",
+                styleGroup: "バナー形式",
+                styleBanner: "バナー",
+                styleAlert: "アラート",
+                styleNone: "なし",
             },
         },
     },
@@ -135,6 +151,10 @@ export const messages = {
                 stateUnsupported: "这个环境不支持喵",
                 stateUnknown: "不太清楚喵",
                 requestFailed: "要许可失败了：",
+                styleGroup: "横幅样式喵",
+                styleBanner: "横幅喵",
+                styleAlert: "常驻喵",
+                styleNone: "不弹喵",
             },
         },
     },
@@ -199,6 +219,14 @@ export function build() {
         group([
             controlSwitch("notify.enabled", { label: t("ss.notifications.enabled", "允许通知") }),
             controlSwitch("notify.sound", { label: t("ss.notifications.sound", "通知提示音") }),
+            controlDropdown("notify.bannerStyle", {
+                label: t("ss.notifications.styleGroup", "横幅样式"),
+                options: [
+                    { value: "banner", label: t("ss.notifications.styleBanner", "横幅") },
+                    { value: "alert", label: t("ss.notifications.styleAlert", "提醒") },
+                    { value: "none", label: t("ss.notifications.styleNone", "无") },
+                ],
+            }),
             durationRow,
             actionRow({
                 label: t("ss.notifications.test", "发送测试通知"),

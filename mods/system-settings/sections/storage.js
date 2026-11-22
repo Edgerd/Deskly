@@ -14,8 +14,10 @@ import { VFS } from "../../../src/javascripts/vfs.js";
 import { OSFS } from "../../../src/javascripts/osfs.js";
 import { settings } from "../../../src/javascripts/settings.js";
 import { log } from "../../../src/javascripts/log.js";
+import { openApp } from "../../../src/javascripts/plugin-manager.js";
+import { moveToTrash, pruneOldTrash } from "../../../src/javascripts/trash.js";
 import {
-    el, t, row, group, section, note, statusRow, actionRow, usePaneStyle,
+    el, t, row, group, section, note, statusRow, actionRow, controlSwitch, usePaneStyle,
 } from "../ui.js";
 
 export const paneId = "storage";
@@ -49,6 +51,35 @@ export const messages = {
                 clearBusy: "正在清理…", clearDone: "已清空「{id}」的缓存",
                 quota: "存储配额", quotaUsed: "已用 / 总额", quotaUnknown: "无法查询",
                 settingsBytes: "设置占用", meterLabel: "占用比例",
+                whereVirtual: "应用内根目录",
+                categoryTitle: "储存空间分布",
+                categoryTotal: "合计 {size}",
+                catAppData: "应用数据", catDocuments: "文稿", catImages: "图片", catVideos: "视频", catOther: "其他",
+                categoryNote: "按文件类型估算，已排除废纸篓。",
+                recTitle: "推荐",
+                lowSpaceTitle: "储存空间不足",
+                lowSpaceNote: "剩余不足 5%，建议先清理大文件。",
+                autoEmpty: "自动清倒废纸篓",
+                autoEmptyHint: "抹掉超过 30 天的项目",
+                autoEmptyClean: "清理过期项目",
+                autoEmptyRun: "立即清倒过期项目", autoEmptyRunBusy: "正在清倒…",
+                autoEmptyDone: "已清倒 {n} 项", autoEmptyNone: "没有超过 30 天的项目",
+                cleanTitle: "优化储存空间",
+                cleanHint: "勾选后一并移除，无法撤销。",
+                cleanEmpty: "没有可清理的安装包或缓存。",
+                cleanTotal: "可释放 {size}",
+                cleanButton: "移除所选", cleanBusy: "正在清理…",
+                cleanConfirmTitle: "移除所选项目？",
+                cleanConfirmBody: "共 {n} 项、{size}，移除后不可恢复。",
+                cleanDone: "已释放 {size}",
+                icloud: "储存在 iCloud 中", icloudUnavailable: "不可用",
+                icloudNote: "当前环境没有云端写入通道，可改为挂载本地文件夹。",
+                largeTitle: "大文件", largeHint: "超过 10 MB 的文件。",
+                largeEmpty: "没有超过 10 MB 的文件。",
+                reveal: "在访达中显示", moveToTrash: "移入废纸篓",
+                movedToTrash: "已移入废纸篓", trashFailed: "移入废纸篓失败",
+                dupTitle: "重复下载", dupNote: "下载文件夹里有 {n} 组重复文件。",
+                dupOpen: "打开下载文件夹",
             },
         },
     },
@@ -79,6 +110,35 @@ export const messages = {
                 clearBusy: "Clearing…", clearDone: "Cleared the cache of “{id}”",
                 quota: "Storage Quota", quotaUsed: "Used / Total", quotaUnknown: "Not available",
                 settingsBytes: "Settings Size", meterLabel: "Usage",
+                whereVirtual: "In-app root folder",
+                categoryTitle: "Storage Breakdown",
+                categoryTotal: "Total {size}",
+                catAppData: "App Data", catDocuments: "Documents", catImages: "Images", catVideos: "Videos", catOther: "Other",
+                categoryNote: "Estimated by file type; the Trash is excluded.",
+                recTitle: "Recommendations",
+                lowSpaceTitle: "Storage Almost Full",
+                lowSpaceNote: "Less than 5% left. Clear large files first.",
+                autoEmpty: "Auto-Empty Trash",
+                autoEmptyHint: "Removes items older than 30 days",
+                autoEmptyClean: "Clean Up Expired Items",
+                autoEmptyRun: "Empty Expired Items Now", autoEmptyRunBusy: "Emptying…",
+                autoEmptyDone: "Removed {n} items", autoEmptyNone: "Nothing older than 30 days",
+                cleanTitle: "Optimize Storage",
+                cleanHint: "Selected items are removed permanently.",
+                cleanEmpty: "No installers or caches to clean up.",
+                cleanTotal: "{size} can be freed",
+                cleanButton: "Remove Selected", cleanBusy: "Cleaning…",
+                cleanConfirmTitle: "Remove selected items?",
+                cleanConfirmBody: "{n} items, {size} in total. This cannot be undone.",
+                cleanDone: "Freed {size}",
+                icloud: "Store in iCloud", icloudUnavailable: "Unavailable",
+                icloudNote: "No cloud write channel here; mount a local folder instead.",
+                largeTitle: "Large Files", largeHint: "Files larger than 10 MB.",
+                largeEmpty: "No files larger than 10 MB.",
+                reveal: "Show in Finder", moveToTrash: "Move to Trash",
+                movedToTrash: "Moved to the Trash", trashFailed: "Could not move to the Trash",
+                dupTitle: "Duplicate Downloads", dupNote: "{n} duplicate groups in Downloads.",
+                dupOpen: "Open Downloads",
             },
         },
     },
@@ -109,6 +169,35 @@ export const messages = {
                 clearBusy: "消去中…", clearDone: "「{id}」のキャッシュを消去しました",
                 quota: "ストレージ割当", quotaUsed: "使用 / 全体", quotaUnknown: "取得できません",
                 settingsBytes: "設定の占有", meterLabel: "使用率",
+                whereVirtual: "アプリ内ルート",
+                categoryTitle: "ストレージの内訳",
+                categoryTotal: "合計 {size}",
+                catAppData: "App データ", catDocuments: "書類", catImages: "画像", catVideos: "ビデオ", catOther: "その他",
+                categoryNote: "ファイル種別による概算です。ゴミ箱は除外しています。",
+                recTitle: "推奨",
+                lowSpaceTitle: "ストレージが不足しています",
+                lowSpaceNote: "残り 5% 未満です。大きいファイルから整理してください。",
+                autoEmpty: "ゴミ箱を自動で空にする",
+                autoEmptyHint: "30 日を超えた項目を消去します",
+                autoEmptyClean: "期限切れを整理",
+                autoEmptyRun: "期限切れを今すぐ消去", autoEmptyRunBusy: "消去中…",
+                autoEmptyDone: "{n} 件を消去しました", autoEmptyNone: "30 日を超えた項目はありません",
+                cleanTitle: "ストレージを最適化",
+                cleanHint: "選択した項目は完全に削除されます。",
+                cleanEmpty: "整理できるインストーラやキャッシュはありません。",
+                cleanTotal: "{size} を解放できます",
+                cleanButton: "選択項目を削除", cleanBusy: "整理中…",
+                cleanConfirmTitle: "選択した項目を削除しますか？",
+                cleanConfirmBody: "合計 {n} 件、{size}。削除すると元に戻せません。",
+                cleanDone: "{size} を解放しました",
+                icloud: "iCloud に保存", icloudUnavailable: "利用できません",
+                icloudNote: "この環境にはクラウド書き込み経路がありません。ローカルフォルダをマウントしてください。",
+                largeTitle: "大きいファイル", largeHint: "10 MB を超えるファイルです。",
+                largeEmpty: "10 MB を超えるファイルはありません。",
+                reveal: "Finder に表示", moveToTrash: "ゴミ箱に入れる",
+                movedToTrash: "ゴミ箱に入れました", trashFailed: "ゴミ箱に入れられませんでした",
+                dupTitle: "重複ダウンロード", dupNote: "ダウンロードに {n} 組の重複があります。",
+                dupOpen: "ダウンロードを開く",
             },
         },
     },
@@ -139,12 +228,126 @@ export const messages = {
                 clearBusy: "正喺清喵…", clearDone: "清咗「{id}」嘅快取喵~",
                 quota: "擱嘅地方喵", quotaUsed: "用了 / 一共有", quotaUnknown: "問不出來喵",
                 settingsBytes: "設定占了點滴喵", meterLabel: "占比喵",
+                whereVirtual: "App 入面嘅根夾子喵",
+                categoryTitle: "儲存空間點分喵",
+                categoryTotal: "夾埋 {size} 喵",
+                catAppData: "App 嘅嘢喵", catDocuments: "文稿喵", catImages: "圖片喵", catVideos: "影片喵", catOther: "其他喵",
+                categoryNote: "按檔案類型估吓，廢紙篓唔計喵~",
+                recTitle: "提議喵",
+                lowSpaceTitle: "儲存空間唔夠啦喵",
+                lowSpaceNote: "淨返唔夠 5%，不如先清大檔案喵~",
+                autoEmpty: "自動清倒廢紙篓喵",
+                autoEmptyHint: "抹走超過 30 日嘅嘢喵",
+                autoEmptyClean: "清理過期嘅嘢喵",
+                autoEmptyRun: "即刻清走過期嘅喵", autoEmptyRunBusy: "正喺清喵…",
+                autoEmptyDone: "清走咗 {n} 件喵", autoEmptyNone: "冇超過 30 日嘅嘢喵",
+                cleanTitle: "優化儲存空間喵",
+                cleanHint: "剔咗就一路移走，冇得返轉頭喵~",
+                cleanEmpty: "冇安裝包同快取可以清喵~",
+                cleanTotal: "可以放返 {size} 喵",
+                cleanButton: "移走剔咗嘅喵", cleanBusy: "正喺清喵…",
+                cleanConfirmTitle: "真係移走剔咗嘅嘢喵？",
+                cleanConfirmBody: "一共 {n} 件、{size}，移走就冇咗喵~",
+                cleanDone: "放返咗 {size} 喵",
+                icloud: "擱去 iCloud 喵", icloudUnavailable: "用唔到喵",
+                icloudNote: "呢度冇得寫上雲，不如掛個本地夾子喵~",
+                largeTitle: "大檔案喵", largeHint: "大過 10 MB 嘅檔案喵。",
+                largeEmpty: "冇大過 10 MB 嘅檔案喵~",
+                reveal: "喺訪達度睇喵", moveToTrash: "掉入廢紙篓喵",
+                movedToTrash: "掉入廢紙篓咗喵~", trashFailed: "掉唔入廢紙篓喵~",
+                dupTitle: "重複下載喵", dupNote: "下載夾子有 {n} 組重複喵~",
+                dupOpen: "開下載夾子喵",
             },
         },
     },
 };
 
-/** 面板私有样式：存储位置状态、配额进度条。 */
+/** 大文件门槛：≥10 MB 才进「大文件」列表（与系统口径一致）。 */
+const LARGE_FILE_MIN = 10 * 1024 * 1024;
+/** 大文件列表上限：只列最大的 20 项，再多就不是「推荐」而是文件管理器了。 */
+const LARGE_FILE_LIMIT = 20;
+/** 自动清倒的保留天数（与 trash.js 的 pruneOldTrash 默认口径一致）。 */
+const AUTO_EMPTY_DAYS = 30;
+/** 空间不足阈值：剩余低于 5% 时给提示。 */
+const LOW_SPACE_RATIO = 0.05;
+/** 安装器残留的扩展名：下载完成后留着也不用的那一类。 */
+const INSTALLER_EXTS = new Set(["dmg", "pkg", "iso", "msi", "exe", "zip"]);
+/** 缓存/日志判定：路径段与扩展名两条线索。 */
+const CACHE_SEGMENTS = ["/temp/", "/cache/", "/logs/"];
+/** 分类色条：顺序即图例顺序（应用数据 / 文稿 / 图片 / 视频 / 其他）。 */
+const CATEGORY_META = [
+    { key: "appdata", color: "#5e5ce6" },
+    { key: "documents", color: "#0a84ff" },
+    { key: "images", color: "#30d158" },
+    { key: "videos", color: "#ff9f0a" },
+    { key: "other", color: "#8e8e93" },
+];
+/** 按扩展名归类：未命中的一律进「其他」，不猜内容。 */
+const CATEGORY_EXTS = {
+    images: new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "bmp", "tif", "tiff", "svg"]),
+    videos: new Set(["mp4", "mov", "m4v", "webm", "mkv", "avi", "ogv"]),
+    documents: new Set(["txt", "md", "markdown", "pdf", "rtf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers", "key", "csv", "json", "xml", "html", "htm", "epub"]),
+};
+/** 分类图例文案：键名写死（动态拼键逃不过四语键集比对）。 */
+const CATEGORY_TEXT = {
+    appdata: { key: "ss.storage.catAppData", fallback: "应用数据" },
+    documents: { key: "ss.storage.catDocuments", fallback: "文稿" },
+    images: { key: "ss.storage.catImages", fallback: "图片" },
+    videos: { key: "ss.storage.catVideos", fallback: "视频" },
+    other: { key: "ss.storage.catOther", fallback: "其他" },
+};
+
+/** 取路径扩展名（小写，无扩展名返回空串）。 */
+function extOf(path) {
+    const match = String(path || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+    return match ? match[1] : "";
+}
+
+/**
+ * 把一条文件归入分类桶：/AppData 下的算「应用数据」，其余按扩展名。
+ * @param {string} path 文件绝对路径
+ * @param {string} appdataPath AppData 根路径
+ * @returns {string} appdata / documents / images / videos / other
+ */
+function categoryOf(path, appdataPath) {
+    if (path === appdataPath || path.startsWith(appdataPath + "/")) return "appdata";
+    const ext = extOf(path);
+    if (CATEGORY_EXTS.images.has(ext)) return "images";
+    if (CATEGORY_EXTS.videos.has(ext)) return "videos";
+    if (CATEGORY_EXTS.documents.has(ext)) return "documents";
+    return "other";
+}
+
+/** 是否是安装器残留（下载目录里的安装包 / 压缩包）。 */
+function isInstallerLeftover(file) {
+    return INSTALLER_EXTS.has(extOf(file.path));
+}
+
+/** 是否是缓存或日志文件（路径段或扩展名命中）。 */
+function isCacheFile(file) {
+    const path = String(file.path || "");
+    if (extOf(path) === "log") return true;
+    return CACHE_SEGMENTS.some((seg) => path.includes(seg));
+}
+
+/**
+ * 找出下载目录里的重复下载：把「 (1)」这类副本后缀归一，同组 ≥2 份算重复。
+ * @param {Array<object>} files 全部文件
+ * @param {string} downloadsPath 下载目录
+ * @returns {Array<Array<object>>} 重复组
+ */
+function duplicateDownloads(files, downloadsPath) {
+    const groups = new Map();
+    files.forEach((file) => {
+        if (!String(file.path).startsWith(downloadsPath + "/")) return;
+        const stem = String(file.name).replace(/ \(\d+\)(\.[^.]*)?$/, "$1").toLowerCase();
+        if (!groups.has(stem)) groups.set(stem, []);
+        groups.get(stem).push(file);
+    });
+    return [...groups.values()].filter((group) => group.length > 1);
+}
+
+/** 面板私有样式：存储位置状态、配额进度条、分类色条、推荐清单。 */
 const PANE_CSS = `
 .ss-pane-storage .ss-storage__cell { display: flex; align-items: center; gap: 8px; }
 .ss-pane-storage .ss-storage__where { font-size: 13px; }
@@ -153,6 +356,16 @@ const PANE_CSS = `
 .ss-pane-storage .ss-storage__status--warn { color: var(--ss-danger); font-weight: 600; }
 .ss-pane-storage .ss-storage__meter { width: 100%; height: 6px; border-radius: 3px; background: var(--ss-track); overflow: hidden; }
 .ss-pane-storage .ss-storage__meter-fill { height: 100%; width: 0%; border-radius: 3px; background: var(--accent); transition: width 0.18s ease; }
+.ss-pane-storage .ss-storage__cats { display: flex; width: 100%; height: 10px; border-radius: 5px; overflow: hidden; background: var(--ss-track); }
+.ss-pane-storage .ss-storage__catseg { height: 100%; }
+.ss-pane-storage .ss-storage__legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 6px 2px 0; }
+.ss-pane-storage .ss-storage__legend-item { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ss-text-secondary); }
+.ss-pane-storage .ss-storage__dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.ss-pane-storage .ss-storage__rec { display: flex; flex-direction: column; gap: 8px; }
+.ss-pane-storage .ss-storage__check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.ss-pane-storage .ss-storage__check input { margin: 0; }
+.ss-pane-storage .ss-storage__check-path { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-pane-storage .ss-storage__check-size { color: var(--ss-text-secondary); font-variant-numeric: tabular-nums; }
 `;
 
 /** 字节数说成人类可读的文本。 */
@@ -188,6 +401,13 @@ export function build(ctx) {
     const rootBox = group([]);
     const pluginBox = group([]);
     const quotaBox = group([]);
+    const categoryBox = group([]);
+    const recBox = group([]);
+    const largeBox = group([]);
+
+    /** 最近一次全树扫描的文件清单与配额，供分类 / 推荐 / 大文件三块共用。 */
+    let lastFiles = [];
+    const downloadsPath = OSFS.TOP.downloads.path;
 
     /** 顶层结构是内核常量，界面只列路径本身。 */
     const topBox = group(Object.entries(OSFS.TOP).map(([, def]) => row({ label: def.path })));
@@ -208,9 +428,9 @@ export function build(ctx) {
         if (!navigator.storage || typeof navigator.storage.estimate !== "function") {
             quotaRow.setValue(t("ss.storage.quotaUnknown", "无法查询"));
             meterFill.style.width = "0%";
-            return;
+            return Promise.resolve(null);
         }
-        navigator.storage.estimate()
+        return navigator.storage.estimate()
             .then((estimate) => {
                 // formatBytes 返回的是 "1.5 KB" 这种字符串：再喂回 formatBytes 得 NaN → "—"，
                 // 字符串比大小也恒 false（进度条恒 0%）。显示与比例都必须用原始数值（BUG-59）。
@@ -218,10 +438,12 @@ export function build(ctx) {
                 const quota = Number(estimate.quota) || 0;
                 quotaRow.setValue(`${formatBytes(usage)} / ${formatBytes(quota)}`);
                 meterFill.style.width = quota > 0 ? `${Math.min(100, (usage / quota) * 100).toFixed(2)}%` : "0%";
+                return { usage, quota };
             })
             .catch((err) => {
                 log.debug("plugin/system-settings", "查询存储配额失败", err);
                 quotaRow.setValue(t("ss.storage.quotaUnknown", "无法查询"));
+                return null;
             });
     };
 
@@ -380,13 +602,245 @@ export function build(ctx) {
         }
     }
 
+    /**
+     * 让访达打开到指定目录：先确保访达在，再派发导航命令。
+     * @param {string} path OSFS 绝对路径
+     */
+    async function revealPath(path) {
+        try {
+            await openApp("finder");
+            document.dispatchEvent(new CustomEvent("finder-command", {
+                detail: { command: "navigate", args: { path } },
+            }));
+        } catch (err) {
+            log.error("plugin/system-settings", "打开访达失败", err);
+        }
+    }
+
+    /** 全树扫描一次，排除废纸篓（清倒入口在推荐里，不在统计口径里）。 */
+    async function collectFiles() {
+        if (VFS.getAuthStatus().needsReauth) {
+            lastFiles = [];
+            return;
+        }
+        const trashRoot = OSFS.TOP.trash.path;
+        try {
+            const all = await OSFS.walk(6, "/");
+            lastFiles = (all || []).filter((file) => !String(file.path).startsWith(trashRoot + "/"));
+        } catch (err) {
+            if (err && err.name === "NeedsReauthError") {
+                lastFiles = [];
+            } else {
+                log.error("plugin/system-settings", "统计储存空间失败", err);
+                lastFiles = [];
+            }
+        }
+    }
+
+    /** 顶部分类色条：按扩展名把文件分进五类，宽度即占比。 */
+    function renderCategories() {
+        categoryBox.textContent = "";
+        const totals = new Map(CATEGORY_META.map((meta) => [meta.key, 0]));
+        lastFiles.forEach((file) => {
+            const key = categoryOf(file.path, appdataPath);
+            totals.set(key, (totals.get(key) || 0) + (Number(file.size) || 0));
+        });
+        const total = CATEGORY_META.reduce((sum, meta) => sum + (totals.get(meta.key) || 0), 0);
+        const bar = el("div", { class: "ss-storage__cats" });
+        const legend = el("div", { class: "ss-storage__legend" });
+        CATEGORY_META.forEach((meta) => {
+            const size = totals.get(meta.key) || 0;
+            const share = total > 0 ? (size / total) * 100 : 0;
+            const text = CATEGORY_TEXT[meta.key];
+            const label = t(text.key, text.fallback);
+            bar.append(el("div", {
+                class: "ss-storage__catseg",
+                style: `width:${share.toFixed(2)}%;background:${meta.color}`,
+                attrs: { title: `${label} · ${formatBytes(size)}` },
+            }));
+            legend.append(el("span", { class: "ss-storage__legend-item" },
+                el("span", { class: "ss-storage__dot", style: `background:${meta.color}` }),
+                el("span", { text: `${label} ${formatBytes(size)}` })));
+        });
+        categoryBox.append(
+            row({ label: tf("ss.storage.categoryTotal", "合计 {size}", { size: formatBytes(total) }), control: bar, stack: true }),
+            row({ control: legend, stack: true }),
+            note("ss.storage.categoryNote", "按文件类型估算，已排除废纸篓。"),
+        );
+    }
+
+    /** 「优化储存空间」清单：安装器残留 + 缓存日志，勾选后一起移除。 */
+    function renderCleanup() {
+        const inDownloads = (file) => String(file.path).startsWith(downloadsPath + "/");
+        const candidates = lastFiles.filter((file) => (inDownloads(file) && isInstallerLeftover(file)) || isCacheFile(file));
+        if (!candidates.length) {
+            recBox.append(note("ss.storage.cleanEmpty", "没有可清理的安装包或缓存。"));
+            return;
+        }
+        const cleanable = candidates.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+        const selected = new Set(candidates.map((file) => file.path));
+        const list = el("div", { class: "ss-storage__rec" });
+        candidates.slice(0, 30).forEach((file) => {
+            const box = el("input", { attrs: { type: "checkbox", checked: true }, aria: { label: file.name } });
+            box.checked = true;
+            box.addEventListener("change", () => {
+                if (box.checked) selected.add(file.path);
+                else selected.delete(file.path);
+            });
+            list.append(el("label", { class: "ss-storage__check" },
+                box,
+                el("span", { class: "ss-storage__check-path", text: file.path }),
+                el("span", { class: "ss-storage__check-size", text: formatBytes(file.size) })));
+        });
+        const totalLine = el("p", { class: "ss-note", text: tf("ss.storage.cleanTotal", "可释放 {size}", { size: formatBytes(cleanable) }) });
+        const button = el("button", { class: "ss-btn", attrs: { type: "button" }, text: t("ss.storage.cleanButton", "移除所选") });
+        button.addEventListener("click", async () => {
+            const picked = candidates.filter((file) => selected.has(file.path));
+            if (!picked.length) return;
+            const bytes = picked.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+            const confirmed = globalThis.__dialog
+                ? await globalThis.__dialog.confirm(
+                    t("ss.storage.cleanConfirmTitle", "移除所选项目？"),
+                    tf("ss.storage.cleanConfirmBody", "共 {n} 项、{size}，移除后不可恢复。", { n: picked.length, size: formatBytes(bytes) }),
+                )
+                : true;
+            if (!confirmed) return;
+            button.disabled = true;
+            button.textContent = t("ss.storage.cleanBusy", "正在清理…");
+            let freed = 0;
+            for (const file of picked) {
+                const done = await OSFS.remove(file.path, { recursive: true }).then(() => true).catch(() => false);
+                if (done) freed += Number(file.size) || 0;
+            }
+            button.disabled = false;
+            button.textContent = t("ss.storage.cleanButton", "移除所选");
+            log.info("plugin/system-settings", tf("ss.storage.cleanDone", "已释放 {size}", { size: formatBytes(freed) }));
+            await render();
+        });
+        recBox.append(row({
+            label: t("ss.storage.cleanTitle", "优化储存空间"),
+            hint: t("ss.storage.cleanHint", "勾选后一并移除，无法撤销。"),
+            control: el("div", { class: "ss-storage__rec" }, list, totalLine, button),
+            stack: true,
+        }));
+    }
+
+    /** 推荐区：空间不足提示、自动清倒、优化储存空间、iCloud 降级说明、重复下载。 */
+    function renderRecommendations(quota) {
+        recBox.textContent = "";
+        const usage = quota ? Number(quota.usage) || 0 : 0;
+        const capacity = quota ? Number(quota.quota) || 0 : 0;
+        if (capacity > 0 && (capacity - usage) / capacity < LOW_SPACE_RATIO) {
+            recBox.append(row({
+                label: t("ss.storage.lowSpaceTitle", "储存空间不足"),
+                hint: t("ss.storage.lowSpaceNote", "剩余不足 5%，建议先清理大文件。"),
+            }));
+        }
+
+        recBox.append(controlSwitch("trash.autoEmpty", {
+            label: t("ss.storage.autoEmpty", "自动清倒废纸篓"),
+            hint: t("ss.storage.autoEmptyHint", "抹掉超过 30 天的项目"),
+        }));
+        recBox.append(actionRow({
+            label: t("ss.storage.autoEmptyClean", "清理过期项目"),
+            buttonText: t("ss.storage.autoEmptyRun", "立即清倒过期项目"),
+            busyText: t("ss.storage.autoEmptyRunBusy", "正在清倒…"),
+            onAction: async () => {
+                let removed = 0;
+                try {
+                    const result = await pruneOldTrash(AUTO_EMPTY_DAYS);
+                    removed = (result && result.removed) || 0;
+                } catch (err) {
+                    log.info("plugin/system-settings", t("ss.storage.reauth", "需要重新授权"));
+                    return;
+                }
+                if (globalThis.__dialog) {
+                    globalThis.__dialog.alert(
+                        t("ss.storage.autoEmpty", "自动清倒废纸篓"),
+                        removed
+                            ? tf("ss.storage.autoEmptyDone", "已清倒 {n} 项", { n: removed })
+                            : t("ss.storage.autoEmptyNone", "没有超过 30 天的项目"),
+                    );
+                }
+                await render();
+            },
+        }));
+
+        renderCleanup();
+
+        recBox.append(statusRow({
+            label: t("ss.storage.icloud", "储存在 iCloud 中"),
+            value: t("ss.storage.icloudUnavailable", "不可用"),
+        }));
+        recBox.append(note("ss.storage.icloudNote", "当前环境没有云端写入通道，可改为挂载本地文件夹。"));
+
+        const dupGroups = duplicateDownloads(lastFiles, downloadsPath);
+        if (dupGroups.length) {
+            recBox.append(actionRow({
+                label: t("ss.storage.dupTitle", "重复下载"),
+                hint: tf("ss.storage.dupNote", "下载文件夹里有 {n} 组重复文件。", { n: dupGroups.length }),
+                buttonText: t("ss.storage.dupOpen", "打开下载文件夹"),
+                onAction: () => revealPath(downloadsPath),
+            }));
+        }
+    }
+
+    /** 大文件 Top 20：每条都能在访达定位或移入废纸篓。 */
+    function renderLargeFiles() {
+        largeBox.textContent = "";
+        const big = lastFiles
+            .filter((file) => (Number(file.size) || 0) >= LARGE_FILE_MIN)
+            .sort((a, b) => (Number(b.size) || 0) - (Number(a.size) || 0))
+            .slice(0, LARGE_FILE_LIMIT);
+        if (!big.length) {
+            largeBox.append(note("ss.storage.largeEmpty", "没有超过 10 MB 的文件。"));
+            return;
+        }
+        largeBox.append(note("ss.storage.largeHint", "超过 10 MB 的文件。"));
+        big.forEach((file) => {
+            const reveal = el("button", { class: "ss-btn", attrs: { type: "button" }, text: t("ss.storage.reveal", "在访达中显示") });
+            reveal.addEventListener("click", () => revealPath(OSFS.parentOf(file.path)));
+            const trashButton = el("button", { class: "ss-btn ss-btn--danger", attrs: { type: "button" }, text: t("ss.storage.moveToTrash", "移入废纸篓") });
+            trashButton.addEventListener("click", async () => {
+                try {
+                    const result = await moveToTrash(file.path);
+                    if (result && result.ok) {
+                        log.info("plugin/system-settings", t("ss.storage.movedToTrash", "已移入废纸篓"));
+                        await render();
+                        return;
+                    }
+                } catch (err) {
+                    if (err && err.name === "NeedsReauthError") {
+                        log.info("plugin/system-settings", t("ss.storage.reauth", "需要重新授权"));
+                        return;
+                    }
+                }
+                if (globalThis.__dialog) {
+                    globalThis.__dialog.error(t("ss.storage.trashFailed", "移入废纸篓失败"), file.path);
+                }
+            });
+            largeBox.append(row({
+                label: file.name,
+                hint: formatBytes(file.size),
+                control: el("div", { class: "ss-storage__cell" }, reveal, trashButton),
+            }));
+        });
+    }
+
     async function render() {
         await renderRoot();
         await renderPlugins();
-        readQuota();
+        const quota = await readQuota();
+        await collectFiles();
+        renderCategories();
+        renderRecommendations(quota);
+        renderLargeFiles();
     }
 
     root.append(
+        section("ss.storage.categoryTitle", "储存空间分布", categoryBox),
+        section("ss.storage.recTitle", "推荐", recBox),
+        section("ss.storage.largeTitle", "大文件", largeBox),
         section("ss.storage.rootTitle", "根目录", rootBox),
         section("ss.storage.topTitle", "根目录结构", topBox),
         section("ss.storage.quota", "存储配额", quotaBox),

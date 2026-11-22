@@ -333,6 +333,21 @@
         align-items: flex-end;
         justify-content: center;
     }
+    /* 启动台拖入时的让位槽：宽度从 0 撑到图标宽度，相邻图标平滑让开。 */
+    .dock-gap {
+        width: 0;
+        align-self: stretch;
+        pointer-events: none;
+        transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .dock-gap.open {
+        width: var(--dock-size, 50px);
+    }
+    /* 落位中的图标先隐形，等启动台幽灵飞到目标位置后由 completeDockDrop 显形。 */
+    .container.dock-arriving {
+        opacity: 0;
+        pointer-events: none;
+    }
 
     /* 分段之间的分隔线 */
     .dock-sep {
@@ -385,6 +400,40 @@
             border-radius: 12px;
         }
     }
+}
+
+/* 固定动态入口：右下角小圆点说明它来自通知，而不是某个应用。
+   只画一个伪元素，不改变图标盒模型，放大动画照旧。 */
+.dock .container.notif-entry::after {
+    content: "";
+    position: absolute;
+    right: 7%;
+    bottom: 9%;
+    width: 20%;
+    height: 20%;
+    max-width: 10px;
+    max-height: 10px;
+    border-radius: 50%;
+    background: var(--accent, #007aff);
+    box-shadow: 0 0 0 1.5px rgba(246, 246, 246, 0.9);
+    pointer-events: none;
+}
+html[data-theme="dark"] .dock .container.notif-entry::after {
+    box-shadow: 0 0 0 1.5px rgba(30, 30, 34, 0.9);
+}
+/* 动态拖入程序坞：只改绘制属性（box-shadow），
+   不引入 transform / will-change，避免破坏 .dock::before 的亚克力。 */
+.dock.notif-drop-target::before,
+.dock.dock-drop-target::before {
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 0, 122, 255), 0.85),
+        0 -2px 20px rgba(0, 0, 0, 0.3333333333),
+        inset 0 0 2px rgba(26, 26, 26, 0.7333333333);
+}
+html[data-theme="dark"] .dock.notif-drop-target::before,
+html[data-theme="dark"] .dock.dock-drop-target::before {
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 0, 122, 255), 0.9),
+        0 -2px 20px rgba(0, 0, 0, 0.55),
+        inset 0 0 2px rgba(0, 0, 0, 0.6);
 }
 
 /* 程序坞位置：左侧 / 右侧（垂直布局，固定定位贴边） */

@@ -227,12 +227,12 @@ html[data-transparency="off"] .tip::after {
   box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.3333333333), inset 0 0 2px rgba(26, 26, 26, 0.7333333333);
   backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
   -webkit-backdrop-filter: blur(var(--surface-blur-4)) saturate(var(--surface-saturate));
-  background: rgba(246, 246, 246, 0.46);
+  /* 底色与系统右键菜单同源（--acrylic-panel-bg），保证两处亚克力观感一致 */
+  background: var(--acrylic-panel-bg, rgba(246, 246, 246, 0.46));
 }
-/* 暗色：底栏玻璃此前恒为浅白 rgba(246,246,246,.46)，深色桌面下是一块亮斑；
-   阴影同样要从「白内高光」换成深色描边。 */
+/* 暗色：底色随 --acrylic-panel-bg 一起翻转，这里只处理阴影——
+   从「白内高光」换成深色描边。 */
 html[data-theme="dark"] .dock::before {
-  background: rgba(38, 38, 42, 0.52);
   box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.55), inset 0 0 2px rgba(0, 0, 0, 0.6);
 }
 /* 降低透明度：只摘 backdrop-filter 并把面板底色压成实色，
@@ -321,6 +321,21 @@ html[data-theme="dark"] .dock .container img.is-pending {
   align-items: flex-end;
   justify-content: center;
 }
+/* 启动台拖入时的让位槽：宽度从 0 撑到图标宽度，相邻图标平滑让开。 */
+.dock .dock-gap {
+  width: 0;
+  align-self: stretch;
+  pointer-events: none;
+  transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dock .dock-gap.open {
+  width: var(--dock-size, 50px);
+}
+/* 落位中的图标先隐形，等启动台幽灵飞到目标位置后由 completeDockDrop 显形。 */
+.dock .container.dock-arriving {
+  opacity: 0;
+  pointer-events: none;
+}
 /* 分段之间的分隔线 */
 .dock .dock-sep {
   width: 1px;
@@ -375,6 +390,39 @@ html[data-theme="dark"] .dock .container .badge {
 .dock .container.drop-target {
   background: rgba(var(--accent-rgb, 0, 122, 255), 0.18);
   border-radius: 12px;
+}
+/* 固定动态入口：右下角小圆点说明它来自通知，而不是某个应用。
+   只画一个伪元素，不改变图标盒模型，放大动画照旧。 */
+.dock .container.notif-entry::after {
+  content: "";
+  position: absolute;
+  right: 7%;
+  bottom: 9%;
+  width: 20%;
+  height: 20%;
+  max-width: 10px;
+  max-height: 10px;
+  border-radius: 50%;
+  background: var(--accent, #007aff);
+  box-shadow: 0 0 0 1.5px rgba(246, 246, 246, 0.9);
+  pointer-events: none;
+}
+html[data-theme="dark"] .dock .container.notif-entry::after {
+  box-shadow: 0 0 0 1.5px rgba(30, 30, 34, 0.9);
+}
+/* 动态拖入程序坞：只改绘制属性（box-shadow / 背景），
+   不引入 transform / will-change，避免破坏 .dock::before 的亚克力。 */
+.dock.notif-drop-target::before,
+.dock.dock-drop-target::before {
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 0, 122, 255), 0.85),
+    0 -2px 20px rgba(0, 0, 0, 0.3333333333),
+    inset 0 0 2px rgba(26, 26, 26, 0.7333333333);
+}
+html[data-theme="dark"] .dock.notif-drop-target::before,
+html[data-theme="dark"] .dock.dock-drop-target::before {
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 0, 122, 255), 0.9),
+    0 -2px 20px rgba(0, 0, 0, 0.55),
+    inset 0 0 2px rgba(0, 0, 0, 0.6);
 }
 /* 程序坞位置：左侧 / 右侧（垂直布局，固定定位贴边） */
 .dockcontainer.pos-left,
@@ -533,6 +581,15 @@ html[data-transparency="off"] .dock-stack {
    程序指示灯」这个开关在暗色下看不出效果，这里补亮一档。 */
 html[data-theme="dark"] .dock .container .light.on {
   background: rgba(255, 255, 255, 0.62);
+}
+/* 右侧程序坞：运行指示灯从图标下方挪到图标右侧（贴屏幕边缘的一侧留白，
+   圆点朝屏幕内侧）。只改右侧；左侧仍是图标下方。 */
+.dock.pos-right .container {
+  flex-direction: row;
+}
+.dock.pos-right .container .light {
+  margin-top: 0;
+  margin-left: 3px;
 }
 /* 指针拖拽：原位图标降到半透明，影子在 body 上跟随指针 */
 .dock .container.dock-dragging {

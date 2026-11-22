@@ -18,6 +18,10 @@
 import { updateMenu } from "./finderbar.js";
 import { i18n } from "./i18n.js";
 import { create, bringToFront, closeWindow, isMinimized, isWindowElement } from "./window.js";
+import { settings } from "./settings.js";
+import { openAppWindowsStrip, closeStrip, isStripOpen } from "./wm/app-windows.js";
+import { DOCK_WINDOWS_PRESS_MS } from "./wm/frame.js";
+import { stateOf } from "./wm/stack.js";
 import { getTrashKey, getTrashIconForFullness } from "./trashIcon.js";
 import { createContextMenu } from "./ui/contextMenu.js";
 import { isNativeContextMenuEnabled } from "./contextMenuSettings.js";
@@ -44,6 +48,14 @@ import {
 } from "./plugin-manager.js";
 import { displayNameFor } from "./app-registry.js";
 import { DOWNLOAD_ICON, legacyAppHtml } from "./paths.js";
+import {
+    MAX_PINS,
+    NOTIF_MIME,
+    add as addPinnedNotification,
+    list as listPinnedNotifications,
+    remove as removePinnedNotification,
+    subscribe as subscribePinnedNotifications,
+} from "./notifications/pins.js";
 const tip = document.querySelector("body > div.tip");
 if (tip) {
     // 拖出被拒等即时提示只出现 1.4s，读屏软件默认会漏掉，需要 live region。
@@ -171,12 +183,29 @@ const mkBox = (id, cls) => {
     return el;
 };
 const favoritesEl = mkBox("dock-favorites", "dock-section");
+// 固定动态区：从通知中心拖入的通知入口（数据层见 notifications/pins.js）
+const notifEl = mkBox("dock-notifs", "dock-section");
 const runningEl = mkBox("dock-running", "dock-section");
 const recentEl = mkBox("dock-recent", "dock-section");
+// F-16：最小化窗口独立磁贴区（分隔条右侧、废纸篓左侧；dock.minimizeStyle="tile" 时启用）
+const minimizedEl = mkBox("dock-minimized", "dock-section");
 const trashEl = mkBox("dock-trash", "dock-section");
+const sepNotif = mkBox("dock-sep-notif", "dock-sep");
 const sepRunning = mkBox("dock-sep-running", "dock-sep");
 const sepRecent = mkBox("dock-sep-recent", "dock-sep");
+const sepMinimized = mkBox("dock-sep-minimized", "dock-sep");
 const sepTrash = mkBox("dock-sep-trash", "dock-sep");
+
+/**
+ * F-16：最小化落点。「app」= 吸入应用图标（出厂默认）；「tile」= 程序坞右侧独立磁贴。
+ * 磁贴画的是与应用图标同款的图标，和收藏区并排时会被看成「同一个应用的两枚图标」，
+ * 最小化动画也就飞到了那个重复图标上 —— 所以出厂落点是吸入带指示灯的应用图标。
+ * 定义登记在 settings-definitions.js（slot: dock-minimize-style，与 dock.position 等同款），
+ * 设置面板经 dock-minimize-style-change 事件驱动本模块。
+ */
+const MINIMIZE_STYLES = ["app", "tile"];
+// 当前生效的最小化落点：slot 与设置中枢同步（定义见 settings-definitions.js）
+let minimizeStyle = readEnum(localStorage.getItem("dock-minimize-style"), MINIMIZE_STYLES, "app");
 
 let autoHide = localStorage.getItem("dock-autohide") === "on";
 // 放大默认开启（符合用户预期：鼠标悬浮程序坞即放大）；仅当存储显式为 "off" 时关闭
@@ -206,6 +235,9 @@ let imgs = [];
 // 图标容器缓存：应用身份 → .container。各区渲染只搬动同一批节点，
 // 不重建 <img>，已解码的图标不会因为一次对账重新加载、闪回占位图。
 const iconNodes = new Map();
+// 固定动态容器缓存：通知 id → .container.notif-entry。与 iconNodes 分开，
+// 避免通知 id 与应用身份名在同一个 Map 里撞键，也不让运行区对账误碰它们。
+const notifNodes = new Map();
 // 运行区顺序（未固定的运行应用，按首次出现顺序追加）
 let runningOrder = [];
 // 程序坞拖拽控制器句柄
@@ -482,6 +514,12 @@ function openApp(img, light, app, bounce = true) {
         else window.__launchpad.open(light);
         return;
     }
+    // F-10：调度中心不是可启动应用，点它 = 开关窗口总览（与启动台同款特判，
+    // window.__wmOverview 由 window-manager.js 挂载）。
+    if (img.alt === "调度中心" && window.__wmOverview) {
+        window.__wmOverview.toggle();
+        return;
+    }
     // 启动台现在把程序坞抬到自己的上面（原版是「隐藏菜单栏、保留程序坞」）。
     // 从程序坞点其它应用时，先让启动台退出，否则窗口会开在它背后、看起来点了没反应。
     if (img.alt !== "启动台" && window.__launchpad && window.__launchpad.isOpen()) {
@@ -495,7 +533,9 @@ function openApp(img, light, app, bounce = true) {
     }
     if (appStatus[img.alt] == true) {
         if (!doClose.includes(img.alt)) {
-            const win = document.getElementById(img.alt);
+            // F-15：多实例应用（访达#2、notepad#3…）按 z 序挑最顶层的前置，
+            // 不再只认基名首个窗口 —— 与 macOS「点 Dock 图标前置最近窗口」同口径。
+            const win = topWindowOfApp(img.alt);
             if (win && !win.classList.contains("closing")) {
                 // 窗口已在：启动期结束，顺手清掉可能残留的启动弹跳；
                 // 再给一次单次弹跳作点击确认（不再循环）。
@@ -554,9 +594,119 @@ function startLaunch(img, light, app, bounce = true) {
     launchApp(img, light, app);
 }
 
+// ===== F-08 / F-15 / F-16 的窗口归属判定与磁贴渲染 =====
+
+/** 窗口 id 去掉多实例后缀（NW-7：基名 = Dock 图标的身份键）。 */
+function baseWindowIdOf(el) {
+    return String(el.id || "").replace(/#\d+$/, "");
+}
+
+/**
+ * F-15：该应用当前最顶层（z 序最高）的窗口。多实例按顶窗前置，
+ * 归属判定与 syncRunningApps 同口径：基名相等或 data-app-id 相等。
+ * @param {string} baseName 应用身份名（Dock 图标的 alt）
+ * @returns {HTMLElement|null}
+ */
+function topWindowOfApp(baseName) {
+    let best = null;
+    let bestZ = -Infinity;
+    document.querySelectorAll("body > .window").forEach((w) => {
+        if (!isWindowElement(w) || w.classList.contains("closing")) return;
+        const same = baseWindowIdOf(w) === baseName || (w.dataset && w.dataset.appId === baseName);
+        if (!same) return;
+        const z = parseInt(w.style.zIndex || "0", 10) || 0;
+        if (z >= bestZ) { bestZ = z; best = w; }
+    });
+    return best;
+}
+
+/** F-16：当前所有最小化中的顶层普通窗口（_minimized 是 lifecycle 的唯一事实源）。 */
+function minimizedWindows() {
+    return Array.from(document.querySelectorAll("body > .window")).filter((w) => {
+        if (!isWindowElement(w) || !w.isConnected) return false;
+        if (w._minimized !== true) return false;
+        if (w.classList.contains("closing")) return false;
+        const st = stateOf(w);
+        return !st.role || st.role === "normal"; // 子窗/模态不单独立磁贴
+    });
+}
+
+/** F-16：按窗口 id 找磁贴元素（genie 落点用）。 */
+function tileForWindow(winEl) {
+    if (!winEl || !winEl.id) return null;
+    return minimizedEl.querySelector(`.dock-min-tile[data-win-id="${cssEscape(winEl.id)}"]`);
+}
+
+/**
+ * F-16：重画最小化磁贴区。任何 window:minimize / window:restore / window:close /
+ * window:open 都会触发一次（幂等重建，量级=最小化窗口数，开销可忽略）。
+ * dock.minimizeStyle="app" 时整区隐藏（旧行为：吸进应用图标）。
+ */
+function renderMinimizedTiles() {
+    const wins = minimizedWindows();
+    minimizedEl.replaceChildren();
+    if (minimizeStyle !== "tile" || !wins.length) {
+        minimizedEl.style.display = "none";
+        refreshSeparators();
+        return;
+    }
+    minimizedEl.style.display = "";
+    wins.forEach((w) => {
+        const appName = baseWindowIdOf(w);
+        const st = stateOf(w);
+        const icon = getDockIconImg(appName);
+        const tile = document.createElement("div");
+        tile.className = "container dock-min-tile";
+        tile.dataset.winId = w.id;
+        tile.dataset.app = appName;
+        tile.setAttribute("tabindex", "0");
+        tile.setAttribute("role", "button");
+        const label = st.name || appName;
+        tile.setAttribute("aria-label", `${label}（最小化，点按还原）`);
+        const img = document.createElement("img");
+        img.src = (icon && icon.src) || GENERIC_APP_ICON;
+        img.alt = appName;
+        img.draggable = false;
+        const cap = document.createElement("span");
+        cap.className = "dock-min-cap";
+        cap.textContent = label;
+        tile.append(img, cap);
+        tile.addEventListener("click", () => {
+            restoreFromDock(w, appName, tile);
+        });
+        tile.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                restoreFromDock(w, appName, tile);
+            }
+        });
+        tile.addEventListener("contextmenu", (e) => {
+            if (isNativeContextMenuEnabled()) return;
+            e.preventDefault();
+            e.stopPropagation();
+            createContextMenu(e.clientX, e.clientY, [
+                { label: "还原", action: () => restoreFromDock(w, appName, tile) },
+                { label: "关闭", action: () => closeWindow(w) },
+            ]);
+        });
+        minimizedEl.appendChild(tile);
+    });
+    refreshSeparators();
+    if (typeof requestDockFrame === "function") requestDockFrame();
+}
+
 // 真正创建并启动应用：写状态、点亮指示灯、刷新菜单与运行区（动画分支与即时分支共用）
 function launchApp(img, light, app) {
     const altName = img.alt;
+    // 站点型应用（manifest.link）：打开即跳宿主浏览器，没有窗口。
+    // 不能点亮指示灯或写入运行区，否则会出现「有小圆点没有界面」；顶栏菜单也不该切过去。
+    const linkRec = resolveAppRecord(app);
+    if (linkRec && linkRec.manifest && typeof linkRec.manifest.link === "string" && linkRec.manifest.link) {
+        openPluginApp(app, { light: null, centered: false }).catch((err) => {
+            console.warn("[dock] 打开站点型应用失败：", app, err);
+        });
+        return;
+    }
     // 同一应用的启动只能有一份在途：重复点击已经由上面的分支重播弹跳，不再排新的加载。
     if (launchPending.has(altName)) return;
     markLaunchPending(altName);
@@ -940,8 +1090,22 @@ function makeMenuContext(app, img, light) {
 
 // 绑定应用图标的键盘激活与右键菜单；鼠标左键激活由 dock/drag.js 统一处理。
 function bindClickEvent(img, light, app, container) {
+    // F-08：长按 / ⌥点按弹出应用窗口缩略条时，抑制紧随其后的一次「松开即打开」，
+    // 否则缩略条会和应用启动同时发生（dock/drag.js 在抬起时调 _dockOpen）。
+    let suppressOpen = false;
     const open = () => {
         if (isDragging) return;
+        if (suppressOpen) { suppressOpen = false; return; }
+        // 缩略条开着时点任意 Dock 图标先收条：app-windows 的点外关闭放过 #dock，
+        // Dock 内的收条由这里统一负责。
+        if (isStripOpen()) closeStrip();
+        // F-08：⌥点按在按下时由 bindAppWindowsEntry 登记，这里消费 —— 打开缩略条
+        // 而不是启动应用。drag.js 的 pointerup 挂在 window 捕获阶段，比条入口的
+        // 冒泡 handler 先到，只能拦在 open() 这个唯一咽喉位。
+        if (iconAltPress && iconAltPress.container === container) {
+            iconAltPress = null;
+            if (openAppWindowsStrip(app, container, img.src)) return;
+        }
         if (img.dataset.folder) {
             openStack(app, img);
             return;
@@ -950,6 +1114,7 @@ function bindClickEvent(img, light, app, container) {
     };
     // 供 dock/drag.js 在「按下 → 松开且未拖动」时调用，避免它自己再理解打开逻辑。
     container._dockOpen = open;
+    bindAppWindowsEntry(container, img, app, () => { suppressOpen = true; });
     // 键盘通路：挂了 tabindex 不等于能激活。Chrome 不会给非 <button> 元素
     // 自动合成 click，所以 Enter / Space 要自己接（Space 还要拦住页面滚动）。
     container.addEventListener("keydown", (e) => {
@@ -965,6 +1130,64 @@ function bindClickEvent(img, light, app, container) {
         hideTip();
         createContextMenu(e.clientX, e.clientY, buildAppMenuItems(app, makeMenuContext(app, img, light)));
     });
+}
+
+// ===== F-08：Dock 图标「应用窗口缩略条」入口 =====
+
+/**
+ * ⌥按下的登记位：{ container, app, img }。bindAppWindowsEntry 的 pointerup 挂在
+ * 冒泡阶段，而 dock/drag.js 的激活判定在 window 捕获阶段先到 —— 所以「⌥点按开条」
+ * 由 bindClickEvent 的 open()（捕获先经的唯一咽喉）消费，这里只负责登记与清理。
+ */
+let iconAltPress = null;
+
+/**
+ * ⌥点按 / 长按图标 → 弹出该应用全部窗口的缩略条（wm/app-windows.js）。
+ * - 长按 DOCK_WINDOWS_PRESS_MS（常量在 wm/frame.js，与绿键悬停时长同一常量区）；
+ *   期间移动超过 8px 视为拖动排序，取消计时，不给排序抢戏；
+ * - ⌥点按：按下登记 iconAltPress，drag.js 捕获阶段的 onActivate → open() 里消费；
+ * - 真正打开了缩略条才抑制本次的「松开即打开」（onSuppress 由 bindClickEvent 注入）；
+ * - 该应用没有窗口时什么都不弹（macOS 对非运行应用同样无反应），正常点按路径不受影响。
+ * @param {HTMLElement} container Dock 图标容器
+ * @param {HTMLImageElement} img 图标（src 给无快照窗口当占位）
+ * @param {string} app 应用身份名
+ * @param {() => void} onSuppress 抑制随后一次 _dockOpen 的回调
+ */
+function bindAppWindowsEntry(container, img, app, onSuppress) {
+    let pressTimer = null;
+    let pressed = null;
+    const clear = () => {
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    };
+    const reset = () => {
+        clear();
+        pressed = null;
+        if (iconAltPress && iconAltPress.container === container) iconAltPress = null;
+    };
+    container.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        if (isDragging) return;
+        if (img.dataset && img.dataset.folder) return; // 堆叠文件夹走自己的打开逻辑
+        if (app === TRASH) return;                     // 废纸篓不是应用
+        pressed = { x: e.clientX, y: e.clientY, alt: e.altKey };
+        if (e.altKey) iconAltPress = { container, app, img };
+        if (DOCK_WINDOWS_PRESS_MS > 0) {
+            pressTimer = setTimeout(() => {
+                pressTimer = null;
+                // 长按先开条：随后的 onActivate → open() 被 suppressOpen 拦下一次「打开」
+                if (openAppWindowsStrip(app, container, img.src)) onSuppress();
+            }, DOCK_WINDOWS_PRESS_MS);
+        }
+    });
+    container.addEventListener("pointermove", (e) => {
+        if (!pressed) return;
+        if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 8) reset();
+    });
+    // ⌥点按的条已在 open()（捕获阶段）开过；长按的条由计时器开过并置 suppressOpen。
+    // 抬起只剩清理职责（清计时器与 Alt 登记）。
+    container.addEventListener("pointerup", reset);
+    container.addEventListener("pointercancel", reset);
+    container.addEventListener("pointerleave", reset);
 }
 
 // 拖文件到图标上打开：仅接受来自操作系统/桌面的真实文件（Files 类型）拖放。
@@ -1113,7 +1336,7 @@ function checkTipHit() {
     tipCheckRafId = null;
     // 拖出被拒绝时显示的说明气泡有固定停留时间，不被下一次鼠标移动立刻顶掉。
     if (transientTipUntil && Date.now() < transientTipUntil) return;
-    if (isDragging || !tip || dock.classList.contains("hidden")) { hideTip(); return; }
+    if (isDragging || lpOverDock || !tip || dock.classList.contains("hidden")) { hideTip(); return; }
     // 右键菜单打开期间不显示 Dock 悬浮提示：菜单可能盖住程序坞，几何命中会
     // 把「指针在菜单上」误判成「悬停在图标上」，提示条（9999）会压在菜单（9620）上。
     if (document.querySelector("div.menu.contextmenu")) { hideTip(); return; }
@@ -1139,12 +1362,14 @@ function checkTipHit() {
         // 文本变化会使 tip 宽度变化，故每次都重定位一次，避免水平位置错位。
         if (currentImg !== hit) {
             currentImg = hit;
-            tip.textContent = displayNameFor(hit.alt);   // img.alt 是身份，提示显示当前语言名
+            // 固定动态没有应用身份：提示文本取 data-dock-tip（动态标题），
+            // 也不再对通知标题做应用预取，否则会去解析一个不存在的应用。
+            tip.textContent = hit.dataset.dockTip || displayNameFor(hit.alt);   // alt 是身份，提示显示当前语言名
             tip.style.display = "block";
             tip.style.visibility = "visible";
             tip.style.opacity = "";
             // 悬停即预取该应用的 HTML / CSS / 入口脚本，点击时启动更快。
-            prefetchApp(hit.alt);
+            if (!hit.dataset.dockTip) prefetchApp(hit.alt);
         }
         updateTipPosition();
     } else {
@@ -1181,6 +1406,212 @@ export function addToDock(app) {
 function cssEscape(s) {
     if (window.CSS && CSS.escape) return CSS.escape(s);
     return String(s).replace(/["\\]/g, "\\$&");
+}
+
+// ===== 启动台应用拖入程序坞 =====
+// 启动台是 Pointer 拖拽（没有 HTML5 drag），所以这里不挂 drop 事件，而是暴露几何命中 +
+// 预览槽 + 落位接口：启动台每帧告知指针位置，Dock 负责开缝、高亮和最终写入收藏区。
+let lpOverDock = false;
+let lpDropName = "";
+let lpGapEl = null;
+let lpArrivingApp = "";
+
+/** 指针是否在程序坞面板内；自动隐藏时不接受投放。 */
+export function isPointInDock(x, y) {
+    if (dock.classList.contains("hidden")) return false;
+    const r = dock.getBoundingClientRect();
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) return false;
+    // 废纸篓是删除目标，不是固定目标：拖到它上面不当作投放收藏区。
+    const t = trashEl.getBoundingClientRect();
+    if (x >= t.left && x <= t.right && y >= t.top && y <= t.bottom) return false;
+    return true;
+}
+
+function favoriteCells() {
+    return Array.from(favoritesEl.children).filter(
+        (el) => el.classList.contains("container") && el.dataset.app
+    );
+}
+
+/** 按指针横坐标换算收藏区插入位（favorites 下标，含被隐藏的条目）。 */
+function favoriteIndexAt(x) {
+    for (const el of favoriteCells()) {
+        const r = el.getBoundingClientRect();
+        if (x < r.left + r.width / 2) {
+            const idx = favorites.indexOf(el.dataset.app);
+            return idx < 0 ? favorites.length : idx;
+        }
+    }
+    return favorites.length;
+}
+
+/** 收藏区最靠后的受保护项之后才是可插入区：访达 / 启动台不能被挤到后面。 */
+function clampFavoriteIndex(index) {
+    let min = 0;
+    DOCK_PROTECTED.forEach((app) => {
+        const i = favorites.indexOf(app);
+        if (i >= 0) min = Math.max(min, i + 1);
+    });
+    return Math.max(min, Math.min(index, favorites.length));
+}
+
+function favoriteCellForIndex(index) {
+    const at = clampFavoriteIndex(index);
+    for (const el of favoriteCells()) {
+        const idx = favorites.indexOf(el.dataset.app);
+        if (idx >= at) return el;
+    }
+    return null;
+}
+
+/** 在收藏区插一个 0 宽占位槽，下一帧撑到图标宽度，形成「让位开缝」。 */
+function placeLpGap(index) {
+    if (!favoritesEl.isConnected) return;
+    if (!lpGapEl) {
+        // 上一次预览的回缩动画可能还没走完：先清掉遗留槽，避免同时出现两个缝。
+        favoritesEl.querySelectorAll(".dock-gap").forEach((el) => el.remove());
+        lpGapEl = document.createElement("div");
+        lpGapEl.className = "dock-gap";
+        lpGapEl.setAttribute("aria-hidden", "true");
+    }
+    const gap = lpGapEl;
+    const target = favoriteCellForIndex(index);
+    if (gap.parentElement !== favoritesEl || gap.nextElementSibling !== target) {
+        favoritesEl.insertBefore(gap, target);
+    }
+    if (!gap.classList.contains("open")) {
+        requestAnimationFrame(() => {
+            if (gap.isConnected) gap.classList.add("open");
+        });
+    }
+}
+
+/** 收起占位槽；immediate = 落位时立刻腾出真实位置，不做回缩动画。 */
+function removeLpGap(immediate) {
+    const gap = lpGapEl;
+    lpGapEl = null;
+    if (!gap) return;
+    gap.classList.remove("open");
+    if (immediate) { gap.remove(); return; }
+    setTimeout(() => gap.remove(), 200);
+}
+
+/**
+ * 拖拽经过程序坞：高亮底栏并为可投放的应用开缝。
+ * @param {string} name 应用身份名
+ * @param {string} kind 启动台条目类型（app / folder）
+ * @param {number} x 指针横坐标
+ * @param {number} y 指针纵坐标
+ * @returns {{ok: boolean, reason?: string, index?: number}}
+ */
+export function previewDockDrop(name, kind, x, y) {
+    if (!isPointInDock(x, y)) {
+        cancelDockPreview();
+        return { ok: false, reason: "outside" };
+    }
+    lpOverDock = true;
+    dock.classList.add("dock-drop-target");
+    hideTip();
+    if (kind !== "app") {
+        removeLpGap();
+        lpDropName = "";
+        return { ok: false, reason: "unsupported" };
+    }
+    if (favorites.includes(name)) {
+        removeLpGap();
+        lpDropName = "";
+        return { ok: false, reason: "duplicate" };
+    }
+    lpDropName = name;
+    const index = favoriteIndexAt(x);
+    placeLpGap(index);
+    return { ok: true, index };
+}
+
+/** 指针继续移动时重算插入位（缝跟着走）。 */
+export function updateDockPreview(x, y) {
+    if (!lpOverDock) return;
+    if (!isPointInDock(x, y)) {
+        cancelDockPreview();
+        return;
+    }
+    if (lpDropName) placeLpGap(favoriteIndexAt(x));
+}
+
+/** 取消预览：收高亮和占位槽，不写入任何数据。 */
+export function cancelDockPreview() {
+    lpOverDock = false;
+    lpDropName = "";
+    dock.classList.remove("dock-drop-target");
+    removeLpGap(false);
+}
+
+/**
+ * 松手落位：写入收藏区并持久化，返回目标图标的屏幕矩形，供启动台把幽灵飞进去。
+ * 失败只在程序坞气泡里说明原因，不抛错、不影响启动台原有排序逻辑。
+ * @param {string} name 应用身份名
+ * @param {string} kind 条目类型
+ * @param {number} x 指针横坐标
+ * @param {number} y 指针纵坐标
+ * @returns {{ok: boolean, reason?: string, target?: DOMRect}}
+ */
+export function commitDockDrop(name, kind, x, y) {
+    if (!lpOverDock && !isPointInDock(x, y)) {
+        cancelDockPreview();
+        return { ok: false, reason: "outside" };
+    }
+    const index = favoriteIndexAt(x);
+    cancelDockPreview();
+
+    if (kind !== "app") {
+        showTransientTip(i18n.t("dock.appUnsupported", "此项目不能固定到程序坞"), x, y);
+        return { ok: false, reason: "unsupported" };
+    }
+    if (favorites.includes(name)) {
+        showTransientTip(
+            i18n.t("dock.appDuplicate", "“{name}”已在程序坞中").replace("{name}", displayNameFor(name)),
+            x, y
+        );
+        return { ok: false, reason: "duplicate" };
+    }
+
+    const at = clampFavoriteIndex(index);
+    // 与 keepInDock 一致：固定进收藏区后，运行区不再重复显示同一应用。
+    const previousRunning = runningOrder;
+    runningOrder = runningOrder.filter((n) => n !== name);
+    favorites.splice(at, 0, name);
+    if (!saveFavorites()) {
+        favorites.splice(at, 1);
+        runningOrder = previousRunning;
+        showTransientTip(i18n.t("dock.appStorage", "保存失败，应用未能固定"), x, y);
+        logDock("启动台拖入程序坞写入存储失败", { app: name });
+        return { ok: false, reason: "storage" };
+    }
+
+    // 真实图标先渲染但隐形，等幽灵飞到目标位置后再显形并弹跳。
+    lpArrivingApp = name;
+    renderAll();
+    const container = iconNodes.get(name);
+    if (container && container.isConnected) container.classList.add("dock-arriving");
+    let target = container ? container.getBoundingClientRect() : null;
+    if (!target || !target.width) {
+        const img = container ? container.querySelector("img") : null;
+        target = img ? img.getBoundingClientRect() : null;
+    }
+    logDock("启动台应用已固定到程序坞", { app: name, index: at });
+    return { ok: true, target };
+}
+
+/** 幽灵落定：撤掉隐形标记并播放一次程序坞弹跳。 */
+export function completeDockDrop(name) {
+    const app = name || lpArrivingApp;
+    lpArrivingApp = "";
+    if (!app) return;
+    const container = iconNodes.get(app);
+    if (!container || !container.isConnected) return;
+    container.classList.remove("dock-arriving");
+    const img = container.querySelector("img");
+    if (img) playDockBounce(container, img, false);
 }
 
 // ===== 收藏项顺序读写 =====
@@ -1297,6 +1728,14 @@ function renderAll() {
 
     // 被禁用的应用不出现在程序坞：收藏仍保留在原顺序里（不删数据），重新启用后回到原位。
     syncSection(favoritesEl, favorites.filter((name) => !isDisabledApp(name)).map(ensureIcon));
+    // 启动台投放的图标在幽灵飞入前保持隐形，落定由 completeDockDrop 收尾。
+    if (lpArrivingApp) {
+        const arriving = iconNodes.get(lpArrivingApp);
+        if (arriving && arriving.isConnected) arriving.classList.add("dock-arriving");
+    }
+
+    // 固定动态：顺序即固定顺序，容器按 id 缓存复用。
+    syncSection(notifEl, listPinnedNotifications().map(ensureNotifIcon));
 
     const runningSet = new Set(running);
     syncSection(runningEl, running.map(ensureIcon));
@@ -1314,6 +1753,7 @@ function renderAll() {
     refreshSeparators();
     refreshIconList();
     pruneIconNodes();
+    pruneNotifNodes();
 }
 
 /** 合帧渲染：一次事件循环内的多次数据变化只重排一次 DOM。 */
@@ -1454,21 +1894,263 @@ function renderRecents() {
 // 根据各区是否有内容刷新分隔线显隐（右键菜单的分隔符清理在 ui/contextMenu.js，
 // 这里只负责程序坞分段之间的视觉分隔线）。
 function refreshSeparators() {
+    sepNotif.style.display = notifEl.children.length ? "" : "none";
     sepRunning.style.display = runningEl.children.length ? "" : "none";
     sepRecent.style.display = (showRecentApps && recentEl.children.length) ? "" : "none";
+    // F-16：最小化磁贴区的分隔线跟着磁贴区走（磁贴区自己控制自己的显隐）
+    sepMinimized.style.display = minimizedEl.children.length && minimizedEl.style.display !== "none" ? "" : "none";
     // 废纸篓始终存在；分隔线也始终显示（macOS 同样用一条分隔线把废纸篓隔开）。
     sepTrash.style.display = trashEl.children.length ? "" : "none";
+}
+
+// ===== 固定动态（从通知中心拖到程序坞的条目） =====
+
+/** 该拖拽是否携带「动态」载荷（文件拖放用的是 Files，两者互不干扰）。 */
+function isNotificationDrag(e) {
+    const dt = e.dataTransfer;
+    if (!dt) return false;
+    return Array.from(dt.types || []).includes(NOTIF_MIME);
+}
+
+/** 解析拖拽载荷；任何异常都返回 null，由调用方给出友好提示。 */
+function readNotificationPayload(dt) {
+    let raw;
+    try {
+        raw = dt.getData(NOTIF_MIME);
+    } catch (err) {
+        return null;
+    }
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (err) {
+        logDock("动态拖拽载荷不是合法 JSON，已忽略：", err);
+        return null;
+    }
+}
+
+/**
+ * 取（必要时创建）固定动态的 Dock 容器。缓存键是通知 id，重复拖入时复用同一节点。
+ * @param {object} item pins.js 的固定条目
+ * @returns {HTMLElement}
+ */
+function ensureNotifIcon(item) {
+    let container = notifNodes.get(item.id);
+    if (!container) {
+        container = makeNotifContainer(item);
+        notifNodes.set(item.id, container);
+        return container;
+    }
+    // 同一条动态的标题 / 图标可能被再次固定时更新过：就地校准，不重建节点。
+    if (container.dataset.notifTitle !== item.title) {
+        container.dataset.notifTitle = item.title;
+        container.setAttribute("aria-label", item.title);
+        container.title = item.title;
+        const img = container.querySelector("img");
+        if (img) {
+            img.alt = item.title;
+            img.dataset.dockTip = item.title;
+        }
+    }
+    if (container.dataset.notifIcon !== (item.icon || "")) {
+        container.dataset.notifIcon = item.icon || "";
+        const img = container.querySelector("img");
+        if (img) setNotifIconSrc(img, item.icon);
+    }
+    return container;
+}
+
+/** 设置固定动态图标：空路径 / 加载失败都退回通用应用图标。 */
+function setNotifIconSrc(img, icon) {
+    img.dataset.notifFallback = "";
+    img.src = icon || GENERIC_APP_ICON;
+}
+
+function makeNotifContainer(item) {
+    const container = document.createElement("div");
+    container.className = "container notif-entry";
+    // 不写 data-app：dock/drag.js 只接管 [data-app]，固定动态不参与应用排序。
+    container.dataset.notifId = item.id;
+    container.dataset.notifTitle = item.title;
+    container.dataset.notifIcon = item.icon || "";
+    container.setAttribute("role", "button");
+    container.setAttribute("tabindex", "0");
+    container.setAttribute("aria-label", item.title);
+    container.title = item.title;
+
+    const img = document.createElement("img");
+    img.alt = item.title;
+    img.draggable = false;
+    img.loading = "eager";
+    img.decoding = "async";
+    // 悬浮提示走动态标题（checkTipHit 读 data-dock-tip），不再当成应用名去预取。
+    img.dataset.dockTip = item.title;
+    img.addEventListener("error", () => {
+        if (img.dataset.notifFallback === "1") return;
+        img.dataset.notifFallback = "1";
+        img.src = GENERIC_APP_ICON;
+    });
+    setNotifIconSrc(img, item.icon);
+    container.appendChild(img);
+
+    const activate = () => openPinnedNotification(item.id, container);
+    container.addEventListener("click", activate);
+    container.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+            e.preventDefault();
+            activate();
+        }
+    });
+    container.addEventListener("contextmenu", (e) => {
+        if (isNativeContextMenuEnabled()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        hideTip();
+        createContextMenu(e.clientX, e.clientY, [
+            {
+                label: i18n.t("dock.notifOpenCenter", "在通知中心中显示"),
+                action: () => openPinnedNotification(item.id, container),
+            },
+            { type: "separator" },
+            {
+                label: i18n.t("dock.notifRemove", "从程序坞移除"),
+                action: () => { removePinnedNotification(item.id); },
+            },
+        ]);
+    });
+    return container;
+}
+
+/** 剪掉已取消固定、且已脱离文档的容器，避免缓存随固定历史增长。 */
+function pruneNotifNodes() {
+    const keep = new Set(listPinnedNotifications().map((item) => item.id));
+    notifNodes.forEach((container, id) => {
+        if (keep.has(id)) return;
+        if (container.isConnected) return;
+        notifNodes.delete(id);
+    });
+}
+
+/**
+ * 点击固定动态：打开通知中心并定位到该条通知。
+ * 通知可能已被清理（50 条 / 7 天剪枝），此时给出友好提示，不抛错。
+ * @param {string} id 通知 id
+ * @param {HTMLElement} [container] 触发入口（用于提示定位）
+ */
+async function openPinnedNotification(id, container) {
+    let found = false;
+    try {
+        const mod = await import("./ui/notification-center.js");
+        found = mod.revealNotification(id);
+    } catch (err) {
+        logDock("打开固定动态失败：", err);
+    }
+    if (found) return;
+    const rect = container && container.isConnected ? container.getBoundingClientRect() : null;
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top : window.innerHeight - 90;
+    showTransientTip(i18n.t("dock.notifMissing", "这条动态已不存在"), x, y);
+}
+
+/** 一次拖拽会话的进出计数：dragleave 会因经过子元素触发，靠计数避免高亮闪烁。 */
+let notifDropDepth = 0;
+
+function setNotifDropHighlight(on) {
+    dock.classList.toggle("notif-drop-target", on);
+}
+
+function resetNotifDrop() {
+    notifDropDepth = 0;
+    setNotifDropHighlight(false);
+}
+
+/**
+ * Dock 作为动态的放置目标：只认 NOTIF_MIME 载荷，拖入高亮、离开取消。
+ * 文件拖放仍走 bindDropOpen，两条路径互不影响。
+ */
+function bindNotificationDrop() {
+    dock.addEventListener("dragenter", (e) => {
+        if (!isNotificationDrag(e)) return;
+        notifDropDepth += 1;
+        setNotifDropHighlight(true);
+    });
+    dock.addEventListener("dragover", (e) => {
+        if (!isNotificationDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        setNotifDropHighlight(true);
+    });
+    dock.addEventListener("dragleave", (e) => {
+        if (!isNotificationDrag(e)) return;
+        notifDropDepth = Math.max(0, notifDropDepth - 1);
+        if (!notifDropDepth) setNotifDropHighlight(false);
+    });
+    dock.addEventListener("drop", (e) => {
+        if (!isNotificationDrag(e)) return;
+        e.preventDefault();
+        resetNotifDrop();
+        handleNotificationDrop(e);
+    });
+    // 在窗口外松手不会触发 dock 的 drop，document 级 dragend 负责收掉高亮。
+    document.addEventListener("dragend", resetNotifDrop);
+}
+
+/** 处理落点：去重 / 满额 / 类型不支持 / 载荷异常都给出对应提示。 */
+function handleNotificationDrop(e) {
+    const payload = readNotificationPayload(e.dataTransfer);
+    if (!payload) {
+        showTransientTip(i18n.t("dock.notifInvalid", "无法读取这条动态，请重试"), e.clientX, e.clientY);
+        return;
+    }
+    const result = addPinnedNotification(payload);
+    if (result.ok) {
+        const title = result.item ? result.item.title : payload.title;
+        showTransientTip(
+            i18n.t("dock.notifAdded", "已添加“{title}”到程序坞").replace("{title}", title),
+            e.clientX, e.clientY
+        );
+        // 数据层已派发变化事件，订阅方会合帧重排；这里不再手动改 DOM。
+        return;
+    }
+    const title = typeof payload.title === "string" ? payload.title : "";
+    let text;
+    switch (result.reason) {
+        case "duplicate":
+            text = i18n.t("dock.notifDuplicate", "“{title}”已在程序坞中").replace("{title}", title);
+            break;
+        case "full":
+            text = i18n.t("dock.notifFull", "程序坞已满，最多固定 {n} 条动态").replace("{n}", String(MAX_PINS));
+            logDock("固定动态被拒绝：程序坞已满", { limit: MAX_PINS });
+            break;
+        case "unsupported":
+            text = i18n.t("dock.notifUnsupported", "此类动态不支持固定到程序坞");
+            break;
+        case "storage":
+            text = i18n.t("dock.notifStorage", "保存失败，动态未能固定");
+            logDock("固定动态写入存储失败", { id: payload.id });
+            break;
+        default:
+            text = i18n.t("dock.notifInvalid", "无法读取这条动态，请重试");
+    }
+    showTransientTip(text, e.clientX, e.clientY);
 }
 
 // ===== 初始化渲染 =====
 function buildSections() {
     dock.appendChild(favoritesEl);
+    dock.appendChild(sepNotif);
+    dock.appendChild(notifEl);
     dock.appendChild(sepRunning);
     dock.appendChild(runningEl);
     dock.appendChild(sepRecent);
     dock.appendChild(recentEl);
+    dock.appendChild(sepMinimized);
+    dock.appendChild(minimizedEl);
     dock.appendChild(sepTrash);
     dock.appendChild(trashEl);
+    minimizedEl.style.display = "none";
+    sepMinimized.style.display = "none";
 }
 
 function renderFavorites() {
@@ -1518,6 +2200,10 @@ function init() {
     applyDockPosition();
     applyIndicators();
 
+    // 固定动态：Dock 作为放置目标；数据层（新增 / 移除 / 去重）变化后合帧重排。
+    bindNotificationDrop();
+    subscribePinnedNotifications(() => scheduleRender());
+
     // —— 阶段 2（空闲调度）：非关键渲染与首次窗口对账 ——
     // renderRecents 与 syncRunningApps 涉及多次 querySelectorAll + DOM 构建，
     // 是 init 长任务的主要来源，改到主线程空闲期执行；
@@ -1525,6 +2211,8 @@ function init() {
     scheduleIdle(() => {
         renderRecents();
         syncRunningApps();
+        // F-16：启动期如有已最小化窗口（极少见），磁贴区对账一次
+        renderMinimizedTiles();
     });
 
     // —— 阶段 3（同步注册）：事件监听与交互系统 ——
@@ -1564,6 +2252,18 @@ function init() {
     window.addEventListener("dock-minimize-effect-change", (e) => {
         minimizeEffect = readEnum(e.detail, MINIMIZE_EFFECTS, MINIMIZE_EFFECT_DEFAULT);
     });
+    // F-16：最小化落点切换（app ↔ tile）。切走时立刻清空磁贴区，切回时如实重建。
+    window.addEventListener("dock-minimize-style-change", (e) => {
+        minimizeStyle = readEnum(e.detail, MINIMIZE_STYLES, "app");
+        renderMinimizedTiles();
+    });
+    // F-16：窗口生命周期事件 → 磁贴区对账（幂等重建）。window:open 兜新窗直接关闭的场景
+    // （关闭窗 emits window:close，但万一漏发，open/restore 也各自对账一次）。
+    // 事件在 document 上派发（wm/events.js 的口径，与 stage-manager 订阅一致）。
+    document.addEventListener("window:minimize", () => renderMinimizedTiles());
+    document.addEventListener("window:restore", () => renderMinimizedTiles());
+    document.addEventListener("window:close", () => renderMinimizedTiles());
+    document.addEventListener("window:open", () => renderMinimizedTiles());
     window.addEventListener("dock-zoom-amount-change", (e) => {
         dockZoomAmount = readNumber(e.detail, ZOOM_MIN, ZOOM_MAX, ZOOM_DEFAULT);
     });
@@ -2158,7 +2858,9 @@ function bindAppleMenuRecent() {
 
 // ===== 对外暴露的程序坞桥接接口（供 window.js 最小化动画等调用） =====
 function getDockIconImg(app) {
-    return dock.querySelector(`.container img[alt="${cssEscape(app)}"]`);
+    // 排除最小化磁贴：磁贴也是 .container、img.alt 与应用图标同名，
+    // 选中它会让动画飞到「另一枚相同图标」上。落点只认真正的应用图标。
+    return dock.querySelector(`.container:not(.dock-min-tile) img[alt="${cssEscape(app)}"]`);
 }
 
 // 最小化窗口吸入程序坞。
@@ -2166,23 +2868,39 @@ function getDockIconImg(app) {
 // 自身的 transform）；快照超时 / 几何不成立 / 减少动态效果开启时 resolve(false)，
 // 统一落回缩放淡出兜底 —— 兜底路径必须始终可达，绝不让窗口瞬间消失。
 function minimizeToDock(winEl, appName) {
-    const iconEl = getDockIconImg(appName);
+    winEl._minimized = true;
+    // F-16：独立磁贴样式先把磁贴画出来，genie 才有「吸入程序坞右侧」的落点
+    //（此刻 window:minimize 事件还没派发，幂等重画在 minimizeToDock 返回后才跑）
+    if (minimizeStyle === "tile") renderMinimizedTiles();
+    let anchorEl = minimizeStyle === "tile" ? (tileForWindow(winEl) || getDockIconImg(appName)) : getDockIconImg(appName);
+    // 磁贴会被 window:minimize 事件的幂等重画立刻替换掉，而 genie 是异步读几何的：
+    // 改用同位幽灵锚（fixed、不可点、透明），重画拆不倒它，genie 什么时候读都稳定。
+    let ghost = null;
+    if (anchorEl && anchorEl.classList && anchorEl.classList.contains("dock-min-tile")) {
+        const r = anchorEl.getBoundingClientRect();
+        ghost = document.createElement("div");
+        ghost.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width || 64}px;height:${r.height || 64}px;pointer-events:none;opacity:0;`;
+        document.body.appendChild(ghost);
+        anchorEl = ghost;
+    }
     if (winEl._wmRevealAnim) {
         winEl._wmRevealAnim.cancel();
         winEl._wmRevealAnim = null;
     }
-    winEl._minimized = true;
-    // 运行指示灯保持点亮
-    const light = iconEl ? iconEl.parentElement.querySelector(".light") : null;
+    // 运行指示灯保持点亮（磁贴没有指示灯，仅应用图标锚点时处理）
+    const light = anchorEl && anchorEl.classList && anchorEl.classList.contains("container")
+        ? anchorEl.querySelector(".light") : null;
     if (light) light.classList.add("on");
     if (minimizeEffect === "scale") {
+        if (ghost) ghost.remove();
         fallBackFadeOut(winEl);
         return;
     }
     import("./wm/genie-effect.js")
-        .then((m) => m.minimizeGenie(winEl, iconEl))
+        .then((m) => m.minimizeGenie(winEl, anchorEl))
         .catch(() => false)
         .then((played) => {
+            if (ghost) ghost.remove();
             // 快照是异步的：期间用户可能已把窗口还原，此时不能再补淡出，
             // 否则会把刚揭开的窗口重新按进坞里（旧版 _hideTimer 同款竞态）。
             if (!played && winEl._minimized) fallBackFadeOut(winEl);
@@ -2212,7 +2930,7 @@ function playQuickReveal(winEl) {
 // 从程序坞还原窗口。
 // 有缓存快照时反向播放神奇效果（播放期间保持隐藏，播完揭开置顶）；
 // 没有快照 / 动画失败则立即显示 —— 兜底永远是「直接显示 + 置顶」。
-function restoreFromDock(winEl, appName) {
+function restoreFromDock(winEl, appName, anchorEl) {
     winEl._minimized = false;
     // 取消尚未执行的隐藏定时器（见 fallBackFadeOut）
     clearTimeout(winEl._hideTimer);
@@ -2220,8 +2938,20 @@ function restoreFromDock(winEl, appName) {
     // 先按住：genie 模块若是本次会话首次动态 import，取模块有网络延迟，
     // 不预隐藏会在覆盖层接管前闪出一帧真窗；播不成就由 reveal() 立即揭开。
     winEl.style.display = "none";
-    const iconEl = getDockIconImg(appName);
+    // F-16：磁贴还原时以磁贴为 genie 源。磁贴会在 window:restore 事件的幂等重画里
+    // 被拆掉，而 genie 是异步读几何的 —— 同样用同位幽灵锚兜住几何，何时读都稳定。
+    let iconEl = getDockIconImg(appName);
+    let ghost = null;
+    if (anchorEl && anchorEl.isConnected && anchorEl.classList.contains("dock-min-tile")) {
+        const r = anchorEl.getBoundingClientRect();
+        ghost = document.createElement("div");
+        ghost.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width || 64}px;height:${r.height || 64}px;pointer-events:none;opacity:0;`;
+        document.body.appendChild(ghost);
+        iconEl = ghost;
+    }
+    const cleanupGhost = () => { if (ghost) { ghost.remove(); ghost = null; } };
     const reveal = () => {
+        cleanupGhost();
         // 播放期间可能又被最小化：状态翻回去了就不抢显隐权
         if (winEl._minimized) return;
         // 先关掉 CSS 自动重播的入场动画：神奇效果已经把它送到落点，不再补第二个

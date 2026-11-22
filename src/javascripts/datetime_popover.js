@@ -1,5 +1,5 @@
 /**
- * datetime_popover.js — 菜单栏时间/日期点击弹出的日历面板
+ * datetime_popover.js — 菜单栏时间/日期入口 + 日历面板（F-17）
  *
  * 复刻 macOS 菜单栏日历工具（Itsycal 风格）的下拉面板：
  *   - 月份标题 + 上月/下月/今日导航
@@ -9,14 +9,19 @@
  *   - 毛玻璃材质（backdrop-filter）+ 淡入缩放动画
  *   - 点击外部自动关闭，重复点击时间/日期可切换
  *
+ * F-17 之后的入口语义：点时间/日期打开的是「通知中心」完整面板（月历降级为面板内
+ * 的日历小组件，经 createCalendarPanel() 复用本模块的月历渲染）；
+ * openPopover/closePopover/togglePopover 保留为显式 API（含模块加载失败时的回退路径）。
+ *
  * 使用方法：
  *   import { initDatetimePopover } from "./datetime_popover.js";
  *   initDatetimePopover(timeElement, dateElement);
  *
  * 暴露方法：
- *   openPopover(anchorElement)  打开面板并定位到指定锚点下方
- *   closePopover()              关闭面板
- *   togglePopover(anchorElement) 切换面板显示
+ *   openPopover(anchorElement)   打开日历面板并定位到指定锚点下方
+ *   closePopover()               关闭日历面板
+ *   togglePopover(anchorElement) 切换日历面板显示
+ *   createCalendarPanel()        创建独立日历实例（通知中心小组件复用）
  *
  * 设置来源：周起始日读 general.weekStart（0=周日 / 1=周一），变更时重排表头与网格；
  * 本面板只渲染日期不渲染时刻，因此 general.timeFormat / showSeconds 在这里没有落点——
@@ -423,7 +428,12 @@ export function initDatetimePopover(timeEl, dateEl) {
 
     const onClick = (e) => {
         e.stopPropagation();
-        togglePopover(e.currentTarget);
+        // F-17：时间/日期入口改为打开「通知中心」完整面板（月历成为面板内的日历小组件）。
+        // 模块加载失败时回退旧日历面板，入口不致失效。currentTarget 只在派发期有效，先存引用。
+        const anchor = e.currentTarget;
+        import("./ui/notification-center.js")
+            .then((m) => m.toggle())
+            .catch(() => togglePopover(anchor));
     };
 
     // 锚点绑定按元素去重：重复 init 若挂上第二份 onClick，一次点击就会 toggle 两次
@@ -472,4 +482,173 @@ export function initDatetimePopover(timeEl, dateEl) {
         };
         window.addEventListener("datetime-format-change", _formatListener);
     }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+ * F-17：可复用日历实例工厂
+ *
+ * 通知中心的「日历」小组件（widgets/builtins/calendar.js）经此获得一份自带
+ * 视图状态的月历 DOM。渲染逻辑（月元数据、周起始旋转、今天/周末高亮）与上方
+ * 菜单栏面板同一套辅助函数；DOM 装配独立成实例且不使用全局 id（上方面板按
+ * id 检索，两边互不干扰）。语言/周起始变更时实例就地重建。
+ * ════════════════════════════════════════════════════════════════════════ */
+
+export function createCalendarPanel() {
+    // 实例私有视图状态
+    let viewYear = 0;
+    let viewMonth = 0;
+    let selected = null;
+    let destroyed = false;
+
+    const root = document.createElement("div");
+    root.className = "datetime-popover dtp-inline";
+    root.setAttribute("role", "group");
+    root.setAttribute("aria-label", i18n.t("datetime.title", "日历"));
+
+    const header = document.createElement("div");
+    header.className = "dtp-header";
+    const weekdays = document.createElement("div");
+    weekdays.className = "dtp-weekdays";
+    const grid = document.createElement("div");
+    grid.className = "dtp-grid";
+
+    const makeNav = (cls, title, delta) => {
+        const btn = document.createElement("button");
+        btn.className = `dtp-nav ${cls}`;
+        btn.type = "button";
+        btn.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M${delta < 0 ? "6.5 1.5L3 5L6.5 8.5" : "3.5 1.5L7 5L3.5 8.5"}" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+        btn.title = title;
+        btn.addEventListener("click", (e) => { e.stopPropagation(); shiftMonth(delta); });
+        return btn;
+    };
+    const titleEl = document.createElement("div");
+    titleEl.className = "dtp-title";
+    const todayBtn = document.createElement("button");
+    todayBtn.className = "dtp-today-btn";
+    todayBtn.type = "button";
+    todayBtn.textContent = i18n.t("datetime.today", "今天");
+    todayBtn.title = i18n.t("datetime.todayTitle", "跳转到今天");
+    todayBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const t = _getToday();
+        viewYear = t.y;
+        viewMonth = t.m;
+        selected = { ...t };
+        renderGrid();
+    });
+    header.append(makeNav("dtp-prev", i18n.t("datetime.prevMonth", "上个月"), -1), titleEl,
+        makeNav("dtp-next", i18n.t("datetime.nextMonth", "下个月"), 1), todayBtn);
+
+    const renderWeekdaysLocal = () => {
+        weekdays.textContent = "";
+        _rotate(_weekdayShort(), weekStart()).forEach((name) => {
+            const cell = document.createElement("div");
+            cell.className = "dtp-weekday";
+            cell.textContent = name;
+            weekdays.appendChild(cell);
+        });
+    };
+
+    const cells = [];
+    for (let i = 0; i < 42; i += 1) {
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "dtp-cell";
+        cell.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const data = cell._dtpDate;
+            if (!data) return;
+            selected = { y: data.y, m: data.m, d: data.d };
+            if (data.m !== viewMonth || data.y !== viewYear) {
+                viewYear = data.y;
+                viewMonth = data.m;
+            }
+            renderGrid();
+        });
+        cells.push(cell);
+        grid.appendChild(cell);
+    }
+
+    const renderGrid = () => {
+        if (destroyed) return;
+        const today = _getToday();
+        if (!selected) selected = { ...today };
+        titleEl.textContent = _monthTitle(viewYear, viewMonth);
+        const { firstDay, totalDays } = _getMonthMeta(viewYear, viewMonth);
+        const start = weekStart();
+        const offset = ((firstDay - start) % 7 + 7) % 7;
+        const prevTotal = new Date(viewYear, viewMonth, 0).getDate();
+        cells.forEach((cell, idx) => {
+            let y = viewYear;
+            let m = viewMonth;
+            let d = 0;
+            let inMonth = true;
+            if (idx < offset) {
+                inMonth = false;
+                m = viewMonth - 1;
+                if (m < 0) { m = 11; y = viewYear - 1; }
+                d = prevTotal - (offset - 1 - idx);
+            } else if (idx < offset + totalDays) {
+                d = idx - offset + 1;
+            } else {
+                inMonth = false;
+                m = viewMonth + 1;
+                if (m > 11) { m = 0; y = viewYear + 1; }
+                d = idx - (offset + totalDays) + 1;
+            }
+            cell._dtpDate = { y, m, d };
+            cell.textContent = String(d);
+            const thisDay = { y, m, d };
+            const isToday = _isSameDay(thisDay, today);
+            const isSelected = _isSameDay(thisDay, selected);
+            const weekdayOfCol = (start + (idx % 7)) % 7;
+            cell.classList.toggle("in-month", inMonth);
+            cell.classList.toggle("out-month", !inMonth);
+            cell.classList.toggle("today", isToday);
+            cell.classList.toggle("selected", isSelected && !isToday);
+            cell.classList.toggle("weekend", weekdayOfCol === 0 || weekdayOfCol === 6);
+        });
+    };
+
+    const shiftMonth = (delta) => {
+        let m = viewMonth + delta;
+        let y = viewYear;
+        if (m < 0) { m = 11; y -= 1; }
+        if (m > 11) { m = 0; y += 1; }
+        viewYear = y;
+        viewMonth = m;
+        renderGrid();
+    };
+
+    // 面板自身吞掉点击，避免被通知中心的外点关闭逻辑误判
+    root.addEventListener("click", (e) => e.stopPropagation());
+
+    // 语言 / 周起始变更：就地重建文案与网格
+    const offLang = i18n.onChange(() => {
+        if (destroyed) return;
+        todayBtn.textContent = i18n.t("datetime.today", "今天");
+        renderWeekdaysLocal();
+        renderGrid();
+    });
+    const onFormat = () => { renderWeekdaysLocal(); renderGrid(); };
+    window.addEventListener("datetime-format-change", onFormat);
+
+    renderWeekdaysLocal();
+    const t0 = _getToday();
+    viewYear = t0.y;
+    viewMonth = t0.m;
+    selected = { ...t0 };
+    renderGrid();
+
+    root.append(header, weekdays, grid);
+
+    return {
+        el: root,
+        destroy() {
+            destroyed = true;
+            if (typeof offLang === "function") offLang();
+            window.removeEventListener("datetime-format-change", onFormat);
+            root.remove();
+        },
+    };
 }

@@ -28,10 +28,9 @@ export const appToPlugin = {
     "计算器": "calculator",
     "关于本机": "about",
     "照片": "photos",
-    "记事本": "notepad",
+    "文本编辑": "notepad",
     "Safari浏览器": "safari",
     "VS Code": "vs_code",
-    "Siri": "siri",
 };
 
 // macOS 图标文件名映射：中文逻辑名 → assets/icons 下的文件名（PNG）；文件夹类位于 folder/
@@ -46,7 +45,7 @@ export const iconMap = {
     "通讯录": "Contacts",
     "日历": "Calendrier",
     "提醒事项": "Rappels",
-    "记事本": "TextEdit",
+    "文本编辑": "TextEdit",
     "FaceTime通话": "FaceTime",
     "信息": "Messages",
     "地图": "Plans",
@@ -64,7 +63,6 @@ export const iconMap = {
     "计算器": "Calculatrice",
     "无边记": "Freeform",
     "家庭": "Maison",
-    "Siri": "Siri",
     "iPhone镜像": "Recopie de l'iPhone",
     "密码": "Mots de passe",
     "其他": "folder/System"
@@ -89,8 +87,7 @@ export const STATIC_APP_ICONS = Object.freeze({
     "计算器": modFile("calculator", "Calculatrice.webp"),
     "关于本机": modFile("about", "Informations systeme.webp"),
     "照片": modFile("photos", "Photos.webp"),
-    "记事本": modFile("notepad", "TextEdit.webp"),
-    "Siri": modFile("siri", "Siri.webp"),
+    "文本编辑": modFile("notepad", "TextEdit.webp"),
     "VS Code": modFile("vs_code", "icon.webp"),
     "Mac 使用手册": modFile("manual", "Manual.webp"),
     "办公": modFile("office", "Office.webp"),

@@ -1,14 +1,16 @@
 /**
  * controlcenter.js — macOS 15 控制中心逻辑模块
  *
- * 完全复刻 macOS 15 控制中心布局与配色：
- * - 连通性组（Wi-Fi / 蓝牙 / AirDrop / 飞行模式，蓝激活）
- * - Focus 大卡（橙激活）
- * - Stage Manager / Screen Mirroring 小卡
- * - Display / Sound 横滑块卡（毛玻璃轨道）
- * - Music 卡（歌曲封面显示区 + 播放控制）
+ * 完全重写为 macOS Sequoia 风格布局：
+ * - 顶部连通性 2×2 磁贴（Wi-Fi / 蓝牙 / 隔空投送 / 飞行模式，蓝激活）
+ * - 右侧专注模式大卡（橙激活）
+ * - 台前调度 / 屏幕镜像 / 锁定屏幕快捷小卡
+ * - 显示器 / 声音横滑块卡
+ * - 正在播放卡（仅当页面里真的有媒体在播时出现）
  *
- * 整体背景为毛玻璃半透明，配色仅蓝（网络相关）+ 橙（Focus）两主色。
+ * 图标全部来自 ui/phosphor-icons.js（与 App Store 同源），不再自绘 SVG。
+ *
+ * 整体背景为毛玻璃半透明，配色仅蓝（网络相关）+ 橙（专注模式）两主色。
  * 所有状态经设置中枢（window.__settings）读写并持久化在 webstartos_controlcenter
  * JSON 槽里，面板从菜单栏右侧图标弹出。
  *
@@ -28,71 +30,32 @@
 import { i18n } from "./i18n.js";
 import { Z } from "./zindex.js";
 import { dispatchMenuCommand } from "./ui/menuCommands.js";
+import { iconSvg } from "./ui/phosphor-icons.js";
 
-// ── SVG 图标库（内联，避免外链依赖） ──
-const SVG = {
-  // 菜单栏控制中心图标（两排开关形状）
-  controlcenter: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="9" height="5" rx="2.5"/><rect x="2" y="16" width="6" height="5" rx="2.5"/><circle cx="7" cy="5.5" r="1.5"/><rect x="13" y="3" width="9" height="5" rx="2.5"/><circle cx="17.5" cy="5.5" r="1.5"/><rect x="16" y="16" width="6" height="5" rx="2.5"/><circle cx="19" cy="18.5" r="1.5"/></svg>`,
+/**
+ * 取一枚 Phosphor 图标（与 App Store 同源：256 网格、currentColor、`.ui-icon`）。
+ * @param {string} name 官方 kebab-case 名称
+ * @param {number} [size=20] 像素尺寸
+ * @param {string} [className] 额外类名
+ * @returns {string} SVG 字符串
+ */
+const icon = (name, size = 20, className = "") => iconSvg(name, { size, className });
 
-  // Wi-Fi
-  wifi: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0-4a5.5 5.5 0 0 1 4.24 2.01l-1.42 1.42a3.5 3.5 0 0 0-5.64 0l-1.42-1.42A5.5 5.5 0 0 1 12 14zm0-4a9.5 9.5 0 0 1 7.78 3.82l-1.42 1.42a7.5 7.5 0 0 0-12.72 0L4.22 13.82A9.5 9.5 0 0 1 12 10zm0-4C17.18 6 22 7.9 25.46 11l-1.42 1.42C20.92 9.31 16.75 8 12 8S3.08 9.31-.04 12.42L-1.46 11C2 7.9 6.82 6 12 6z" transform="translate(-1.5 -1.5) scale(1.08)"/></svg>`,
-
-  // 蓝牙
-  bluetooth: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14.88 16.29L12 19.17V14.12l2.88 2.17zm-5.77.41l2.89-2.18-2.89-2.17v4.35zM12 2l5.66 5.66L13.41 12l4.24 4.24L12 22l-6.71-6.71L8.59 13 6 10.41 12 2zm1.41 10.59l2.12-2.12L13.41 8.29 11 10.71V4.83L7.83 8 10.41 10.59 7.83 13.17 11 16.34v-3.75z"/></svg>`,
-
-  // 隔空投送（3 道同心圆环，跟随参考图）
-  airdrop: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="14" r="2.2"/><path d="M12 6c-3 0-5.6 1.9-7 4.6l1.2.5C7.4 9 9.5 7.5 12 7.5s4.6 1.5 5.8 3.6l1.2-.5C17.6 7.9 15 6 12 6zM12 3.5C16.6 3.5 20.7 6.2 22.6 10.3l-1.2.4C19.8 6.9 16.2 4.8 12 4.8S4.2 6.9 2.6 10.7l-1.2-.4C3.3 6.2 7.4 3.5 12 3.5z"/></svg>`,
-
-  // 飞行模式（飞机）
-  airplane: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>`,
-
-  // 专注模式（月亮）
-  focus: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a.5.5 0 0 1 .6.6A7 7 0 0 0 19.9 14a.5.5 0 0 1 .6.5z"/></svg>`,
-
-  // 台前调度（层叠窗口）
-  stage: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="11" rx="2"/><rect x="2" y="3" width="12" height="5" rx="1.5" opacity=".55"/><rect x="2" y="17" width="8" height="3" rx="1.2" opacity=".4"/></svg>`,
-
-  // 屏幕镜像（显示器 + 向上三角）
-  mirroring: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="20" height="14" rx="2"/><rect x="9" y="19" width="6" height="2" rx="1"/><path d="M12 7v5M9.5 9.5L12 7l2.5 2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-
-  // 太阳（显示器亮度）：中心圆 + 8 道描边光芒
-  sun: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
-
-  // 音量（扬声器 + 波形）
-  volume: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M15 8a5 5 0 0 1 0 8M17.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
-
-  // 音量静音
-  volumeMute: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 10v4h4l5 4V6L8 10H4zM18 10l4 4M22 10l-4 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>`,
-
-  // AirPlay 显示器（Display 滑块右侧小圆）
-  airplayDisplay: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M12 14l3.5-3.5h-7z"/></svg>`,
-
-  // 输出设备（Sound 滑块右侧小圆）
-  airpods: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 3a8 8 0 0 0-8 8v5a3 3 0 0 0 5 0v-3a1 1 0 0 0-1-1H7v-1a5 5 0 0 1 10 0v1h-1a1 1 0 0 0-1 1v3a3 3 0 0 0 5 0v-5a8 8 0 0 0-8-8z"/></svg>`,
-
-  // 音乐音符（无封面占位）
-  music: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="17" r="3"/><circle cx="18" cy="15" r="3"/></svg>`,
-
-  // 电池
-  battery: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="19" height="9" rx="2"/><rect x="22" y="10.5" width="1.5" height="4" rx=".5"/></svg>`,
-
-  // 上一曲
-  prev: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M6 6h2v12H6zM9.5 12l9.5 6V6z"/></svg>`,
-
-  // 下一曲
-  next: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16 6h2v12h-2zM5 18l9.5-6L5 6z"/></svg>`,
-
-  // 播放
-  play: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 5v14l12-7z"/></svg>`,
-
-  // 暂停
-  pause: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`,
-
-  // 隐私条右侧箭头（chevron-right，替代误用的控制中心主图标）
-  chevronRight: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-
-  // 锁定屏幕（挂锁）
-  lock: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect x="4.5" y="10" width="15" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/></svg>`,
+/* 图标名映射：全部指向 Phosphor 官方资产（assets/ui/phosphor/）。 */
+const ICON_NAME = {
+  controlcenter: "sliders-horizontal",
+  stage: "squares-four",
+  mirroring: "monitor-arrow-up",
+  sun: "sun",
+  volume: "speaker-high",
+  volumeMute: "speaker-slash",
+  airplayDisplay: "airplay",
+  airpods: "headphones",
+  music: "music-notes",
+  play: "play",
+  pause: "pause",
+  chevronRight: "caret-right",
+  lock: "lock",
 };
 
 // ── 默认状态（localStorage 存储键前缀） ──
@@ -104,14 +67,6 @@ const MENU_BAR_KEY = "controlcenter.showInMenuBar";
 const NOW_PLAYING_KEY = "controlcenter.nowPlaying";
 
 const DEFAULT_STATE = {
-  wifi: true,            // Wi-Fi 开启（蓝色）
-  bluetooth: true,       // 蓝牙开启（蓝色）
-  airdrop: true,         // 隔空投送开启（蓝色，模式 everyone）
-  airplane: false,       // 飞行模式（关闭）
-  // 专注模式默认关闭：它过去只是卡片配色（橙色/灰色），默认开没有副作用；
-  // 现在 ui/notification.js 拿它当真正的勿扰门 —— 默认开等于出厂就静默吞掉每一条通知。
-  focus: false,          // 专注模式（勿扰）默认关闭
-  focusMode: "work",     // 专注模式名称（工作）
   stage: false,          // 台前调度
   mirroring: false,      // 屏幕镜像
   displayBrightness: 0.85,
@@ -132,8 +87,6 @@ const DEFAULT_STATE = {
 // ── 模块变量 ──
 let state = { ...DEFAULT_STATE };
 let panelEl = null;
-/** 当前二级详情视图（null = 主视图）；点 Wi-Fi/蓝牙等卡片进入，返回时清空。 */
-let detailView = null;
 let overlayEl = null;
 let iconEl = null;
 let finderbarEl = null;
@@ -165,17 +118,6 @@ function escapeText(value) {
  * @type {Array<{key: string, path: string, type: string, default: *, label: string, hint?: string, owner: string, values?: Array<string>, valuesLabel?: Array<string>, min?: number, max?: number, step?: number, format?: string}>}
  */
 export const CONTROL_CENTER_FIELDS = [
-  { key: "controlcenter.wifi", path: "wifi", type: "boolean", default: DEFAULT_STATE.wifi, label: "Wi-Fi", owner: "system", unavailable: true },
-  { key: "controlcenter.bluetooth", path: "bluetooth", type: "boolean", default: DEFAULT_STATE.bluetooth, label: "蓝牙", owner: "system", unavailable: true },
-  { key: "controlcenter.airdrop", path: "airdrop", type: "boolean", default: DEFAULT_STATE.airdrop, label: "隔空投送", hint: "开启后对「所有人」可见", owner: "system", unavailable: true },
-  { key: "controlcenter.airplane", path: "airplane", type: "boolean", default: DEFAULT_STATE.airplane, label: "飞行模式", hint: "同时关闭 Wi-Fi、蓝牙与隔空投送", owner: "system", unavailable: true },
-  { key: "controlcenter.focus", path: "focus", type: "boolean", default: DEFAULT_STATE.focus, label: "专注模式", owner: "system" },
-  {
-    key: "controlcenter.focusMode", path: "focusMode", type: "string", default: DEFAULT_STATE.focusMode,
-    values: ["work", "personal", "sleep", "doNotDisturb"],
-    valuesLabel: ["工作", "个人", "睡眠", "勿扰"],
-    label: "专注模式名称", owner: "system",
-  },
   { key: "controlcenter.stage", path: "stage", type: "boolean", default: DEFAULT_STATE.stage, label: "台前调度", owner: "system" },
   { key: "controlcenter.mirroring", path: "mirroring", type: "boolean", default: DEFAULT_STATE.mirroring, label: "屏幕镜像", owner: "system", unavailable: true },
 ];
@@ -200,17 +142,9 @@ const FALLBACK_BOUNDS = { battery: [0, 100] };
 
 /** 卡片动作 -> 存储字段（handleCardAction 的分发表）。 */
 const CARD_ACTION = {
-  wifi: "wifi",
-  bluetooth: "bluetooth",
-  airdrop: "airdrop",
-  airplane: "airplane",
-  focus: "focus",
   stage: "stage",
   mirroring: "mirroring",
 };
-
-/** 开飞行模式后要一并断掉的无线连接与镜像字段（与 macOS 的联动一致）。 */
-const AIRPLANE_LINKED = ["wifi", "bluetooth", "airdrop", "mirroring"];
 
 function readPath(obj, path) {
   return path.split(".").reduce((acc, part) => (acc && typeof acc === "object" ? acc[part] : undefined), obj);
@@ -338,27 +272,8 @@ function commitToSettings(key, path, value) {
 }
 
 /**
- * 飞行模式互锁（真实联动，不只是个图标）：
- * 开飞行 -> 关掉 Wi-Fi / 蓝牙 / 隔空投送 / 屏幕镜像；
- * 手动打开 Wi-Fi 或蓝牙 -> 退出飞行模式。
- * 联动写入同样经设置中枢，于是「系统设置」里看到的也是联动后的结果；
- * 只改「值不同的那几项」，所以重复调用不会互相触发成环。
- * @param {string} path 刚生效的字段路径
- * @param {*} value 刚生效的值
- * @returns {void}
+ * 飞行模式互锁已随四个连通性磁贴一并移除。
  */
-function applyAirplaneInterlock(path, value) {
-  if (path === "airplane") {
-    if (!value) return;
-    AIRPLANE_LINKED
-      .filter((linked) => readPath(state, linked) !== false)
-      .forEach((linked) => commitToSettings(PATH_TO_KEY.get(linked), linked, false));
-    return;
-  }
-  if (value && (path === "wifi" || path === "bluetooth") && readPath(state, "airplane")) {
-    commitToSettings(PATH_TO_KEY.get("airplane"), "airplane", false);
-  }
-}
 
 // ── 控制中心面板构建 ──
 function createPanel() {
@@ -378,7 +293,6 @@ function createPanel() {
 }
 
 function renderPanel() {
-  if (detailView) { renderDetailView(); return; }
   if (!panelEl) createPanel();
 
   // 隐私指示条（若有任一激活，沿用既有逻辑；不固定显示 Voice Memos 顶条）
@@ -393,110 +307,63 @@ function renderPanel() {
       <div class="cc-privacy-bar" data-action="privacy">
         <span class="cc-privacy-dot ${dotType}"></span>
         <span class="cc-privacy-text">${label}</span>
-        <span class="cc-privacy-chev">${SVG.chevronRight}</span>
+        <span class="cc-privacy-chev">${icon(ICON_NAME.chevronRight, 14)}</span>
       </div>`;
   }
 
   // 状态读取走「设置中枢优先」：亮度 / 音量的键（display.brightness、sound.master、
   // sound.muted）由其它内核模块托管，面板显示中枢里的值而不是内存镜像，
   // 避免控制中心与系统设置各显示各的。
-  // 真实可得的状态：网络在线/离线来自 navigator.onLine；其余无线开关浏览器不提供。
-  // 不再把内存镜像里的布尔当成"已连接"渲染 —— 那只是界面自己骗自己（F-20）。
-  const online = navigator.onLine !== false;
-  const focusOn = Boolean(currentValueOf("focus"));
   const stageOn = Boolean(currentValueOf("stage"));
   const brightness = Number(currentValueOf("displayBrightness"));
   const volume = Number(currentValueOf("volume"));
   const muted = Boolean(currentValueOf("volumeMuted"));
-  const unavailable = t("controlcenter.unavailable", "不可用");
 
-  // 第一行：左连通性组（Wi-Fi 显示真实在线状态；蓝牙/隔空投送/飞行模式标为不可用）+ 右 Focus 大卡
-  const connectivityHtml = `
-    <div class="cc-grid">
-      <div class="cc-card cc-connectivity">
-        ${renderConnRow("wifi", SVG.wifi, online, t("controlcenter.wifi", "Wi-Fi"), online ? t("controlcenter.connected", "已连接") : t("controlcenter.notConnected", "未连接"), { available: false })}
-        ${renderConnRow("bluetooth", SVG.bluetooth, false, t("controlcenter.bluetooth", "蓝牙"), unavailable, { available: false })}
-        ${renderConnRow("airdrop", SVG.airdrop, false, t("controlcenter.airdrop", "隔空投送"), unavailable, { available: false })}
-        ${renderConnRow("airplane", SVG.airplane, false, t("controlcenter.airplane", "飞行模式"), unavailable, { available: false })}
-      </div>
-      <div class="cc-card cc-focus-card" data-action="focus" role="button" tabindex="0"
-           aria-label="${escapeText(t("controlcenter.focus", "Focus"))}" aria-pressed="${focusOn ? "true" : "false"}">
-        <div class="cc-focus-icon ${focusOn ? "active" : ""}" aria-hidden="true">${SVG.focus}</div>
-        <div class="cc-focus-title">${escapeText(t("controlcenter.focus", "Focus"))}</div>
-      </div>
+  // 顶部：台前调度 / 屏幕镜像 / 锁定屏幕
+  const quickHtml = `
+    <div class="cc-quick">
+      ${renderQuick("stage", ICON_NAME.stage, t("controlcenter.stageManager", "台前调度"), stageOn)}
+      ${renderQuick("mirroring", ICON_NAME.mirroring, t("controlcenter.screenMirroring", "屏幕镜像"), false, true)}
+      ${renderQuick("lockscreen", ICON_NAME.lock, t("controlcenter.lockScreen", "锁定屏幕"), false)}
     </div>`;
 
-  // 第二行：Stage Manager / Screen Mirroring / 锁定屏幕 小卡（锁定走真功能，与菜单栏同一条链路）
-  const stageRow = `
-    <div class="cc-grid" style="margin-top:8px;grid-template-columns:1fr 1fr 1fr">
-      <div class="cc-card cc-small-card" data-action="stage" role="button" tabindex="0"
-           aria-label="${escapeText(t("controlcenter.stageManager", "台前调度"))}" aria-pressed="${stageOn ? "true" : "false"}">
-        <div class="cc-small-icon ${stageOn ? "active" : ""}" aria-hidden="true">${SVG.stage}</div>
-        <div class="cc-small-title">${escapeText(t("controlcenter.stageManager", "台前调度"))}</div>
-      </div>
-      <div class="cc-card cc-small-card cc-small-card--unavailable" data-action="mirroring" role="button" tabindex="0"
-           aria-label="${escapeText(t("controlcenter.screenMirroring", "屏幕镜像"))}">
-        <div class="cc-small-icon" aria-hidden="true">${SVG.mirroring}</div>
-        <div class="cc-small-title">${escapeText(t("controlcenter.screenMirroring", "屏幕镜像"))}</div>
-        <div class="cc-small-sub">${escapeText(unavailable)}</div>
-      </div>
-      <div class="cc-card cc-small-card" data-action="lockscreen" role="button" tabindex="0"
-           aria-label="${escapeText(t("controlcenter.lockScreen", "锁定屏幕"))}">
-        <div class="cc-small-icon" aria-hidden="true">${SVG.lock}</div>
-        <div class="cc-small-title">${escapeText(t("controlcenter.lockScreen", "锁定屏幕"))}</div>
-      </div>
-    </div>`;
-
-  // 第三 / 四行：Display / Sound 横滑块卡
-  const sliderRow = `
+  const sliderHtml = `
     ${renderSlider(
       "display",
       t("controlcenter.display", "显示器"),
-      SVG.sun,
+      icon(ICON_NAME.sun, 18),
       brightness,
       false,
-      SVG.airplayDisplay
+      icon(ICON_NAME.airplayDisplay, 16)
     )}
     ${renderSlider(
       "volume",
       t("controlcenter.sound", "声音"),
-      muted ? SVG.volumeMute : SVG.volume,
+      icon(muted ? ICON_NAME.volumeMute : ICON_NAME.volume, 18),
       volume,
       muted,
-      SVG.airpods
+      icon(ICON_NAME.airpods, 16)
     )}
   `;
 
-  // 第五行：正在播放（只显示页面里真实在播的媒体；没有就整卡隐藏，绝不预置假曲目）
+  // 最后一行：正在播放（只显示页面里真实在播的媒体；没有就整卡隐藏，绝不预置假曲目）
   const playingMedia = findPlayingMedia();
   const musicHtml = playingMedia ? renderNowPlaying(playingMedia) : "";
 
-  panelEl.innerHTML = privacyHtml + connectivityHtml + stageRow + sliderRow + musicHtml;
-
-  // 连通性行：没有可切换的真实能力，点按只打开二级说明（不再翻转假布尔）
-  panelEl.querySelectorAll(".cc-conn-row").forEach((el) => {
-    el.addEventListener("click", () => openDetail(el.getAttribute("data-action")));
-  });
+  panelEl.innerHTML = privacyHtml + quickHtml + sliderHtml + musicHtml;
 
   const privacyBar = panelEl.querySelector(".cc-privacy-bar");
-  if (privacyBar) {
-    privacyBar.addEventListener("click", () => openSettingsPane("privacy"));
-  }
+  if (privacyBar) privacyBar.addEventListener("click", () => openSettingsPane("privacy"));
 
-  // Focus 走真实开关；Stage 走真实收纳（F-09 未落地前只切桌面图标，由 applyStageManager 负责）
-  panelEl.querySelectorAll(".cc-focus-card").forEach((el) => {
-    el.addEventListener("click", () => handleCardAction(el.getAttribute("data-action")));
-  });
-  panelEl.querySelectorAll(".cc-small-card").forEach((el) => {
+  panelEl.querySelectorAll(".cc-quick-card").forEach((el) => {
     el.addEventListener("click", () => {
       const action = el.getAttribute("data-action");
       if (action === "stage") handleCardAction(action);
       else if (action === "lockscreen") lockFromControlCenter();
-      else openDetail(action);
+      // 屏幕镜像受系统能力限制：卡片已标注不可用，点击不做假动作
     });
   });
 
-  // 正在播放：只有一个真实按钮（播放/暂停），不再提供没有播放列表支撑的上一首/下一首
   panelEl.querySelectorAll(".cc-np-btn").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -507,30 +374,27 @@ function renderPanel() {
   bindSliders();
 }
 
-// ── 连通性行（左大蓝圆 + 右标题/副标题） ──
+// ── 快捷小卡（台前调度 / 屏幕镜像 / 锁定屏幕） ──
 /**
- * @param {string} action 动作/详情标识
- * @param {string} iconSvg 图标
- * @param {boolean} active 是否处于"开启/在线"态
+ * @param {string} action 动作标识
+ * @param {string} iconName Phosphor 图标名
  * @param {string} title 标题
- * @param {string} sub 副标题
- * @param {{available?: boolean}} [opts] available=false 表示浏览器无法提供该开关，只展示状态
- * @returns {string} 行 HTML
+ * @param {boolean} active 是否处于开启态
+ * @param {boolean} [unavailable=false] 是否标注为系统能力不可用
+ * @returns {string} 小卡 HTML
  */
-function renderConnRow(action, iconSvg, active, title, sub, opts = {}) {
-  const available = opts.available !== false;
+function renderQuick(action, iconName, title, active, unavailable = false) {
   return `
-    <div class="cc-conn-row ${available ? "" : "cc-conn-row--unavailable"}" data-action="${action}" role="button" tabindex="0"
-         aria-label="${escapeText(title)}" ${available ? `aria-pressed="${active ? "true" : "false"}"` : ''}>
-      <div class="cc-conn-icon ${active && available ? "active" : ""}" aria-hidden="true">${iconSvg}</div>
-      <div class="cc-conn-text">
-        <div class="cc-conn-title">${escapeText(title)}</div>
-        <div class="cc-conn-sub">${escapeText(sub)}</div>
-      </div>
-    </div>`;
+    <button type="button" class="cc-quick-card${active ? " is-active" : ""}${unavailable ? " is-unavailable" : ""}"
+            data-action="${action}" aria-pressed="${active ? "true" : "false"}"
+            ${unavailable ? 'aria-disabled="true"' : ""}>
+      <span class="cc-quick-icon" aria-hidden="true">${icon(iconName, 20)}</span>
+      <span class="cc-quick-title">${escapeText(title)}</span>
+      ${unavailable ? `<span class="cc-quick-sub">${escapeText(t("controlcenter.unavailable", "不可用"))}</span>` : ""}
+    </button>`;
 }
 
-// ── 滑块渲染（macOS 15：小标题 + 左大圆 + 轨道 + 右小圆，无 head 标签行） ──
+// ── 滑块渲染（小标题 + 左圆按钮 + 轨道 + 右圆按钮） ──
 function renderSlider(key, label, leftIconSvg, value, muted, rightBtnSvg) {
   const pct = Math.round(value * 100);
   const mutedClass = muted ? "cc-slider-icon-muted" : "";
@@ -542,8 +406,8 @@ function renderSlider(key, label, leftIconSvg, value, muted, rightBtnSvg) {
           ${leftIconSvg}
         </div>
         <div class="cc-slider-track" data-slider-track="${key}">
-          <div class="cc-slider-fill" style="width:calc(${pct}% - 6px)"></div>
-          <div class="cc-slider-thumb" style="left:${pct}%"></div>
+          <div class="cc-slider-fill" style="width:${pct}%"></div>
+          <div class="cc-slider-thumb" style="left:clamp(10px, ${pct}%, calc(100% - 10px))"></div>
         </div>
         <div class="cc-slider-right-btn" data-slider-right="${key}">
           ${rightBtnSvg}
@@ -627,7 +491,7 @@ function bindSliders() {
       rightBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         // 不再用弹窗承诺做不到的能力（分辨率 / AirPlay 输出）：直接打开真实存在的设置面板。
-        openSettingsPane(key === "display" ? "display" : "sound");
+        openSettingsPane(key === "display" ? "controlcenter" : "sound");
       });
     }
   });
@@ -727,14 +591,14 @@ function renderNowPlaying(media) {
   const paused = media.paused;
   return `
     <div class="cc-nowplaying" data-action="nowplaying">
-      <div class="cc-np-art">${SVG.music}</div>
+      <div class="cc-np-art">${icon(ICON_NAME.music, 20)}</div>
       <div class="cc-np-info">
         <div class="cc-np-song">${escapeText(mediaTitle(media))}</div>
         <div class="cc-np-artist">${escapeText(t("controlcenter.inPageMedia", "页面内正在播放的媒体"))}</div>
       </div>
       <div class="cc-np-controls">
         <div class="cc-np-btn play" data-np="toggle" role="button" tabindex="0"
-             aria-label="${escapeText(paused ? t("controlcenter.play", "播放") : t("controlcenter.pause", "暂停"))}">${paused ? SVG.play : SVG.pause}</div>
+             aria-label="${escapeText(paused ? t("controlcenter.play", "播放") : t("controlcenter.pause", "暂停"))}">${icon(paused ? ICON_NAME.play : ICON_NAME.pause, 18)}</div>
       </div>
     </div>`;
 }
@@ -746,84 +610,7 @@ function toggleMedia(media) {
   else media.pause();
 }
 
-// ── 二级详情（无真实能力的模块给解释，有真实能力的给控件 + 设置入口） ──
-/** 详情页文案：键 + 中文兜底。 */
-const DETAIL_TEXT = {
-  wifi: ["controlcenter.detail.wifi", "浏览器只提供在线/离线状态，无法列出附近网络或输入密码。"],
-  bluetooth: ["controlcenter.detail.bluetooth", "浏览器扩展无法访问系统蓝牙，这里不能切换蓝牙，也不显示设备列表。"],
-  airdrop: ["controlcenter.detail.airdrop", "隔空投送需要 macOS 的系统级无线能力，浏览器扩展无法实现。"],
-  airplane: ["controlcenter.detail.airplane", "飞行模式需要直接控制无线硬件，浏览器不提供该能力。"],
-  mirroring: ["controlcenter.detail.mirroring", "屏幕镜像需要系统级显示输出能力，浏览器扩展无法实现。"],
-  display: ["controlcenter.detail.display", "分辨率、刷新率与多显示器排列由系统决定；亮度与夜览可在系统设置中调整。"],
-  volume: ["controlcenter.detail.volume", "输出设备由系统决定；这里只能调整音量与静音。"],
-};
-
-function detailTitle(kind) {
-  const map = {
-    wifi: ["controlcenter.wifi", "Wi-Fi"],
-    bluetooth: ["controlcenter.bluetooth", "蓝牙"],
-    airdrop: ["controlcenter.airdrop", "隔空投送"],
-    airplane: ["controlcenter.airplane", "飞行模式"],
-    mirroring: ["controlcenter.screenMirroring", "屏幕镜像"],
-    display: ["controlcenter.display", "显示器"],
-    volume: ["controlcenter.sound", "声音"],
-  };
-  const [key, fallback] = map[kind] || ["controlcenter.detail", "详情"];
-  return t(key, fallback);
-}
-
-/**
- * 打开二级详情。
- * @param {string} kind 详情标识（wifi/bluetooth/.../display/volume）
- */
-function openDetail(kind) {
-  if (!kind) return;
-  detailView = kind;
-  renderPanel();
-}
-
-/**
- * 渲染二级详情：顶部返回 + 标题，中间是真实控件或原因说明。
- * 有真实设置面板的（显示器/声音）给一个直达按钮。
- */
-function renderDetailView() {
-  const kind = detailView;
-  const [noteKey, noteFallback] = DETAIL_TEXT[kind] || ["controlcenter.detail.wifi", ""];
-  const note = t(noteKey, noteFallback);
-  let body = "";
-  let pane = "";
-  if (kind === "display") {
-    body = renderSlider("display", t("controlcenter.display", "显示器"), SVG.sun,
-      Number(currentValueOf("displayBrightness")), false, SVG.airplayDisplay);
-    pane = "display";
-  } else if (kind === "volume") {
-    body = renderSlider("volume", t("controlcenter.sound", "声音"), SVG.volume,
-      Number(currentValueOf("volume")), Boolean(currentValueOf("volumeMuted")), SVG.airpods);
-    pane = "sound";
-  }
-  const action = pane
-    ? `<button type="button" class="cc-detail-action" data-pane="${pane}">${escapeText(
-        pane === "display" ? t("controlcenter.openDisplay", "打开显示器设置") : t("controlcenter.openSound", "打开声音设置"))}</button>`
-    : "";
-  panelEl.innerHTML = `
-    <div class="cc-detail">
-      <div class="cc-detail-head">
-        <button type="button" class="cc-detail-back" aria-label="${escapeText(t("controlcenter.back", "返回"))}">${SVG.chevronRight}</button>
-        <span class="cc-detail-title">${escapeText(detailTitle(kind))}</span>
-      </div>
-      ${body}
-      <div class="cc-detail-note">${escapeText(note)}</div>
-      ${action}
-    </div>`;
-  panelEl.querySelector(".cc-detail-back").addEventListener("click", () => {
-    detailView = null;
-    renderPanel();
-  });
-  const actionBtn = panelEl.querySelector(".cc-detail-action");
-  if (actionBtn) actionBtn.addEventListener("click", () => openSettingsPane(actionBtn.getAttribute("data-pane")));
-  if (body) bindSliders();
-}
-
+// ── 系统设置跳转 ──
 /**
  * 打开系统设置的某个面板（与聚焦的 openPane 同一套深链）。
  * @param {string} pane 面板 id
@@ -880,8 +667,6 @@ export function show() {
 
 export function hide() {
   if (!panelEl) return;
-  // 关闭面板即回到主视图：下次打开不该停在某个二级详情里
-  detailView = null;
   overlayEl.classList.remove("visible");
   panelEl.classList.remove("visible");
   iconEl?.classList.remove("active");
@@ -952,7 +737,7 @@ export function mountToFinderbar(rightContainer, bar) {
     iconEl = document.createElement("div");
     iconEl.className = "controlcenter-icon";
     iconEl.title = "控制中心";
-    iconEl.innerHTML = SVG.controlcenter;
+    iconEl.innerHTML = icon(ICON_NAME.controlcenter, 16);
     rightContainer.appendChild(iconEl);
   } else {
     iconEl = existingSwitch;
@@ -991,7 +776,6 @@ export function setValue(path, value) {
   writePath(state, path, next);
   saveState();
   notifyChange(path, next);
-  applyAirplaneInterlock(path, next);
   if (path === "displayBrightness") applyDisplayBrightness();
   if (path === "stage") applyStageManager();
   if (panelVisible()) renderPanel();

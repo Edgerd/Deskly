@@ -30,9 +30,11 @@ const STORE = "grants";
 /** 全量权限名，与 底层API改造分段提示词.md §二 一一对应，弹窗与帮助文档同源。 */
 const PERMISSION_NAMES = [
     "apps:launch",
+    "apps:uninstall",
     "default-apps:read",
     "default-apps:write",
     "widgets",
+    "ai:invoke",
     "dynamic-icons",
     "window-style:self",
     "window-style:others",
@@ -59,9 +61,11 @@ const PERMISSION_NAMES = [
  */
 const PERMISSION_LABELS = {
     "apps:launch": ["启动应用", "打开本机其他插件提供的应用"],
+    "apps:uninstall": ["卸载应用", "从系统插件库中移除本应用安装或创建的应用，并清掉它的数据"],
     "default-apps:read": ["读取默认应用", "查询某个扩展名或协议目前由哪个应用打开"],
     "default-apps:write": ["修改默认应用", "把扩展名或协议改绑到其他应用，包括网页链接的接管"],
     "widgets": ["桌面小组件", "在桌面创建、更新或移除小组件，并接收与发送事件"],
+    "ai:invoke": ["调用 AI 服务", "使用系统配置的 AI 服务发送对话与附件"],
     "dynamic-icons": ["动态图标", "替换应用图标，并让程序坞、启动台、应用商店与访达同步刷新"],
     "window-style:self": ["自身窗口样式", "修改自己窗口的标题栏颜色、圆角、毛玻璃与深浅色"],
     "window-style:others": ["跨应用窗口样式", "修改其他应用的窗口样式。确认一次后，本次会话内不再逐次询问"],
@@ -90,6 +94,7 @@ const PERMISSION_LABELS = {
  * 不这么做的话开机 14 个内置插件会各自弹一轮，用户只会一路点拒绝。
  */
 const SENSITIVE = new Set([
+    "ai:invoke",
     "default-apps:write",
     "window-style:others",
     "theme:apply",

@@ -48,6 +48,7 @@ import {
     listGrants, PERMISSION_NAMES, SENSITIVE,
 } from "./api-grants.js";
 import { claimCaller, runAs } from "./caller-context.js";
+import * as AI from "./ai/index.js";
 import { VERSION } from "./version.js";
 
 /** 调用者识别不出来时用的存储作用域名，不会写进任何插件的 AppData。 */
@@ -94,7 +95,7 @@ function pending(segment) {
 
 /** 能力尚未开放的权限名（对应 pending 占位的方法面）：安装清单与 meta.permissions() 据它打「尚未开放」标。 */
 const UNIMPLEMENTED_PERMISSIONS = new Set([
-    "widgets", "dynamic-icons", "window-style:others", "theme:apply",
+    "dynamic-icons", "window-style:others", "theme:apply",
     "system-patch:dock", "system-patch:finderbar", "system-patch:desktop", "system-patch:wallpaper", "system-patch:menu",
 ]);
 
@@ -162,6 +163,23 @@ const apps = Object.freeze({
         const win = await openApp(appId, opts);
         if (!win) { const err = new Error(`应用被禁用或未注册：${appId}`); err.code = "NOT_FOUND"; throw err; }
         return win;
+    }),
+    /**
+     * 卸载应用：从系统插件库移除插件（含数据），弹窗与执行都在内核层，需 apps:uninstall。
+     * 插件不要自己再弹确认框，否则用户要连点两次。
+     */
+    uninstall: guard("apps:uninstall", async (ctx, nameOrId, opts) => {
+        const rec = resolveAppRecord(nameOrId);
+        const pluginId = (rec && rec.id) || (typeof nameOrId === "string" ? nameOrId : "");
+        if (!pluginId) { const err = new Error(`找不到应用：${nameOrId}`); err.code = "NOT_FOUND"; throw err; }
+        const { requestUninstall } = await import("./store-api.js");
+        const result = await requestUninstall(pluginId, opts || {});
+        if (!result || result.ok === false) {
+            const err = new Error((result && result.reason) || "卸载失败");
+            err.code = result && result.reason === "cancelled" ? "CANCELLED" : "UNINSTALL_FAILED";
+            throw err;
+        }
+        return result;
     }),
     /** 全部可启动应用的摘要。免权限（只是目录，不构成能力）。 */
     list() {
@@ -532,14 +550,38 @@ const ui = Object.freeze({
     dialog: pluginDialog,
 });
 
-/* ── 四、尚未落地的分段：签名先立住，后续段填实现 ── */
-
+/* ── 四、小组件（widgets，F-18 转正） ──
+ * 插件在 manifest 声明 widgets（type/size/entry）后经此注册：宿主按 `<插件id>:<type>`
+ * 落进小组件注册表，用户在小组件中心加入通知中心或桌面，内容页以插件自身的
+ * entry HTML 经 iframe 渲染（G1：iframe 只是插件实现细节）。
+ * on/emit 是小组件事件通道：主题名自动加 `widgets:` 前缀，走通用总线（免权限），
+ * 保留主题仍被 isKernelTopic 拦截。 */
 const widgets = Object.freeze({
-    create: pending("4"),
-    update: pending("4"),
-    remove: pending("4"),
-    on: pending("4"),
-    emit: pending("4"),
+    /** 注册小组件类型，返回 { typeId }。def：{ type, size, entry }，entry 必须在插件目录内。 */
+    create: guard("widgets", async (ctx, def) => {
+        const host = await import("./widgets/host.js");
+        const value = host.registerPluginWidget(ctx.caller, def);
+        if (!value) throw new Error("小组件定义非法（type/size/entry 校验未过）");
+        return value;
+    }),
+    /** 更新已注册类型（尺寸/内容页）：仅 owner 可改，返回 { typeId }。 */
+    update: guard("widgets", async (ctx, typeId, patch) => {
+        const host = await import("./widgets/host.js");
+        const value = host.updatePluginWidget(ctx.caller, typeId, patch);
+        if (!value) throw new Error("小组件不存在或不属于调用方");
+        return value;
+    }),
+    /** 注销类型：已挂实例一并摘除。 */
+    remove: guard("widgets", async (ctx, typeId) => {
+        const host = await import("./widgets/host.js");
+        const value = host.removePluginWidget(ctx.caller, typeId);
+        if (!value) throw new Error("小组件不存在或不属于调用方");
+        return value;
+    }),
+    /** 订阅小组件事件（主题自动加 widgets: 前缀），返回退订函数。 */
+    on: (topic, handler) => bus.on(`widgets:${topic}`, handler),
+    /** 发小组件事件（保留主题照旧被拦）。 */
+    emit: (topic, data) => bus.emit(`widgets:${topic}`, data),
 });
 
 /**
@@ -808,6 +850,36 @@ const lifecycle = Object.freeze({
     },
 });
 
+/* ── 四·六、AI 服务 ── */
+
+/**
+ * 统一 AI 入口。所有插件必须经这里调用模型：
+ * 密钥、服务商、思考强度与温度都由系统设置统一管理，
+ * 插件只描述「发什么、怎么收」，不再各自直连服务商。
+ */
+const ai = Object.freeze({
+    /** 预设清单与能力（不含密钥）。免权限。 */
+    providers: () => AI.listProviders(),
+    /** 当前生效的服务商、模型与能力。免权限。 */
+    status: () => AI.status(),
+    /** 连接测试（GET /models）。需 ai:invoke。 */
+    validate: guard("ai:invoke", (ctx, providerId) => AI.validate(providerId)),
+    /** 非流式对话。需 ai:invoke。 */
+    chat: guard("ai:invoke", (ctx, request) => AI.chat(request)),
+    /**
+     * 流式对话：立即返回 {ok:true,value:{abort}}，事件走 handlers。
+     * 需 ai:invoke。
+     */
+    stream: guard("ai:invoke", (ctx, request, handlers) => AI.startStream(request, handlers)),
+    /** 附件上传，返回 {fileId}。需 ai:invoke。 */
+    upload: guard("ai:invoke", (ctx, file) => AI.upload(file)),
+    /** DeepSeek 语音能力；其他服务商返回 UNSUPPORTED。需 ai:invoke。 */
+    speech: Object.freeze({
+        synthesize: guard("ai:invoke", (ctx, text, voice) => AI.synthesize(text, voice)),
+        transcribe: guard("ai:invoke", (ctx, audio) => AI.transcribe(audio)),
+    }),
+});
+
 /* ── 五、自省与诊断 ── */
 
 const meta = Object.freeze({
@@ -851,7 +923,7 @@ const meta = Object.freeze({
     },
 });
 
-const root = Object.freeze({ apps, fs, bus, quicklook, menus, openWith, shortcuts, vfs, ui, widgets, windows, icons, system, lifecycle, meta });
+const root = Object.freeze({ apps, fs, bus, quicklook, menus, openWith, shortcuts, vfs, ui, widgets, windows, icons, system, lifecycle, ai, meta });
 
 Object.defineProperty(window, "Deskly", {
     value: root,

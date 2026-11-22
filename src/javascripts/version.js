@@ -6,7 +6,7 @@
  * 预发布版本使用 Alpha/Beta/RC 标识（如 "0.2.8 Alpha 1"）。
  */
 
-const VERSION = "0.4.3";
+const VERSION = "0.4.4";
 
 const APP_NAME = "Deskly";
 const APP_AUTHOR = "Edgerd";

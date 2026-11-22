@@ -2,7 +2,7 @@
 
 独立静态站（不打进插件包），双击 `index.html` 即可离线打开，也可用任意静态服务器托管。
 
-**适用版本：0.4.3**（以 `src/javascripts/version.js` 的 `VERSION` 常量为准）。
+**适用版本：0.4.4**（以 `src/javascripts/version.js` 的 `VERSION` 常量为准）。
 
 ## 目录
 
@@ -38,7 +38,7 @@ devdocs/
 
 - 版本号：`src/javascripts/version.js`（0.4.3）、根 `manifest.json`、根 `index.html` 的全部 `?v=` 缓存戳（数量以实测为准）；
 - 插件系统：`plugin-manager.js`（`BUILTIN_IDS` 内置清单、装载时序、缓存戳）、`app-registry.js`（事件与 detail 形状）、`store-api.js`（安装链路与清洗限额）、`sw.js`（X-Deskly-Plugin 接管验证）；
-- API 面：`os-api.js`（Deskly 全方法）、`api-grants.js`（22 条权限名与敏感集）、`settings.js`、`log.js`、`i18n.js`、`osfs.js`、`surface.js`、`trash.js`、`menubar-status.js`、`zindex.js`、`paths.js`、`ui/trafficLights.js`、`ui/dialog.js`（弹窗唯一实现；`ui/alert.js` 为旧门面）、`ui/notification.js`、`ui/popover.js`、`finderbar.js`、`debug.js`、`window-manager.js`（data-window 键表）、`bootstrap.js`（启动顺序）；
+- API 面：`os-api.js`（Deskly 全方法）、`api-grants.js`（24 条权限名与敏感集）、`settings.js`、`log.js`、`i18n.js`、`osfs.js`、`surface.js`、`trash.js`、`menubar-status.js`、`zindex.js`、`paths.js`、`ui/trafficLights.js`、`ui/dialog.js`（弹窗唯一实现；`ui/alert.js` 为旧门面）、`ui/notification.js`、`ui/popover.js`、`finderbar.js`、`debug.js`、`window-manager.js`（data-window 键表）、`bootstrap.js`（启动顺序）；
 - 实例数据：每个 `mods/*/manifest.json` 的 permissions 声明逐个导出核对；
 - 实测取证：`node dev/static-check.mjs`、`node --experimental-vm-modules dev/deep-check.mjs`、`node dev/settings-fulltest.mjs` 三个脚本真实跑过一遍，文中数量为当日输出。
 

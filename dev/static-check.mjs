@@ -13,12 +13,16 @@ import { pathToFileURL } from "node:url";
 const ROOT = resolvePath(import.meta.url.replace(/^file:\/\/\/?/, ""), "..", "..");
 const REPO = process.cwd().replace(/\\/g, "/");
 
+/** 第三方构建产物（mods/<id>/app）由构建脚本生成，不参与源码级 lint。 */
+const VENDOR_RE = /\/mods\/[^/]+\/app\//;
+
 function walk(dir, out = []) {
     let items = [];
     try { items = readdirSync(dir); } catch { return out; }
     items.forEach((name) => {
         if (["node_modules", "dist", ".git", "vendor", "新建文件夹"].includes(name)) return;
         const full = join(dir, name);
+        if (VENDOR_RE.test(full.replace(/\\/g, "/"))) return;
         const st = statSync(full);
         if (st.isDirectory()) walk(full, out);
         else if (/\.(js|mjs|css|html|json)$/.test(name)) out.push(full);

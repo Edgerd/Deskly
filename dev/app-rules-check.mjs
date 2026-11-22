@@ -133,10 +133,9 @@ const rootBlock = declBlock(".launchpad {");
 const reduceBlock = declBlock('html[data-transparency="off"] .launchpad .folder-tile::before {');
 const containerBase = declBlock(".launchpad .container {");
 
-// 图标 PNG 的不透明内容占比：用 PowerShell/System.Drawing 对 15 枚内置图标取 alpha 包围盒实测，
-// 结果 84.0%–84.8%（Finder/Safari/Photos/Keynote 均为 84.4%，Siri 80.4% 为特例）。
-// 真机量到的「磁贴 85、图标画面 70」差的就是这圈透明边，不是磁贴尺寸错。
-const ARTWORK_RATIO = 0.844;
+// 应用图标的可见画面统一占排版盒的 70/84：script.js 用 alpha 包围盒（阈值 64，忽略淡阴影）
+// 逐图归一化；文件夹涂装用同一比例，默认档 84 → 可见 70px。
+const ARTWORK_RATIO = 70 / 84;
 
 check(
     "磁贴排版盒存在、无外描边、无外投影（不再像浮起的一张卡片）",
@@ -206,8 +205,8 @@ check(
 const icon = Number((launchpadCss.match(/--lp-icon:\s*(\d+)px/) || [])[1]);
 const painted = icon * ARTWORK_RATIO;
 check(
-    `默认档：排版盒 ${icon}px，可见涂装 ${painted.toFixed(1)}px（≈ 图标不透明画面，不再大一圈）`,
-    icon > 0 && Math.abs(painted - 70.9) <= 1.5
+    `默认档：排版盒 ${icon}px，可见涂装 ${painted.toFixed(1)}px（与应用图标可见画面统一为 70px）`,
+    icon > 0 && Math.abs(painted - 70) <= 1.5
 );
 const previewInner = icon - 2 * Number((tileBase.match(/--lp-folder-pad:\s*calc\(var\(--lp-icon\)\s*\*\s*([\d.]+)\)/) || [])[1]) * icon;
 check(
@@ -317,7 +316,8 @@ check(
 );
 check(
     "拖拽幽灵沿用同一磁贴尺寸",
-    /\.launchpad \.drag-ghost \.folder-tile \{[^}]*inline-size: var\(--lp-icon\)/.test(launchpadCss)
+    // 幽灵挂在 .launchpad-drag-layer 下（不在 .launchpad 内），选择器只锚定公共的 .drag-ghost
+    /\.drag-ghost \.folder-tile \{[^}]*inline-size: var\(--lp-icon\)/.test(launchpadCss)
 );
 
 /* ───────── 5. 拖拽全程不得出现矩形底色（桌面框选 / 选中类 / 占位格） ───────── */
@@ -367,7 +367,7 @@ check(
 
 const unverified = [
     "真实 getBoundingClientRect：Node 无布局引擎，本检查只验证 CSS 契约；真机请跑 dev/launchpad-folder-measure.js",
-    "真机曾量到磁贴 85 / 图标画面 70：已由图标 PNG 透明边（实测 84.0%–84.8%）解释；修后需再量一次确认可见方块≈图标画面",
+    "真机可见画面：App 图标由 --lp-icon-scale 逐图归一化、磁贴按 70/84 内缩；真实 α 包围盒需跑 dev/launchpad-folder-measure.js 复测",
     "键盘焦点态：图标格不可聚焦，指针拖动不会触发焦点环；键盘导航外观需真机确认",
 ];
 

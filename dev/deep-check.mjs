@@ -14,6 +14,8 @@ const REPO = process.cwd().replace(/\\/g, "/");
 const posix = (p) => String(p).replace(/\\/g, "/");
 const rel = (p) => posix(relative(REPO, p));
 const SKIP_DIRS = new Set(["node_modules", "dist", ".git", "vendor", "新建文件夹"]);
+/** 第三方构建产物（mods/<id>/app）由构建脚本生成，不参与源码级审计。 */
+const VENDOR_RE = /\/mods\/[^/]+\/app\//;
 
 function walk(dir, out = []) {
     let items = [];
@@ -21,6 +23,7 @@ function walk(dir, out = []) {
     items.forEach((name) => {
         if (SKIP_DIRS.has(name)) return;
         const full = join(dir, name);
+        if (VENDOR_RE.test(posix(full))) return;
         const st = statSync(full);
         if (st.isDirectory()) walk(full, out);
         else if (/\.(js|mjs)$/.test(name)) out.push(full);

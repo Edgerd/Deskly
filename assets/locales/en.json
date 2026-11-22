@@ -108,6 +108,7 @@
       "favorites": "Favorites",
       "icloud": "iCloud Drive",
       "locations": "Locations",
+      "sources": "Sources",
       "tags": "Tags"
     },
     "auth": {
@@ -172,6 +173,26 @@
     "shared": "Shared",
     "pictures": "Pictures",
     "bookmarks": "Bookmarks",
+    "thisMac": "This Mac",
+    "removeFavorite": "Remove from Sidebar",
+    "rootLabel": "Deskly",
+    "columnUpMore": "Go back up",
+    "rotateLeft": "Rotate Left",
+    "rotateRight": "Rotate Right",
+    "statusCount": "{n} items",
+    "statusItems": "items",
+    "statusResults": "results",
+    "statusSelected": "Selected",
+    "searchScopeFolder": "Current Folder",
+    "searchScopeDisk": "Entire Deskly",
+    "searchScopeTitle": "Click to switch search scope",
+    "rename": "Rename",
+    "renameFailed": "Rename failed (name conflict or missing permission).",
+    "virtualRename": "These entries are virtual nodes and can’t be renamed.",
+    "moveFailed": "Move/copy failed: the target name conflicts or the location is invalid.",
+    "undoneTrash": "Moved to Trash",
+    "undoneMove": "Moved",
+    "undo": "Undo",
     "colName": "Name",
     "colDate": "Date Modified",
     "colSize": "Size",
@@ -216,7 +237,7 @@
     "mail": "Mail",
     "maps": "Maps",
     "photos": "Photos",
-    "notes": "Notes",
+    "notes": "TextEdit",
     "settings": "System Settings",
     "trash": "Trash",
     "stackEmpty": "Downloads is empty or not authorized",
@@ -253,7 +274,22 @@
     "positionLeft": "Left",
     "positionRight": "Right",
     "restoreDefaults": "Restore Default Order",
-    "runningCannotRemove": "Running apps can’t be removed from the Dock"
+    "runningCannotRemove": "Running apps can’t be removed from the Dock",
+    "notifAdded": "Added “{title}” to the Dock",
+    "notifDuplicate": "“{title}” is already in the Dock",
+    "notifFull": "The Dock is full — up to {n} notifications",
+    "notifUnsupported": "This kind of notification can’t be pinned to the Dock",
+    "notifInvalid": "Couldn’t read this notification. Try again.",
+    "notifStorage": "Couldn’t save — the notification wasn’t pinned",
+    "notifMissing": "This notification no longer exists",
+    "notifRemove": "Remove from Dock",
+    "notifOpenCenter": "Show in Notification Center",
+    "appUnsupported": "This item can’t be pinned to the Dock",
+    "appDuplicate": "“{name}” is already in the Dock",
+    "appStorage": "Couldn’t save — the app wasn’t pinned"
+  },
+  "quicklook": {
+    "zipMeta": "{n} entries (read-only preview)"
   },
   "common": {
     "ok": "OK",
@@ -333,6 +369,9 @@
     "back": "Back",
     "openDisplay": "Open Displays settings",
     "openSound": "Open Sound settings",
+    "openFocus": "Open Focus settings",
+    "focusOff": "Turn Focus off",
+    "focusLoading": "Loading Focus module…",
     "cameraInUse": "The camera is in use",
     "micInUse": "The microphone is in use",
     "locationInUse": "Location services are in use",
@@ -343,7 +382,8 @@
       "airplane": "Airplane mode controls the wireless hardware directly; browsers cannot.",
       "mirroring": "Screen mirroring needs system display output, which a browser extension cannot provide.",
       "display": "Resolution, refresh rate and display arrangement belong to the system; brightness and Night Shift live in Settings.",
-      "volume": "The output device is chosen by the system; only volume and mute are adjustable here."
+      "volume": "The output device is chosen by the system; only volume and mute are adjustable here.",
+      "focus": "Click a mode to activate it; allow-lists and schedules are configured per mode in Settings."
     }
   },
   "settings": {
@@ -474,7 +514,27 @@
     "moreInfoTitle": "More Information",
     "processor": "Processor",
     "serial": "Serial Number",
-    "systemVersion": "System Version"
+    "systemVersion": "System Version",
+    "report": {
+      "title": "System Report",
+      "close": "Done",
+      "system": "System",
+      "version": "System version",
+      "author": "Author",
+      "browser": "Browser",
+      "theme": "Appearance",
+      "language": "Language",
+      "apps": "Apps & Plug-ins",
+      "appsCount": "Installed apps",
+      "appList": "App list",
+      "pluginsCount": "Plug-ins",
+      "storage": "Storage used",
+      "storageTitle": "Storage",
+      "unsupported": "Not supported",
+      "permissions": "Permissions",
+      "permissionsLoading": "Reading",
+      "permissionsFailed": "Read failed"
+    }
   },
   "appstore": {
     "errNotFound": "The plug-in is no longer registered; it may already be uninstalled.",
@@ -525,7 +585,7 @@
     "saving": "Saving…",
     "saveFailed": "Save failed",
     "discardConfirm": "“{title}” is unsaved. Close anyway?",
-    "noteRemoved": "Removed from Notepad",
+    "noteRemoved": "Removed from TextEdit",
     "fileKept": "The file on disk must still be deleted manually:",
     "openedWithGuess": "Opened with guessed encoding",
     "openFailed": "Failed to open file",
@@ -567,11 +627,8 @@
       "deleteBody": "Are you sure you want to delete “{name}”? Items in the album will not be deleted.",
       "deleteTitle": "Delete Album",
       "exists": "An album with that name already exists.",
-      "family": "Family",
       "renameAction": "Rename",
-      "renameTitle": "Rename Album",
-      "travel": "Travel",
-      "work": "Work"
+      "renameTitle": "Rename Album"
     },
     "albumNamePlaceholder": "Album name",
     "clearSearch": "Clear Search",
@@ -620,6 +677,10 @@
       "videos": {
         "hint": "Imported videos will appear here.",
         "title": "No Videos"
+      },
+      "memories": {
+        "hint": "Once there are enough photos, memories are generated by day and month.",
+        "title": "No Memories Yet"
       }
     },
     "errFullscreen": "Full screen is not supported in this browser.",
@@ -739,11 +800,49 @@
       "unmute": "Unmute",
       "volume": "Volume"
     },
+    "errStorageWrite": "Failed to write local storage",
+    "editor": {
+      "undo": "Undo",
+      "reset": "Revert to Original",
+      "close": "Close",
+      "crop": "Crop",
+      "cropFree": "Free",
+      "preset": "Filter",
+      "pNone": "None",
+      "pVivid": "Vivid",
+      "pWarm": "Warm",
+      "pCool": "Cool",
+      "pMono": "Mono",
+      "pDrama": "Drama",
+      "adjust": "Adjust",
+      "brightness": "Brightness",
+      "contrast": "Contrast",
+      "saturation": "Saturation",
+      "temperature": "Temperature",
+      "auto": "Auto Enhance",
+      "saveCopy": "Save as Copy",
+      "saveOriginal": "Save to Original",
+      "confirmTitle": "Overwrite Original",
+      "confirmBody": "The edited image will overwrite the original. This cannot be undone.",
+      "armed": "Click again to confirm overwrite",
+      "saving": "Saving…",
+      "saveFailed": "Save failed",
+      "loading": "Loading…",
+      "loadFailed": "Failed to load image"
+    },
+    "memories": {
+      "byMonth": "{month}",
+      "count": "{n} photos",
+      "favorites": "Favorites",
+      "recentDays": "Recent Days",
+      "thisMonth": "This Month"
+    },
     "view": {
       "album": "Albums",
       "all": "All Photos",
       "favorites": "Favorites",
       "images": "Photos Only",
+      "memories": "Memories",
       "recent": "Recent",
       "trash": "Recently Deleted",
       "videos": "Videos Only"
@@ -797,7 +896,8 @@
     "fsRight": "Right of Screen",
     "splitPick": "Choose a window for the other side",
     "splitNone": "No other window available",
-    "splitToDesktop": "Move Window to Desktop"
+    "splitToDesktop": "Move Window to Desktop",
+    "splitReplace": "Replace Tiled Window"
   },
   "office": {
     "blankExcel": "Untitled Workbook",
@@ -1175,13 +1275,13 @@
   "apps": {
     "about": "About This Mac",
     "app-store": "App Store",
+    "developers": "Developer",
     "calculator": "Calculator",
     "finder": "Finder",
     "launchpad": "Launchpad",
-    "notepad": "Notepad",
+    "notepad": "TextEdit",
     "photos": "Photos",
     "safari": "Safari",
-    "siri": "Siri",
     "system-settings": "System Settings",
     "vs_code": "VS Code",
     "office": {
@@ -1213,7 +1313,14 @@
     "bluetoothOff": " (off)",
     "showBattery": "Battery",
     "showVolume": "Sound",
-    "showBluetooth": "Bluetooth"
+    "showBluetooth": "Bluetooth",
+    "wifi": "Wi-Fi",
+    "wifiOff": " (off)",
+    "stage": "Stage Manager",
+    "showWifi": "Wi-Fi",
+    "showStage": "Stage Manager",
+    "removedTitle": "Removed from menu bar",
+    "removedUndo": "“{name}” removed. Click to undo"
   },
   "keyboard": {
     "tier": {
@@ -1227,12 +1334,70 @@
   "overview": {
     "title": "Window Overview",
     "badgeFullscreen": "Full Screen",
-    "badgeSplit": "Split View"
+    "badgeSplit": "Split View",
+    "spaceDesktop": "Desktop",
+    "spaceFullscreen": "Full Screen — {n}",
+    "spaceSplit": "Split View — {n}",
+    "closeWindow": "Close Window"
   },
   "stage": {
     "shelf": "Recent Apps"
   },
   "spotlight": {
-    "manualHint": "Manual"
+    "manualHint": "Manual",
+    "copyHint": "Press Return to copy",
+    "runHint": "Press Return to run",
+    "convertSub": "Unit conversion",
+    "currencySub": "Currency conversion",
+    "rateDate": "Exchange-rate snapshot",
+    "timerLabel": "Set Timer: {min} min",
+    "timerSub": "Timer",
+    "timerBody": "{min}-minute timer",
+    "timerStarted": "Timer started",
+    "timerDone": "Timer finished"
+  },
+  "focus": {
+    "mode": {
+      "doNotDisturb": "Do Not Disturb",
+      "work": "Work",
+      "personal": "Personal",
+      "sleep": "Sleep"
+    }
+  },
+  "notifycenter": {
+    "title": "Notification Center",
+    "listTitle": "Notifications",
+    "today": "Today",
+    "earlier": "Earlier",
+    "clearAll": "Clear All",
+    "clear": "Clear",
+    "empty": "No Notifications",
+    "muted": "Muted by Focus",
+    "editWidgets": "Edit Widgets…",
+    "justNow": "Just now",
+    "minutesAgo": "{n} min ago",
+    "unknownApp": "System",
+    "undroppable": "This kind of notification can’t be dragged to the Dock"
+  },
+  "widgets": {
+    "calendar": "Calendar",
+    "clock": "Clock",
+    "weather": "Weather",
+    "sizeSmall": "Small",
+    "sizeMedium": "Medium",
+    "sizeLarge": "Large",
+    "centerTitle": "Edit Widgets",
+    "close": "Done",
+    "gallery": "Available widgets",
+    "addToCenter": "Add to Notification Center",
+    "addToDesktop": "Add to Desktop",
+    "remove": "Remove",
+    "sectionCenter": "Notification Center",
+    "sectionDesktop": "Desktop",
+    "editMode": "Edit desktop widgets",
+    "emptyGuide": "Add widgets to see info in Notification Center",
+    "emptyContainer": "No widgets in this container yet",
+    "weatherEmpty": "No weather data",
+    "weatherNote": "Live weather needs an online data source; layout only for now"
   }
 }

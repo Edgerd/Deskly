@@ -6,7 +6,7 @@
 <title>插件包格式 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="plugin-format" data-base="../" data-version="0.4.3">
+<body data-page="plugin-format" data-base="../" data-version="0.4.4">
 <main>
 <h1>插件包格式</h1>
 <p class="lede">一个插件包里该有哪些文件、manifest 每个字段谁在读、图标与路径的硬规则、商店自声明怎么写、怎么打成 ZIP。本页所有字段都以代码真实读取方为准。</p>
@@ -40,7 +40,7 @@ id 会被拼进 <code>./mods/&lt;id&gt;/</code> 路径和 <code>[data-plugin-id]
 <tr><td><code>author</code></td><td> </td><td><b>根级这个字段没有读取方</b>；商店详情要显示作者请写 <code>store.author</code></td><td>无人</td></tr>
 <tr><td><code>store</code></td><td> </td><td>商店自声明区块，见下节</td><td>store-api</td></tr>
 <tr><td><code>formats</code></td><td> </td><td>「能打开哪些扩展名」（<code>[".txt","md"]</code>，带不带点都行）：<b>单应用插件写根级</b>，多应用套件写 <code>apps[].formats</code>——两处内核都会读</td><td>app-registry / default-apps</td></tr>
-<tr><td><code>permissions</code></td><td>✅</td><td>取值必须来自 22 条权限名（见 <a href="../api/deskly.html">Deskly</a> 页）；<b>没声明的能力调用直接 <code>ok:false</code></b>；用不上也要写 <code>[]</code></td><td>api-grants（static-check 第 7 节核对）</td></tr>
+<tr><td><code>permissions</code></td><td>✅</td><td>取值必须来自 24 条权限名（见 <a href="../api/deskly.html">Deskly</a> 页）；<b>没声明的能力调用直接 <code>ok:false</code></b>；用不上也要写 <code>[]</code></td><td>api-grants（static-check 第 7 节核对）</td></tr>
 <tr><td><code>_installed</code></td><td> </td><td>商店安装/还原流程写入的内部标记，不要手填</td><td>store-api</td></tr>
 </table>
 
@@ -68,6 +68,10 @@ id 会被拼进 <code>./mods/&lt;id&gt;/</code> 路径和 <code>[data-plugin-id]
 </ol>
 <p>解析顺序：<code>apps[].icon</code>（多应用时优先）→ <code>manifest.icon</code> → <code>./mods/&lt;id&gt;/icon.png</code>（目录约定兜底）→ 占位图。
 套件里的应用缺图标时显示套件图标，不是占位图。</p>
+<p>渲染方式用 <code>iconRender</code> 声明（插件级，<code>apps</code> 里可逐应用覆盖）：
+<code>"artwork"</code>（默认，启动台量出实心画面并统一到可见 70px）或
+<code>"native"</code>（画布原样铺进排版盒，适合图形自带透明留白或故意溢出画布的图标）。
+读取入口是 <code>plugin-manager.getIconRenderForName()</code>。</p>
 
 <h2>路径写法（三种场景三种规则）</h2>
 <table>

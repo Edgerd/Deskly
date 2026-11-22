@@ -14,9 +14,9 @@
 按 `BUILTIN_IDS` 逐个 `fetch('./mods/{id}/manifest.json?v=<VERSION>')`（`:411`）建立注册表 `registry`，
 再从 localStorage 的已安装清单索引还原 ZIP 插件（索引缺失时回退 IndexedDB，`:417`），最后派发 `plugins-ready`（`:448`）。
 
-- `BUILTIN_IDS` 当前是 **13 个**内置 id：calculator、finder、launchpad、system-settings、about、
-  app-store、notepad、photos、vs_code、siri、safari、office、manual。
-  刷新首屏的 Network 面板因此应看到 **13 个 `manifest.json` 请求**。
+- `BUILTIN_IDS` 当前是 **15 个**内置 id：calculator、finder、launchpad、system-settings、about、
+  app-store、developers、notepad、photos、vs_code、safari、office、manual、spotlight、deskly-ai。
+  刷新首屏的 Network 面板因此应看到 **15 个 `manifest.json` 请求**。
   （图片 / 视频查看能力已并入「照片」，不再单独发布查看器插件。）
   （`office` 是**多应用插件**：一份清单里声明文稿 / 表格 / 演示三个应用，注册表会展开成
   `office.word` / `office.excel` / `office.ppt` 三条应用记录，见 [插件包格式](plugin-format.md)。）

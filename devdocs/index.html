@@ -6,7 +6,7 @@
 <title>总览与架构 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="assets/style.css">
 </head>
-<body data-page="index" data-base="" data-version="0.4.3">
+<body data-page="index" data-base="" data-version="0.4.4">
 <main>
 <h1>总览与架构</h1>
 <p class="lede">Deskly 是一个运行在 Chrome / Edge 新标签页里的 macOS Sequoia 桌面：纯 HTML/CSS/JS、MV3、零框架零构建。本站教你怎么给它写插件（mod），并解释系统是怎么拼起来的。</p>
@@ -31,7 +31,7 @@
 <tr><th>层</th><th>位置</th><th>内容</th><th>改动约束</th></tr>
 <tr><td><b>ui/ 框架</b></td><td><code>src/javascripts/ui/</code>（模块数以实测为准）</td><td>弹窗、通知、浮层、右键菜单、窗口红绿灯、桌面图标</td><td>跨插件复用；样式只走系统令牌</td></tr>
 <tr><td><b>mods/ 应用</b></td><td><code>mods/{id}/</code>（内置插件清单见 <code>BUILTIN_IDS</code>，不写死数量）</td><td>每个插件 = manifest.json + index.html + style.css + script.js + 图标</td><td>目录自包含，可整体打成 ZIP 分发</td></tr>
-<tr><td><b>src/ 内核</b></td><td><code>src/javascripts/</code>（51 个顶层模块，以脚本实测为准）</td><td>程序坞、启动台、控制中心、设置中枢、日志、OSFS 文件存储、层级表、i18n、插件管理器……</td><td>插件通过 import 与 <code>window.__*</code> 消费，不反改</td></tr>
+<tr><td><b>src/ 内核</b></td><td><code>src/javascripts/</code>（54 个顶层模块，以脚本实测为准）</td><td>程序坞、启动台、控制中心、设置中枢、日志、OSFS 文件存储、层级表、i18n、插件管理器……</td><td>插件通过 import 与 <code>window.__*</code> 消费，不反改</td></tr>
 <tr><td><b>assets/ 资源</b></td><td><code>assets/icons|images|locales|…</code></td><td>图标库、界面字形、四语言包（zh-CN / en / ja-JP / cat）</td><td>应用图标一律 WebP；运行时文件名必须 ASCII</td></tr>
 </table>
 

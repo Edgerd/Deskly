@@ -1,0 +1,2079 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置排版编辑器</title>
+<style>
+/* ── Material Design 3 令牌（浅色 / 深色） ───────────────────────────── */
+:root {
+    --md-primary: #6750a4;
+    --md-on-primary: #ffffff;
+    --md-primary-container: #eaddff;
+    --md-on-primary-container: #21005d;
+    --md-secondary-container: #e8def8;
+    --md-on-secondary-container: #1d192b;
+    --md-surface: #fef7ff;
+    --md-surface-container-lowest: #ffffff;
+    --md-surface-container-low: #f7f2fa;
+    --md-surface-container: #f3edf7;
+    --md-surface-container-high: #ece6f0;
+    --md-surface-container-highest: #e6e0e9;
+    --md-on-surface: #1d1b20;
+    --md-on-surface-variant: #49454f;
+    --md-outline: #79747e;
+    --md-outline-variant: #cac4d0;
+    --md-error: #b3261e;
+    --md-on-error: #ffffff;
+    --md-inverse-surface: #322f35;
+    --md-inverse-on-surface: #f5eff7;
+    --md-hover: rgba(103, 80, 164, .08);
+    --md-pressed: rgba(103, 80, 164, .12);
+    --md-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 1px 2px rgba(0, 0, 0, .06);
+    --md-shadow-lg: 0 8px 24px rgba(0, 0, 0, .16);
+    /* 可在「外观与排版」里实时调整的排版变量 */
+    --nav-width: 320px;
+    --content-width: 860px;
+    --card-radius: 20px;
+    --card-gap: 16px;
+    --app-font: "Roboto", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    --icon-filter: brightness(0);
+}
+html[data-theme="dark"] {
+    --md-primary: #d0bcff;
+    --md-on-primary: #381e72;
+    --md-primary-container: #4f378b;
+    --md-on-primary-container: #eaddff;
+    --md-secondary-container: #4a4458;
+    --md-on-secondary-container: #e8def8;
+    --md-surface: #141218;
+    --md-surface-container-lowest: #0f0d13;
+    --md-surface-container-low: #1d1b20;
+    --md-surface-container: #211f26;
+    --md-surface-container-high: #2b2930;
+    --md-surface-container-highest: #36343b;
+    --md-on-surface: #e6e0e9;
+    --md-on-surface-variant: #cac4d0;
+    --md-outline: #938f99;
+    --md-outline-variant: #49454f;
+    --md-error: #f2b8b5;
+    --md-on-error: #601410;
+    --md-inverse-surface: #e6e0e9;
+    --md-inverse-on-surface: #322f35;
+    --md-hover: rgba(208, 188, 255, .08);
+    --md-pressed: rgba(208, 188, 255, .12);
+    --md-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+    --md-shadow-lg: 0 8px 24px rgba(0, 0, 0, .6);
+    --icon-filter: invert(1);
+}
+
+/* ── 基础 ─────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0;
+    font-family: var(--app-font);
+    font-size: 14px;
+    color: var(--md-on-surface);
+    background: var(--md-surface);
+    -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+svg { width: 20px; height: 20px; fill: currentColor; flex: 0 0 auto; }
+::selection { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+
+/* ── 顶栏 ─────────────────────────────────────────────────────────── */
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 72px;
+    padding: 0 24px;
+    background: var(--md-surface-container);
+    border-bottom: 1px solid var(--md-outline-variant);
+}
+.topbar__mark {
+    width: 40px; height: 40px;
+    display: grid; place-items: center;
+    border-radius: 12px;
+    background: var(--md-primary-container);
+    color: var(--md-on-primary-container);
+    font-size: 20px;
+}
+.topbar__titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.topbar__title { font-size: 20px; font-weight: 500; letter-spacing: .1px; }
+.topbar__sub { font-size: 12px; color: var(--md-on-surface-variant); }
+.topbar__spacer { flex: 1; }
+.topbar__actions { display: flex; align-items: center; gap: 4px; }
+
+/* ── 按钮 ─────────────────────────────────────────────────────────── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 20px;
+    background: var(--md-primary);
+    color: var(--md-on-primary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: box-shadow .15s ease, background .15s ease;
+}
+.btn:hover { box-shadow: var(--md-shadow); }
+.btn--tonal { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.btn--text { background: transparent; color: var(--md-primary); padding: 0 12px; }
+.btn--danger { background: transparent; color: var(--md-error); padding: 0 12px; }
+.btn--small { height: 32px; padding: 0 14px; font-size: 13px; }
+.icon-btn {
+    width: 40px; height: 40px;
+    display: grid; place-items: center;
+    border: none; border-radius: 50%;
+    background: transparent;
+    color: var(--md-on-surface-variant);
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.icon-btn:hover { background: var(--md-hover); }
+.icon-btn:active { background: var(--md-pressed); }
+.icon-btn:disabled { opacity: .38; cursor: default; background: transparent; }
+.icon-btn--danger:hover { background: rgba(179, 38, 30, .1); color: var(--md-error); }
+.icon-btn--sm { width: 32px; height: 32px; }
+.icon-btn--sm svg { width: 18px; height: 18px; }
+
+/* ── 布局 ─────────────────────────────────────────────────────────── */
+.shell {
+    display: grid;
+    grid-template-columns: var(--nav-width) minmax(0, 1fr);
+    height: calc(100vh - 72px);
+}
+.nav {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--md-surface-container-low);
+    border-right: 1px solid var(--md-outline-variant);
+}
+.nav__search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 16px 4px;
+    padding: 0 12px;
+    height: 44px;
+    border-radius: 22px;
+    background: var(--md-surface-container-high);
+    color: var(--md-on-surface-variant);
+}
+.nav__search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    color: var(--md-on-surface);
+}
+.nav__scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 12px 24px; }
+.nav__footer { padding: 8px 16px 16px; border-top: 1px solid var(--md-outline-variant); }
+
+.group { padding: 4px; border-radius: 16px; transition: background .15s ease; }
+.group.is-drop { background: var(--md-primary-container); }
+.group__head { display: flex; align-items: center; gap: 2px; padding: 6px 6px 4px 10px; }
+.group__name {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    color: var(--md-on-surface-variant);
+    padding: 4px 0;
+    border-radius: 6px;
+}
+.group__name:focus { background: var(--md-surface-container-highest); padding-left: 4px; }
+.group__count { font-size: 11px; color: var(--md-on-surface-variant); opacity: .7; padding-right: 2px; }
+.group__list { display: flex; flex-direction: column; gap: 2px; }
+
+.pane {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 7px 10px 7px 7px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+}
+.pane:hover { background: var(--md-hover); }
+.pane.is-selected { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.pane.is-selected .pane__icon { background: var(--md-primary); color: var(--md-on-primary); }
+.pane__icon {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border-radius: 10px;
+    background: var(--md-surface-container-high);
+    font-size: 16px;
+}
+.pane__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pane__label { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane__desc { font-size: 11px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane.is-selected .pane__desc { color: var(--md-on-secondary-container); opacity: .75; }
+.pane__meta { font-size: 11px; color: var(--md-on-surface-variant); font-variant-numeric: tabular-nums; }
+.pane__badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--md-surface-container-highest);
+    color: var(--md-on-surface-variant);
+}
+.pane.is-dragging { opacity: .45; }
+.pane.is-drop-before { box-shadow: inset 0 2px 0 var(--md-primary); }
+
+.nav__empty { padding: 24px 12px; color: var(--md-on-surface-variant); font-size: 13px; text-align: center; line-height: 1.6; }
+
+/* ── 内容区 ───────────────────────────────────────────────────────── */
+.content { overflow: auto; padding: 24px; }
+.content__inner { max-width: var(--content-width); margin: 0 auto; display: flex; flex-direction: column; gap: var(--card-gap); }
+
+.card {
+    background: var(--md-surface-container-low);
+    border: 1px solid var(--md-outline-variant);
+    border-radius: var(--card-radius);
+    padding: 20px;
+}
+.card__head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.card__title { margin: 0; font-size: 15px; font-weight: 500; }
+.card__hint { font-size: 12px; color: var(--md-on-surface-variant); }
+
+.pane-head { display: flex; gap: 18px; align-items: flex-start; }
+.pane-icon-input {
+    width: 64px; height: 64px;
+    flex: 0 0 auto;
+    text-align: center;
+    font-size: 28px;
+    border-radius: 20px;
+    border: 1px solid var(--md-outline);
+    background: var(--md-surface-container-highest);
+    outline: none;
+}
+.pane-icon-input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 2px var(--md-primary-container); }
+.fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field__caption { font-size: 12px; color: var(--md-on-surface-variant); }
+.field__input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--md-outline);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--md-on-surface);
+    outline: none;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.field__input:hover { border-color: var(--md-on-surface); }
+.field__input:focus { border-color: var(--md-primary); box-shadow: 0 0 0 2px var(--md-primary-container); }
+.field__input--area { resize: none; min-height: 44px; overflow: hidden; line-height: 1.5; }
+.field__input--title { font-size: 18px; font-weight: 500; }
+select.field__input { appearance: none; cursor: pointer; }
+
+.meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--md-outline-variant); }
+.meta-row__spacer { flex: 1; }
+
+/* MD3 开关 */
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13px; color: var(--md-on-surface-variant); }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch__track {
+    position: relative;
+    width: 52px; height: 32px;
+    border-radius: 16px;
+    background: var(--md-surface-container-highest);
+    border: 2px solid var(--md-outline);
+    transition: background .15s ease, border-color .15s ease;
+}
+.switch__thumb {
+    position: absolute;
+    top: 50%; left: 6px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--md-outline);
+    transform: translateY(-50%);
+    transition: left .15s ease, width .15s ease, height .15s ease, background .15s ease;
+}
+.switch input:checked + .switch__track { background: var(--md-primary); border-color: var(--md-primary); }
+.switch input:checked + .switch__track .switch__thumb { left: 24px; width: 24px; height: 24px; background: var(--md-on-primary); }
+.switch input:focus-visible + .switch__track { box-shadow: 0 0 0 3px var(--md-primary-container); }
+
+/* 设置项行 */
+.rows { display: flex; flex-direction: column; gap: 8px; }
+.row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: var(--md-surface-container);
+    border: 1px solid transparent;
+    transition: border-color .15s ease, opacity .15s ease;
+}
+.row.is-dragging { opacity: .45; }
+.row.is-drop-before { border-top-color: var(--md-primary); box-shadow: inset 0 2px 0 var(--md-primary); }
+.row__handle {
+    flex: 0 0 auto;
+    margin-top: 6px;
+    color: var(--md-on-surface-variant);
+    cursor: grab;
+    background: transparent;
+    border: none;
+    padding: 2px;
+    border-radius: 6px;
+}
+.row__handle:active { cursor: grabbing; }
+.row__index {
+    flex: 0 0 auto;
+    width: 18px;
+    padding-top: 11px;
+    font-size: 11px;
+    text-align: right;
+    color: var(--md-on-surface-variant);
+    font-variant-numeric: tabular-nums;
+}
+.row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.row__body .field__input { padding: 8px 10px; border-radius: 10px; }
+.row__body .field__input--area { min-height: 36px; }
+.row__tools { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; padding-top: 2px; }
+
+.rows__footer { display: flex; justify-content: flex-start; margin-top: 12px; }
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 64px 24px;
+    border: 1px dashed var(--md-outline-variant);
+    border-radius: 24px;
+    color: var(--md-on-surface-variant);
+    text-align: center;
+}
+.empty-state__icon { font-size: 34px; }
+.empty-state__title { font-size: 16px; font-weight: 500; color: var(--md-on-surface); }
+.empty-state__hint { font-size: 13px; max-width: 320px; line-height: 1.6; }
+
+/* ── 提示条 / 对话框 ─────────────────────────────────────────────── */
+.snackbar {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translate(-50%, 24px);
+    padding: 12px 18px;
+    border-radius: 8px;
+    background: var(--md-inverse-surface);
+    color: var(--md-inverse-on-surface);
+    font-size: 13px;
+    box-shadow: var(--md-shadow-lg);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 50;
+}
+.snackbar.is-open { opacity: 1; transform: translate(-50%, 0); }
+
+dialog {
+    width: min(420px, calc(100vw - 48px));
+    padding: 24px;
+    border: none;
+    border-radius: 28px;
+    background: var(--md-surface-container-high);
+    color: var(--md-on-surface);
+    box-shadow: var(--md-shadow-lg);
+}
+dialog::backdrop { background: rgba(0, 0, 0, .4); backdrop-filter: blur(2px); }
+dialog h2 { margin: 0 0 12px; font-size: 20px; font-weight: 500; }
+dialog p { margin: 0 0 24px; font-size: 14px; line-height: 1.6; color: var(--md-on-surface-variant); }
+.dialog__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ── 图标（Emoji / CDN SVG） ─────────────────────────────────────── */
+.icon-img {
+    width: 20px;
+    height: 20px;
+    display: block;
+    filter: var(--icon-filter);
+    object-fit: contain;
+}
+.icon-img--tile { filter: brightness(0) invert(1); }
+.pane__icon .icon-img { width: 19px; height: 19px; }
+.pane__icon.is-tile { background: var(--tile-color, var(--md-primary)); }
+.pane-icon-button {
+    width: 64px; height: 64px;
+    flex: 0 0 auto;
+    display: grid; place-items: center;
+    border-radius: 20px;
+    border: 1px solid var(--md-outline);
+    background: var(--md-surface-container-highest);
+    cursor: pointer;
+    font-size: 28px;
+}
+.pane-icon-button.is-tile { border-color: transparent; background: var(--tile-color, var(--md-primary)); }
+.pane-icon-button:hover { border-color: var(--md-primary); }
+.pane-icon-button .icon-img { width: 30px; height: 30px; }
+.pane-icon-button__hint { display: block; font-size: 10px; color: var(--md-on-surface-variant); margin-top: 4px; }
+
+/* 子项图标按钮 */
+.row__icon {
+    flex: 0 0 auto;
+    width: 30px; height: 30px;
+    margin-top: 2px;
+    display: grid; place-items: center;
+    border: 1px solid var(--md-outline-variant);
+    border-radius: 9px;
+    background: var(--md-surface-container-high);
+    color: var(--md-on-surface-variant);
+    cursor: pointer;
+    font-size: 15px;
+    padding: 0;
+}
+.row__icon:hover { border-color: var(--md-primary); }
+.row__icon.is-tile { border-color: transparent; background: var(--tile-color, var(--md-primary)); }
+.row__icon .icon-img { width: 17px; height: 17px; }
+.row__icon.is-empty { border-style: dashed; background: transparent; }
+.row__icon.is-empty svg { width: 15px; height: 15px; opacity: .6; }
+
+/* ── 可开关的排版细节 ───────────────────────────────────────────── */
+html[data-desc="off"] .pane__desc { display: none; }
+html[data-index="off"] .row__index { display: none; }
+html[data-font="serif"] { --app-font: Georgia, "Songti SC", "SimSun", serif; }
+html[data-font="mono"] { --app-font: "JetBrains Mono", Consolas, "Courier New", monospace; }
+html[data-font="rounded"] { --app-font: "SF Pro Rounded", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+html[data-density="compact"] .card { padding: 14px; }
+html[data-density="compact"] .row { padding: 7px 10px; }
+html[data-density="compact"] .pane { padding: 5px 8px 5px 5px; }
+html[data-density="compact"] .group { margin: 4px 0; }
+
+/* ── 图标选择器 / 外观设置对话框 ─────────────────────────────────── */
+.dialog-body { display: flex; flex-direction: column; gap: 16px; max-height: min(70vh, 640px); overflow: auto; }
+.dialog-hint { font-size: 12px; color: var(--md-on-surface-variant); line-height: 1.6; }
+.icon-search { display: flex; gap: 8px; }
+.icon-search .field__input { flex: 1; }
+.icon-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+    gap: 6px;
+    min-height: 56px;
+}
+.icon-results--scroll {
+    max-height: 216px;
+    overflow: auto;
+    padding: 2px 4px 2px 2px;
+    align-content: start;
+}
+.icon-colorrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.icon-color {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    padding: 0;
+    cursor: pointer;
+}
+.icon-color.is-active { border-color: var(--md-on-surface); }
+.icon-color--none {
+    display: grid; place-items: center;
+    background: var(--md-surface-container-high);
+    color: var(--md-on-surface-variant);
+    font-size: 14px;
+}
+.icon-result {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--md-outline-variant);
+    border-radius: 12px;
+    background: var(--md-surface-container);
+    cursor: pointer;
+    font-size: 20px;
+}
+.icon-result:hover { border-color: var(--md-primary); background: var(--md-primary-container); }
+.icon-result .icon-img { width: 22px; height: 22px; }
+.icon-results > .dialog-hint { grid-column: 1 / -1; }
+.icon-result--all {
+    grid-column: 1 / -1;
+    width: auto;
+    height: 40px;
+    border-style: dashed;
+    font-size: 13px;
+    color: var(--md-primary);
+}
+.icon-color--custom {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 2px solid transparent;
+    background: conic-gradient(#e0524a, #d9a21b, #34a853, #2aa79b, #3d7be0, #7a5af8, #c455a8, #e0524a);
+    cursor: pointer;
+    overflow: hidden;
+}
+.icon-color--custom::-webkit-color-swatch-wrapper { padding: 0; }
+.icon-color--custom::-webkit-color-swatch { border: 2px solid var(--md-surface-container-high); border-radius: 50%; }
+.icon-color--custom::-moz-color-swatch { border: 2px solid var(--md-surface-container-high); border-radius: 50%; }
+/* 选好底色后，图标网格预览同一套「颜色底 + 图标」效果 */
+#iconDialog.has-tile .icon-result {
+    background: var(--tile-color, var(--md-primary));
+    border-color: transparent;
+    color: #fff;
+}
+#iconDialog.has-tile .icon-result .icon-img { filter: brightness(0) invert(1); }
+.ui-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.ui-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--md-on-surface-variant); min-width: 0; }
+.ui-field--wide { grid-column: 1 / -1; }
+.ui-field input[type="range"] { accent-color: var(--md-primary); width: 100%; }
+.ui-field input[type="text"], .ui-field select { color: var(--md-on-surface); font-size: 14px; }
+.ui-swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ui-swatch {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+}
+.ui-swatch.is-active { border-color: var(--md-on-surface); }
+.ui-color { width: 36px; height: 32px; border: 1px solid var(--md-outline); border-radius: 8px; background: transparent; padding: 2px; }
+
+.mobile-menu { display: none; }
+.nav-scrim { display: none; }
+
+/* ── 移动端：导航变抽屉 ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .shell { display: block; height: calc(100vh - 72px); }
+    .nav {
+        position: fixed;
+        top: 72px;
+        bottom: 0;
+        left: 0;
+        width: min(84vw, 340px);
+        z-index: 40;
+        border-right: 1px solid var(--md-outline-variant);
+        box-shadow: var(--md-shadow-lg);
+        transform: translateX(-102%);
+        transition: transform .25s ease;
+    }
+    body.nav-open .nav { transform: none; }
+    .nav-scrim {
+        position: fixed;
+        inset: 72px 0 0;
+        z-index: 35;
+        background: rgba(0, 0, 0, .32);
+    }
+    body.nav-open .nav-scrim { display: block; }
+    .mobile-menu { display: grid; }
+    .content { height: 100%; padding: 16px; }
+    .topbar { height: 64px; padding: 0 12px; gap: 8px; }
+    .topbar__mark { display: none; }
+    .topbar__title { font-size: 17px; }
+    .topbar__sub { display: none; }
+    .topbar__actions .btn span { display: none; }
+    .topbar__actions .btn { padding: 0 12px; }
+    .icon-btn { width: 36px; height: 36px; }
+    .shell { height: calc(100vh - 64px); }
+    .nav { top: 64px; }
+    .nav-scrim { inset: 64px 0 0; }
+    .pane-head { flex-direction: row; gap: 12px; }
+    .pane-icon-button { width: 56px; height: 56px; border-radius: 16px; font-size: 24px; }
+    .row { flex-wrap: wrap; }
+    /* 窄屏时文本框独占一行，避免被工具按钮挤到只剩几十像素 */
+    .row__body { flex: 1 1 100%; order: 3; }
+    .row__tools { order: 2; margin-left: auto; }
+    .ui-grid { grid-template-columns: 1fr; }
+    dialog { padding: 20px; border-radius: 24px; }
+}
+@media (max-width: 560px) {
+    .topbar { gap: 6px; }
+    .topbar__spacer { display: none; }
+    .topbar__titles { flex: 1; min-width: 0; }
+    .topbar__title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar__actions { flex: 0 0 auto; }
+    .topbar__actions .icon-btn { width: 32px; height: 32px; }
+    .topbar__actions #btnUndo, .topbar__actions #btnRedo { display: none; }
+    .topbar__actions .btn--tonal { padding: 0 10px; }
+    .content { padding: 12px; }
+    .card { padding: 16px; }
+    .row__index { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+    <button class="icon-btn mobile-menu" id="btnMenu" title="打开导航" aria-label="打开导航"></button>
+    <div class="topbar__mark">≡</div>
+    <div class="topbar__titles">
+        <div class="topbar__title">设置排版编辑器</div>
+        <div class="topbar__sub" id="stats">—</div>
+    </div>
+    <div class="topbar__spacer"></div>
+    <div class="topbar__actions">
+        <button class="icon-btn" id="btnUndo" title="撤销 (Ctrl+Z)" aria-label="撤销"></button>
+        <button class="icon-btn" id="btnRedo" title="重做 (Ctrl+Shift+Z)" aria-label="重做"></button>
+        <button class="icon-btn" id="btnAppearance" title="外观与排版" aria-label="外观与排版"></button>
+        <button class="icon-btn" id="btnTheme" title="切换深浅色" aria-label="切换深浅色"></button>
+        <button class="btn btn--text" id="btnImport"><span>导入</span></button>
+        <button class="btn btn--tonal" id="btnExport"><span>导出 JSON</span></button>
+        <button class="icon-btn icon-btn--danger" id="btnReset" title="恢复初始示例" aria-label="恢复初始示例"></button>
+    </div>
+</header>
+
+<div class="shell">
+    <aside class="nav">
+        <div class="nav__search">
+            <span id="searchIcon"></span>
+            <input id="searchInput" type="search" placeholder="搜索设置项或描述" aria-label="搜索设置项">
+        </div>
+        <div class="nav__scroll" id="navList"></div>
+        <div class="nav__footer">
+            <button class="btn btn--tonal" id="btnAddGroup" style="width:100%;justify-content:center">＋ 新建分组</button>
+        </div>
+    </aside>
+
+    <main class="content" id="content">
+        <div class="content__inner" id="editor"></div>
+    </main>
+</div>
+
+<div class="nav-scrim" id="navScrim"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<div class="snackbar" id="snackbar" role="status"></div>
+
+<dialog id="confirmDialog">
+    <h2 id="confirmTitle">确认</h2>
+    <p id="confirmText"></p>
+    <div class="dialog__actions">
+        <button class="btn btn--text" id="confirmCancel" type="button">取消</button>
+        <button class="btn" id="confirmOk" type="button">确定</button>
+    </div>
+</dialog>
+
+<dialog id="iconDialog">
+    <h2>选择图标</h2>
+    <div class="dialog-body">
+        <div class="icon-search">
+            <input class="field__input" id="iconQuery" type="search" placeholder="搜索图标，例如 settings / wifi / bell" aria-label="搜索图标">
+            <button class="btn btn--tonal" id="iconSearchBtn" type="button">搜索</button>
+        </div>
+        <div class="dialog-hint">来自 Iconify CDN（Material Symbols / Tabler / Lucide / MDI / Phosphor），点击即可应用。</div>
+        <div class="dialog-hint">图标底色（颜色底 + 图标），选「✕」则只保留图标本身：</div>
+        <div class="icon-colorrow" id="iconColors"></div>
+        <div class="dialog-hint">搜索结果：</div>
+        <div class="icon-results icon-results--scroll" id="iconResults"></div>
+        <div class="icon-search">
+            <input class="field__input" id="iconUrl" type="text" placeholder="https://…/icon.svg 或粘贴 Emoji" aria-label="图标链接">
+            <button class="btn btn--tonal" id="iconUrlApply" type="button">应用</button>
+        </div>
+    </div>
+    <div class="dialog__actions" style="margin-top:16px">
+        <button class="btn btn--text" id="iconClose" type="button">关闭</button>
+    </div>
+</dialog>
+
+<dialog id="appearanceDialog">
+    <h2>外观与排版</h2>
+    <div class="dialog-body">
+        <div class="ui-grid">
+            <label class="ui-field ui-field--wide">标题
+                <input class="field__input" id="uiTitle" type="text">
+            </label>
+            <div class="ui-field ui-field--wide">主题色
+                <div class="ui-swatches" id="uiSwatches"></div>
+            </div>
+            <label class="ui-field">字体
+                <select class="field__input" id="uiFont">
+                    <option value="sans">系统无衬线</option>
+                    <option value="rounded">圆体</option>
+                    <option value="serif">衬线</option>
+                    <option value="mono">等宽</option>
+                </select>
+            </label>
+            <label class="ui-field">密度
+                <select class="field__input" id="uiDensity">
+                    <option value="comfortable">舒适</option>
+                    <option value="compact">紧凑</option>
+                </select>
+            </label>
+            <label class="ui-field">正文字号 <output id="outFontSize"></output>
+                <input id="uiFontSize" type="range" min="12" max="20" step="1">
+            </label>
+            <label class="ui-field">行高 <output id="outLineHeight"></output>
+                <input id="uiLineHeight" type="range" min="1.2" max="2" step="0.05">
+            </label>
+            <label class="ui-field">导航宽度 <output id="outNavWidth"></output>
+                <input id="uiNavWidth" type="range" min="240" max="400" step="4">
+            </label>
+            <label class="ui-field">内容宽度 <output id="outContentWidth"></output>
+                <input id="uiContentWidth" type="range" min="560" max="1100" step="20">
+            </label>
+            <label class="ui-field">卡片圆角 <output id="outCardRadius"></output>
+                <input id="uiCardRadius" type="range" min="0" max="32" step="2">
+            </label>
+            <label class="ui-field">卡片间距 <output id="outCardGap"></output>
+                <input id="uiCardGap" type="range" min="8" max="32" step="2">
+            </label>
+            <div class="ui-field ui-field--wide">显示
+                <span class="meta-row" style="border:none;margin:0;padding:0;gap:20px">
+                    <label class="switch"><input type="checkbox" id="uiShowDesc"><span class="switch__track"></span><span class="switch__thumb"></span><span>侧栏描述</span></label>
+                    <label class="switch"><input type="checkbox" id="uiShowIndex"><span class="switch__track"></span><span class="switch__thumb"></span><span>子项序号</span></label>
+                </span>
+            </div>
+        </div>
+    </div>
+    <div class="dialog__actions" style="margin-top:20px">
+        <button class="btn btn--text" id="uiReset" type="button">恢复默认</button>
+        <button class="btn" id="uiDone" type="button">完成</button>
+    </div>
+</dialog>
+
+<script>
+(() => {
+    "use strict";
+
+    /* ── 图标（Material Symbols 路径） ─────────────────────────────── */
+    const ICON = {
+        undo: "M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z",
+        redo: "M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z",
+        theme: "M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z",
+        reset: "M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z",
+        search: "M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z",
+        add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+        delete: "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+        up: "M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z",
+        down: "M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z",
+        drag: "M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+        menu: "M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z",
+        tune: "M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z",
+        image: "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z",
+        download: "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z",
+        upload: "M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z",
+    };
+    const svg = (path) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
+
+    /* ── 常量与初始示例数据 ────────────────────────────────────────── */
+    const STORE_KEY = "md3-settings-editor.v1";
+    const THEME_KEY = "md3-settings-editor.theme";
+    const UI_KEY = "md3-settings-editor.ui";
+    const HISTORY_LIMIT = 80;
+
+    /* ── 图标 CDN 与可选外观 ──────────────────────────────────────── */
+    // Iconify 的公共 API：搜索 + 按名称取 SVG，无需打包图标库。
+    const ICON_CDN = "https://api.iconify.design";
+    const ICON_PREFIXES = "material-symbols,tabler,lucide,mdi,ph";
+    // 「颜色底 + 图标」可选底色
+    const ICON_TILE_COLORS = [
+        "#e0524a", "#d9a21b", "#34a853", "#2aa79b", "#2f80ed",
+        "#3d7be0", "#7a5af8", "#c455a8", "#8e8e93", "#6d6d72",
+    ];
+    // 生成一个「颜色底 + Material Symbols 图标」值
+    const tile = (color, name) => ({ color, glyph: `${ICON_CDN}/material-symbols/${name}.svg` });
+    const ACCENT_SWATCHES = ["#6750a4", "#006a6a", "#00658f", "#8b5000", "#984061", "#3f6212", "#5c5f61"];
+    const DEFAULT_UI = {
+        appTitle: "设置排版编辑器",
+        accent: "#6750a4",
+        font: "sans",
+        density: "comfortable",
+        fontSize: 14,
+        lineHeight: 1.5,
+        navWidth: 320,
+        contentWidth: 860,
+        cardRadius: 20,
+        cardGap: 16,
+        showDesc: true,
+        showIndex: true,
+    };
+
+    const seed = () => ({
+        version: 1,
+        groups: [
+            {
+                id: "g-alerts", name: "提醒与时间",
+                panes: [
+                    {
+                        id: "p-notifications", icon: tile("#e0524a", "notifications"), label: "通知", desc: "允许通知、横幅样式与预览内容。", hidden: false,
+                        rows: [
+                            { id: "r-n1", label: "允许通知", desc: "关闭后所有应用都不再弹出通知。", hidden: false },
+                            { id: "r-n2", label: "预览内容", desc: "锁屏时隐藏通知正文，只显示应用名。", hidden: false },
+                            { id: "r-n3", label: "锁定时显示", desc: "锁定屏幕上也显示通知横幅。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-sound", icon: tile("#3d7be0", "volume-up"), label: "声音", desc: "输出音量、提示音与静音行为。", hidden: false,
+                        rows: [
+                            { id: "r-s1", label: "输出音量", desc: "控制系统主音量。", hidden: false },
+                            { id: "r-s2", label: "提示音音量", desc: "单独调整提示音的音量。", hidden: false },
+                            { id: "r-s3", label: "静音模式", desc: "静音时仍保留闹钟与计时器。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-screen-time", icon: tile("#7a5af8", "hourglass-empty"), label: "屏幕使用时间", desc: "统计使用时长，设置停用时间与始终允许的应用。", hidden: false,
+                        rows: [
+                            { id: "r-t1", label: "使用情况", desc: "按前台应用统计每天的时长。", hidden: false },
+                            { id: "r-t2", label: "停用时间", desc: "设定每天不可使用的时间段。", hidden: false },
+                            { id: "r-t3", label: "始终允许", desc: "停用期间仍可打开的应用。", hidden: false },
+                        ],
+                    },
+                ],
+            },
+            {
+                id: "g-system", name: "系统",
+                panes: [
+                    {
+                        id: "p-apps", icon: tile("#2aa79b", "extension"), label: "App", desc: "按应用管理通知、默认打开方式与自注册设置项。", hidden: false,
+                        rows: [
+                            { id: "r-a1", label: "文件类型", desc: "为每种文件指定默认打开的应用。", hidden: false },
+                            { id: "r-a2", label: "协议与网页", desc: "网页协议与链接的默认应用。", hidden: false },
+                            { id: "r-a3", label: "逐应用通知", desc: "在应用详情里单独开关通知。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-general", icon: tile("#8e8e93", "settings"), label: "通用", desc: "储存、时间与地区、关于本机等系统级入口。", hidden: false,
+                        rows: [
+                            { id: "r-g1", label: "储存", desc: "查看本机占用与各类数据大小。", hidden: false },
+                            { id: "r-g2", label: "时间与地区", desc: "时区、时间格式与地区偏好。", hidden: false },
+                            { id: "r-g3", label: "关于本机", desc: "系统版本、设备信息与恢复出厂。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-appearance", icon: tile("#c455a8", "palette"), label: "外观", desc: "颜色与主题、侧栏与模糊、窗口与菜单栏、墙纸。", hidden: false,
+                        rows: [
+                            { id: "r-ap1", label: "颜色与主题", desc: "强调色、深浅色与自动切换。", hidden: false },
+                            { id: "r-ap2", label: "侧栏与模糊", desc: "侧栏材质、透明度与模糊强度。", hidden: false },
+                            { id: "r-ap3", label: "窗口与菜单栏", desc: "窗口圆角、阴影与菜单栏着色。", hidden: false },
+                            { id: "r-ap4", label: "桌面与滚动", desc: "滚动条外观与桌面图标。", hidden: false },
+                            { id: "r-ap5", label: "墙纸", desc: "桌面与锁定屏幕的墙纸。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-accessibility", icon: tile("#3d7be0", "accessibility-new"), label: "辅助功能", desc: "缩放、对比度、减少动态、指针与字幕。", hidden: false,
+                        rows: [
+                            { id: "r-ac1", label: "显示", desc: "对比度、字号与色彩滤镜。", hidden: false },
+                            { id: "r-ac2", label: "指针控制", desc: "指针大小、颜色与跟随速度。", hidden: false },
+                            { id: "r-ac3", label: "动态效果", desc: "减少动画与透明效果。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-control-center", icon: tile("#6d6d72", "dashboard"), label: "控制中心", desc: "菜单栏图标、状态项与实时状态。", hidden: false,
+                        rows: [
+                            { id: "r-c1", label: "开关", desc: "控制中心里的常用开关。", hidden: false },
+                            { id: "r-c2", label: "菜单栏状态项", desc: "电池、台前调度等状态项的显隐与顺序。", hidden: false },
+                            { id: "r-c3", label: "实时状态", desc: "查看当前控制中心摘要。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-siri", icon: tile("#7a5af8", "auto-awesome"), label: "Apple 智能与 Siri", desc: "智能服务商、API 密钥与语音听写。", hidden: false,
+                        rows: [
+                            { id: "r-si1", label: "服务商", desc: "选择本地或云端智能服务。", hidden: false },
+                            { id: "r-si2", label: "API 密钥", desc: "云端服务所需的访问密钥。", hidden: false },
+                            { id: "r-si3", label: "语音与听写", desc: "唤醒词与输入语言。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-spotlight", icon: tile("#3d7be0", "search"), label: "聚焦", desc: "搜索范围与键盘快捷键。", hidden: false,
+                        rows: [
+                            { id: "r-sp1", label: "搜索范围", desc: "纳入搜索的内容类别。", hidden: false },
+                            { id: "r-sp2", label: "键盘快捷键", desc: "唤起搜索的组合键。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-privacy", icon: tile("#d9a21b", "shield"), label: "隐私与安全性", desc: "权限状态、存储占用与本地数据清理。", hidden: false,
+                        rows: [
+                            { id: "r-pv1", label: "权限", desc: "麦克风、相机、定位等授权状态。", hidden: false },
+                            { id: "r-pv2", label: "存储", desc: "查看占用与持久存储状态。", hidden: false },
+                            { id: "r-pv3", label: "危险操作", desc: "清除所有本地数据。", hidden: false },
+                        ],
+                    },
+                ],
+            },
+            {
+                id: "g-desktop", name: "桌面",
+                panes: [
+                    {
+                        id: "p-dock", icon: tile("#2f80ed", "desktop-windows"), label: "桌面与程序坞", desc: "程序坞布局、桌面、台前调度与窗口行为。", hidden: false,
+                        rows: [
+                            { id: "r-d1", label: "程序坞", desc: "图标大小、位置、放大与自动隐藏。", hidden: false },
+                            { id: "r-d2", label: "桌面", desc: "桌面图标、废纸篓样式与右键菜单。", hidden: false },
+                            { id: "r-d3", label: "台前调度", desc: "窗口分组方式与最近使用。", hidden: false },
+                            { id: "r-d4", label: "窗口与启动台", desc: "窗口平铺与启动台布局。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-lock", icon: tile("#6d6d72", "lock"), label: "锁定屏幕", desc: "空闲自动锁定、屏幕保护程序与解锁口令。", hidden: false,
+                        rows: [
+                            { id: "r-l1", label: "自动锁定", desc: "空闲多久后自动锁屏。", hidden: false },
+                            { id: "r-l2", label: "屏幕保护程序", desc: "锁屏后展示的画面。", hidden: false },
+                            { id: "r-l3", label: "解锁口令", desc: "设置或修改解锁密码。", hidden: false },
+                        ],
+                    },
+                ],
+            },
+            {
+                id: "g-peripherals", name: "周边设备",
+                panes: [
+                    {
+                        id: "p-keyboard", icon: tile("#6d6d72", "keyboard"), label: "键盘", desc: "按键重复、修饰键与快捷键。", hidden: false,
+                        rows: [
+                            { id: "r-k1", label: "按键重复", desc: "按住按键时的重复速度。", hidden: false },
+                            { id: "r-k2", label: "修饰键", desc: "重新映射 Command / Option 等。", hidden: false },
+                            { id: "r-k3", label: "输入法", desc: "切换输入法与候选窗样式。", hidden: false },
+                        ],
+                    },
+                    {
+                        id: "p-mouse", icon: tile("#6d6d72", "mouse"), label: "鼠标", desc: "指针速度、滚动方向与双击速度。", hidden: false,
+                        rows: [
+                            { id: "r-m1", label: "指针速度", desc: "移动鼠标时的指针速度。", hidden: false },
+                            { id: "r-m2", label: "自然滚动", desc: "滚动方向跟随手势。", hidden: false },
+                            { id: "r-m3", label: "双击速度", desc: "判定双击的间隔。", hidden: false },
+                        ],
+                    },
+                ],
+            },
+            {
+                id: "g-developer", name: "开发者",
+                panes: [
+                    {
+                        id: "p-debug", icon: tile("#34a853", "bug-report"), label: "调试", desc: "命令面板、日志与开发者模式。", hidden: false,
+                        rows: [
+                            { id: "r-db1", label: "开发者模式", desc: "开启后显示调试相关入口。", hidden: false },
+                            { id: "r-db2", label: "日志级别", desc: "控制日志输出的详细程度。", hidden: false },
+                            { id: "r-db3", label: "命令面板", desc: "可直接执行内置调试命令。", hidden: false },
+                        ],
+                    },
+                ],
+            },
+        ],
+    });
+
+    /* ── 工具函数 ─────────────────────────────────────────────────── */
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const el = (tag, cls, text) => {
+        const node = document.createElement(tag);
+        if (cls) node.className = cls;
+        if (text != null) node.textContent = text;
+        return node;
+    };
+    const esc = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[ch]));
+    const uid = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-3)}`;
+    const autoGrow = (area) => {
+        area.style.height = "auto";
+        area.style.height = `${Math.max(area.scrollHeight, 36)}px`;
+    };
+    const iconButton = (name, label, extraClass = "") => {
+        const btn = el("button", `icon-btn ${extraClass}`.trim());
+        btn.type = "button";
+        btn.title = label;
+        btn.setAttribute("aria-label", label);
+        btn.innerHTML = svg(ICON[name]);
+        return btn;
+    };
+    // 图标可以是字符串（Emoji / 图片链接），也可以是 { color, glyph } 的「颜色底 + 图标」。
+    const isIconUrl = (raw) => /^(https?:\/\/|data:image\/)/i.test(String(raw || "").trim());
+    const readIcon = (value, placeholder = "⚙️") => {
+        if (value && typeof value === "object") {
+            const glyph = String(value.glyph || "").trim();
+            return { glyph: glyph || placeholder, color: value.color ? String(value.color) : "" };
+        }
+        const raw = String(value || "").trim();
+        return { glyph: raw || placeholder, color: "" };
+    };
+    const iconMarkup = (icon) => {
+        if (isIconUrl(icon.glyph)) {
+            // 图标名写错或 CDN 不可用时，退化成齿轮，避免出现破图方块
+            return `<img class="icon-img${icon.color ? " icon-img--tile" : ""}" src="${esc(icon.glyph)}" alt="" loading="lazy" onerror="this.onerror=null;this.outerHTML='⚙️'">`;
+        }
+        return esc(icon.glyph);
+    };
+    const iconStyle = (icon) => (icon.color ? ` style="--tile-color:${esc(icon.color)}"` : "");
+    const paintIcon = (node, icon) => {
+        node.innerHTML = iconMarkup(icon);
+        node.classList.toggle("is-tile", Boolean(icon.color));
+        if (icon.color) node.style.setProperty("--tile-color", icon.color);
+        else node.style.removeProperty("--tile-color");
+    };
+    const rawGlyph = (node) => {
+        if (node.icon && typeof node.icon === "object") return String(node.icon.glyph || "");
+        return String(node.icon || "");
+    };
+    const switchControl = (get, set, label) => {
+        const wrap = el("label", "switch");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = !get();
+        input.addEventListener("change", () => set(!input.checked));
+        wrap.append(input, el("span", "switch__track"), el("span", "switch__thumb"), el("span", null, label));
+        return wrap;
+    };
+
+    /* ── 状态 ─────────────────────────────────────────────────────── */
+    let state = loadState();
+    let ui = loadUi();
+    let selectedId = firstPaneId();
+    let query = "";
+    let drag = null;
+    let iconTarget = null; // { paneId, rowId }：rowId 为空表示编辑主干图标
+    let iconDraft = { color: "" }; // 图标选择器里当前选中的底色
+    const history = { past: [], future: [] };
+
+    function loadUi() {
+        try {
+            const raw = localStorage.getItem(UI_KEY);
+            if (raw) return { ...DEFAULT_UI, ...JSON.parse(raw) };
+        } catch (error) {
+            console.warn("读取外观设置失败", error);
+        }
+        return { ...DEFAULT_UI };
+    }
+    function saveUi() {
+        try {
+            localStorage.setItem(UI_KEY, JSON.stringify(ui));
+        } catch (error) {
+            console.warn("保存外观设置失败", error);
+        }
+    }
+
+    function loadState() {
+        try {
+            const raw = localStorage.getItem(STORE_KEY);
+            if (raw) return normalize(JSON.parse(raw));
+        } catch (error) {
+            console.warn("读取本地草稿失败，使用初始示例", error);
+        }
+        return seed();
+    }
+    function saveState() {
+        try {
+            localStorage.setItem(STORE_KEY, JSON.stringify(state));
+        } catch (error) {
+            console.warn("保存本地草稿失败", error);
+        }
+    }
+    const normIcon = (value, fallback = "") => {
+        if (value && typeof value === "object") {
+            return { color: String(value.color || ""), glyph: String(value.glyph || fallback) };
+        }
+        return String(value || fallback);
+    };
+    function normalize(data) {
+        if (!data || !Array.isArray(data.groups)) throw new Error("JSON 结构不正确：缺少 groups 数组");
+        return {
+            version: 1,
+            groups: data.groups.map((group) => ({
+                id: group && group.id ? String(group.id) : uid("g"),
+                name: String((group && group.name) || "未命名分组"),
+                panes: Array.isArray(group && group.panes) ? group.panes.map((pane) => ({
+                    id: pane && pane.id ? String(pane.id) : uid("p"),
+                    icon: normIcon(pane && pane.icon, "⚙️"),
+                    label: String((pane && pane.label) || "未命名设置项"),
+                    desc: String((pane && pane.desc) || ""),
+                    hidden: Boolean(pane && pane.hidden),
+                    rows: Array.isArray(pane && pane.rows) ? pane.rows.map((rowItem) => ({
+                        id: rowItem && rowItem.id ? String(rowItem.id) : uid("r"),
+                        icon: normIcon(rowItem && rowItem.icon),
+                        label: String((rowItem && rowItem.label) || ""),
+                        desc: String((rowItem && rowItem.desc) || ""),
+                        hidden: Boolean(rowItem && rowItem.hidden),
+                    })) : [],
+                })) : [],
+            })),
+        };
+    }
+    function allPanes() {
+        return state.groups.flatMap((group) => group.panes);
+    }
+    function firstPaneId() {
+        const first = allPanes()[0];
+        return first ? first.id : null;
+    }
+    function findPane(id) {
+        for (const group of state.groups) {
+            const pane = group.panes.find((item) => item.id === id);
+            if (pane) return { group, pane };
+        }
+        return null;
+    }
+
+    /* ── 历史记录 ─────────────────────────────────────────────────── */
+    function pushHistory() {
+        history.past.push(JSON.stringify(state));
+        if (history.past.length > HISTORY_LIMIT) history.past.shift();
+        history.future.length = 0;
+        syncTopbar();
+    }
+    function commit(mutator) {
+        pushHistory();
+        mutator();
+        saveState();
+        render();
+    }
+    function undo() {
+        const prev = history.past.pop();
+        if (!prev) return;
+        history.future.push(JSON.stringify(state));
+        state = JSON.parse(prev);
+        saveState();
+        if (!findPane(selectedId)) selectedId = firstPaneId();
+        render();
+    }
+    function redo() {
+        const next = history.future.pop();
+        if (!next) return;
+        history.past.push(JSON.stringify(state));
+        state = JSON.parse(next);
+        saveState();
+        if (!findPane(selectedId)) selectedId = firstPaneId();
+        render();
+    }
+
+    /* ── 渲染：顶栏 ───────────────────────────────────────────────── */
+    function syncTopbar() {
+        $("#stats").textContent = `${state.groups.length} 个分组 · ${allPanes().length} 个设置项 · ${allPanes().reduce((sum, pane) => sum + pane.rows.length, 0)} 条子项`;
+        $("#btnUndo").disabled = history.past.length === 0;
+        $("#btnRedo").disabled = history.future.length === 0;
+    }
+
+    /* ── 渲染：左侧导航 ───────────────────────────────────────────── */
+    function matches(pane) {
+        if (!query) return true;
+        const haystack = [pane.label, pane.desc, ...pane.rows.map((rowItem) => `${rowItem.label} ${rowItem.desc}`)]
+            .join(" ").toLowerCase();
+        return haystack.includes(query);
+    }
+
+    function renderNav() {
+        const navList = $("#navList");
+        navList.innerHTML = "";
+        let shown = 0;
+
+        state.groups.forEach((group) => {
+            const panes = group.panes.filter(matches);
+            if (query && !panes.length) return;
+            shown += panes.length;
+
+            const box = el("section", "group");
+            box.dataset.group = group.id;
+
+            const head = el("div", "group__head");
+            const nameInput = document.createElement("input");
+            nameInput.className = "group__name";
+            nameInput.value = group.name;
+            nameInput.setAttribute("aria-label", "分组名称");
+            nameInput.addEventListener("input", () => {
+                group.name = nameInput.value;
+                saveState();
+            });
+            const addBtn = iconButton("add", "在此分组新增设置项", "icon-btn--sm");
+            addBtn.addEventListener("click", () => addPane(group.id));
+            head.append(nameInput, el("span", "group__count", String(group.panes.length)), addBtn);
+
+            const list = el("div", "group__list");
+            panes.forEach((pane) => list.append(paneItem(group, pane)));
+
+            box.append(head, list);
+
+            box.addEventListener("dragover", (event) => {
+                if (!drag || drag.type !== "pane") return;
+                event.preventDefault();
+                box.classList.add("is-drop");
+            });
+            box.addEventListener("dragleave", (event) => {
+                if (!box.contains(event.relatedTarget)) box.classList.remove("is-drop");
+            });
+            box.addEventListener("drop", (event) => {
+                if (!drag || drag.type !== "pane") return;
+                event.preventDefault();
+                box.classList.remove("is-drop");
+                movePaneTo(drag.id, group.id, null);
+            });
+
+            navList.append(box);
+        });
+
+        if (!shown) {
+            navList.append(el("div", "nav__empty", query ? "没有匹配的设置项。" : "还没有设置项，点下方按钮新建分组。"));
+        }
+        syncTopbar();
+    }
+
+    function paneItem(group, pane) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `pane${pane.id === selectedId ? " is-selected" : ""}`;
+        btn.dataset.pane = pane.id;
+        btn.draggable = true;
+        const icon = readIcon(pane.icon);
+        btn.innerHTML = `<span class="pane__icon${icon.color ? " is-tile" : ""}"${iconStyle(icon)}>${iconMarkup(icon)}</span>
+            <span class="pane__body">
+                <span class="pane__label">${esc(pane.label || "未命名")}</span>
+                <span class="pane__desc">${esc(pane.desc || "无描述")}</span>
+            </span>
+            <span class="pane__meta">${pane.rows.length}</span>
+            ${pane.hidden ? '<span class="pane__badge">隐藏</span>' : ""}`;
+        btn.addEventListener("click", () => {
+            selectedId = pane.id;
+            document.body.classList.remove("nav-open");
+            render();
+        });
+        btn.addEventListener("dragstart", (event) => {
+            drag = { type: "pane", id: pane.id };
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", pane.id);
+            btn.classList.add("is-dragging");
+        });
+        btn.addEventListener("dragend", () => {
+            drag = null;
+            btn.classList.remove("is-dragging");
+            document.querySelectorAll(".is-drop, .is-drop-before").forEach((node) => node.classList.remove("is-drop", "is-drop-before"));
+        });
+        btn.addEventListener("dragover", (event) => {
+            if (!drag || drag.type !== "pane" || drag.id === pane.id) return;
+            event.preventDefault();
+            btn.classList.add("is-drop-before");
+        });
+        btn.addEventListener("dragleave", () => btn.classList.remove("is-drop-before"));
+        btn.addEventListener("drop", (event) => {
+            if (!drag || drag.type !== "pane" || drag.id === pane.id) return;
+            event.preventDefault();
+            event.stopPropagation();
+            btn.classList.remove("is-drop-before");
+            movePaneTo(drag.id, group.id, pane.id);
+        });
+        return btn;
+    }
+
+    /* ── 渲染：右侧编辑器 ─────────────────────────────────────────── */
+    function renderEditor() {
+        const editor = $("#editor");
+        editor.innerHTML = "";
+        const found = findPane(selectedId);
+        if (!found) {
+            const empty = el("div", "empty-state");
+            empty.innerHTML = `<div class="empty-state__icon">🗂️</div>
+                <div class="empty-state__title">还没有选中设置项</div>
+                <div class="empty-state__hint">从左侧选择一个设置项，或点击分组标题旁的 ＋ 新建一个。</div>`;
+            editor.append(empty);
+            return;
+        }
+        const { group, pane } = found;
+        editor.append(headerCard(group, pane), rowsCard(pane));
+    }
+
+    function field(caption, control) {
+        const wrap = el("div", "field");
+        wrap.append(el("span", "field__caption", caption), control);
+        return wrap;
+    }
+
+    function headerCard(group, pane) {
+        const card = el("section", "card");
+        const head = el("div", "pane-head");
+
+        const iconButtonEl = document.createElement("button");
+        iconButtonEl.type = "button";
+        iconButtonEl.className = "pane-icon-button";
+        iconButtonEl.title = "选择图标";
+        iconButtonEl.setAttribute("aria-label", "选择图标");
+        paintIcon(iconButtonEl, readIcon(pane.icon));
+        iconButtonEl.addEventListener("click", () => openIconPicker(pane.id));
+
+        const labelInput = document.createElement("input");
+        labelInput.className = "field__input field__input--title";
+        labelInput.value = pane.label;
+        labelInput.placeholder = "设置项名称";
+        labelInput.setAttribute("aria-label", "设置项名称");
+        labelInput.addEventListener("input", () => {
+            pane.label = labelInput.value;
+            saveState();
+            const navLabel = document.querySelector(`[data-pane="${pane.id}"] .pane__label`);
+            if (navLabel) navLabel.textContent = pane.label || "未命名";
+        });
+
+        const descInput = document.createElement("textarea");
+        descInput.className = "field__input field__input--area";
+        descInput.rows = 2;
+        descInput.value = pane.desc || "";
+        descInput.placeholder = "一句话说明这个设置项的作用";
+        descInput.setAttribute("aria-label", "设置项描述");
+        descInput.addEventListener("input", () => {
+            pane.desc = descInput.value;
+            autoGrow(descInput);
+            saveState();
+            const navDesc = document.querySelector(`[data-pane="${pane.id}"] .pane__desc`);
+            if (navDesc) navDesc.textContent = pane.desc || "无描述";
+        });
+
+        const fields = el("div", "fields");
+        fields.append(field("名称", labelInput), field("描述", descInput));
+        head.append(iconButtonEl, fields);
+
+        const groupSelect = document.createElement("select");
+        groupSelect.className = "field__input";
+        state.groups.forEach((item) => {
+            const option = document.createElement("option");
+            option.value = item.id;
+            option.textContent = item.name;
+            option.selected = item.id === group.id;
+            groupSelect.append(option);
+        });
+        groupSelect.setAttribute("aria-label", "所属分组");
+        groupSelect.addEventListener("change", () => {
+            movePaneTo(pane.id, groupSelect.value, null);
+        });
+
+        const hiddenSwitch = switchControl(
+            () => pane.hidden,
+            (next) => commit(() => { pane.hidden = next; }),
+            "显示此设置项"
+        );
+
+        const deleteBtn = el("button", "btn btn--danger btn--small");
+        deleteBtn.type = "button";
+        deleteBtn.textContent = "删除此设置项";
+        deleteBtn.addEventListener("click", async () => {
+            const ok = await askConfirm({
+                title: `删除「${pane.label || "未命名"}」？`,
+                text: "该设置项及其全部子项会被移除，可以用撤销恢复。",
+                okText: "删除",
+            });
+            if (!ok) return;
+            commit(() => {
+                group.panes = group.panes.filter((item) => item.id !== pane.id);
+            });
+            selectedId = firstPaneId();
+            render();
+        });
+
+        const meta = el("div", "meta-row");
+        const groupField = field("所属分组", groupSelect);
+        groupField.style.minWidth = "180px";
+        meta.append(groupField, hiddenSwitch, el("div", "meta-row__spacer"), deleteBtn);
+
+        card.append(head, meta);
+        requestAnimationFrame(() => autoGrow(descInput));
+        return card;
+    }
+
+    function rowsCard(pane) {
+        const card = el("section", "card");
+        const head = el("div", "card__head");
+        head.append(el("h2", "card__title", "设置项"), el("span", "card__hint", "拖动左侧手柄调整顺序，或使用 ↑ ↓ 按钮"));
+
+        const list = el("div", "rows");
+        pane.rows.forEach((rowItem, index) => list.append(rowCard(pane, rowItem, index)));
+
+        list.addEventListener("dragover", (event) => {
+            if (!drag || drag.type !== "row" || drag.paneId !== pane.id) return;
+            event.preventDefault();
+        });
+        list.addEventListener("drop", (event) => {
+            if (!drag || drag.type !== "row" || drag.paneId !== pane.id) return;
+            event.preventDefault();
+            moveRow(pane.id, drag.id, null);
+        });
+
+        if (!pane.rows.length) {
+            list.append(el("div", "nav__empty", "这个设置项还没有子项，点下方按钮添加。"));
+        }
+
+        const footer = el("div", "rows__footer");
+        const addBtn = el("button", "btn btn--tonal btn--small");
+        addBtn.type = "button";
+        addBtn.textContent = "＋ 添加设置项";
+        addBtn.addEventListener("click", () => {
+            const rowItem = { id: uid("r"), label: "新设置项", desc: "", hidden: false };
+            commit(() => { pane.rows.push(rowItem); });
+            requestAnimationFrame(() => {
+                const input = document.querySelector(`[data-row="${rowItem.id}"] .row__label`);
+                if (input) { input.focus(); input.select(); }
+            });
+        });
+        footer.append(addBtn);
+
+        card.append(head, list, footer);
+        return card;
+    }
+
+    function rowCard(pane, rowItem, index) {
+        const card = el("div", "row");
+        card.dataset.row = rowItem.id;
+
+        const handle = iconButton("drag", "拖动排序", "row__handle");
+        handle.draggable = true;
+        handle.addEventListener("dragstart", (event) => {
+            drag = { type: "row", id: rowItem.id, paneId: pane.id };
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", rowItem.id);
+            card.classList.add("is-dragging");
+        });
+        handle.addEventListener("dragend", () => {
+            drag = null;
+            card.classList.remove("is-dragging");
+            document.querySelectorAll(".is-drop-before").forEach((node) => node.classList.remove("is-drop-before"));
+        });
+
+        card.addEventListener("dragover", (event) => {
+            if (!drag || drag.type !== "row" || drag.paneId !== pane.id || drag.id === rowItem.id) return;
+            event.preventDefault();
+            card.classList.add("is-drop-before");
+        });
+        card.addEventListener("dragleave", () => card.classList.remove("is-drop-before"));
+        card.addEventListener("drop", (event) => {
+            if (!drag || drag.type !== "row" || drag.paneId !== pane.id || drag.id === rowItem.id) return;
+            event.preventDefault();
+            card.classList.remove("is-drop-before");
+            moveRow(pane.id, drag.id, rowItem.id);
+        });
+
+        const indexLabel = el("span", "row__index", String(index + 1));
+
+        // 子项图标：点一下就能从 CDN 选图标、配底色
+        const rowIconBtn = document.createElement("button");
+        rowIconBtn.type = "button";
+        rowIconBtn.className = "row__icon";
+        rowIconBtn.title = "选择子项图标";
+        rowIconBtn.setAttribute("aria-label", "选择子项图标");
+        const rowIcon = readIcon(rowItem.icon, "");
+        if (rowIcon.glyph) {
+            paintIcon(rowIconBtn, rowIcon);
+        } else {
+            rowIconBtn.classList.add("is-empty");
+            rowIconBtn.innerHTML = svg(ICON.add);
+        }
+        rowIconBtn.addEventListener("click", () => openIconPicker(pane.id, rowItem.id));
+
+        const body = el("div", "row__body");
+        const labelInput = document.createElement("input");
+        labelInput.className = "field__input row__label";
+        labelInput.value = rowItem.label;
+        labelInput.placeholder = "设置项名称";
+        labelInput.setAttribute("aria-label", "子项名称");
+        labelInput.addEventListener("focus", pushHistory);
+        labelInput.addEventListener("input", () => {
+            rowItem.label = labelInput.value;
+            saveState();
+        });
+
+        const descInput = document.createElement("textarea");
+        descInput.className = "field__input field__input--area row__desc";
+        descInput.rows = 1;
+        descInput.value = rowItem.desc || "";
+        descInput.placeholder = "描述（可留空）";
+        descInput.setAttribute("aria-label", "子项描述");
+        descInput.addEventListener("focus", pushHistory);
+        descInput.addEventListener("input", () => {
+            rowItem.desc = descInput.value;
+            autoGrow(descInput);
+            saveState();
+        });
+        body.append(labelInput, descInput);
+
+        const tools = el("div", "row__tools");
+        const visibleSwitch = switchControl(
+            () => rowItem.hidden,
+            (next) => commit(() => { rowItem.hidden = next; }),
+            ""
+        );
+        visibleSwitch.title = "是否显示";
+
+        const upBtn = iconButton("up", "上移", "icon-btn--sm");
+        upBtn.disabled = index === 0;
+        upBtn.addEventListener("click", () => moveRowBy(pane.id, index, index - 1));
+
+        const downBtn = iconButton("down", "下移", "icon-btn--sm");
+        downBtn.disabled = index === pane.rows.length - 1;
+        downBtn.addEventListener("click", () => moveRowBy(pane.id, index, index + 1));
+
+        const delBtn = iconButton("delete", "删除这一行", "icon-btn--sm icon-btn--danger");
+        delBtn.addEventListener("click", () => {
+            commit(() => { pane.rows = pane.rows.filter((item) => item.id !== rowItem.id); });
+        });
+
+        tools.append(visibleSwitch, upBtn, downBtn, delBtn);
+        card.append(handle, indexLabel, rowIconBtn, body, tools);
+        requestAnimationFrame(() => autoGrow(descInput));
+        return card;
+    }
+
+    /* ── 结构操作 ─────────────────────────────────────────────────── */
+    function movePaneTo(paneId, groupId, beforePaneId) {
+        const found = findPane(paneId);
+        const target = state.groups.find((group) => group.id === groupId);
+        if (!found || !target) return;
+        const { group: fromGroup, pane } = found;
+        const fromIndex = fromGroup.panes.indexOf(pane);
+        if (fromGroup === target && beforePaneId === pane.id) return;
+        if (fromGroup === target && beforePaneId === null && fromIndex === target.panes.length - 1) return;
+        if (fromGroup === target && target.panes[fromIndex + 1] && target.panes[fromIndex + 1].id === beforePaneId) return;
+
+        commit(() => {
+            fromGroup.panes.splice(fromIndex, 1);
+            let index = beforePaneId ? target.panes.findIndex((item) => item.id === beforePaneId) : target.panes.length;
+            if (index < 0) index = target.panes.length;
+            target.panes.splice(index, 0, pane);
+        });
+    }
+
+    function moveRow(paneId, rowId, beforeRowId) {
+        const found = findPane(paneId);
+        if (!found) return;
+        commit(() => {
+            const list = found.pane.rows;
+            const fromIndex = list.findIndex((item) => item.id === rowId);
+            if (fromIndex < 0) return;
+            const [rowItem] = list.splice(fromIndex, 1);
+            let index = beforeRowId ? list.findIndex((item) => item.id === beforeRowId) : list.length;
+            if (index < 0) index = list.length;
+            list.splice(index, 0, rowItem);
+        });
+    }
+
+    function moveRowBy(paneId, fromIndex, toIndex) {
+        const found = findPane(paneId);
+        if (!found || toIndex < 0 || toIndex >= found.pane.rows.length) return;
+        commit(() => {
+            const list = found.pane.rows;
+            const [rowItem] = list.splice(fromIndex, 1);
+            list.splice(toIndex, 0, rowItem);
+        });
+    }
+
+    function addPane(groupId) {
+        const group = state.groups.find((item) => item.id === groupId);
+        if (!group) return;
+        const pane = { id: uid("p"), icon: tile("#6750a4", "settings"), label: "新设置项", desc: "", hidden: false, rows: [] };
+        selectedId = pane.id;
+        commit(() => { group.panes.push(pane); });
+        requestAnimationFrame(() => {
+            const input = document.querySelector(".field__input--title");
+            if (input) { input.focus(); input.select(); }
+        });
+    }
+
+    function addGroup() {
+        const group = { id: uid("g"), name: "新分组", panes: [] };
+        commit(() => { state.groups.push(group); });
+        toast("已新建分组，可在左侧重命名");
+    }
+
+    /* ── 图标选择器（Iconify CDN + Emoji + 链接） ─────────────────── */
+    /** 当前被编辑的图标宿主：主干设置项或某个子项。 */
+    function iconTargetNode() {
+        if (!iconTarget) return null;
+        const found = findPane(iconTarget.paneId);
+        if (!found) return null;
+        if (iconTarget.rowId) {
+            const rowItem = found.pane.rows.find((item) => item.id === iconTarget.rowId);
+            return rowItem ? { node: rowItem, isRow: true } : null;
+        }
+        return { node: found.pane, isRow: false };
+    }
+
+    function openIconPicker(paneId, rowId = null) {
+        iconTarget = { paneId, rowId };
+        const holder = iconTargetNode();
+        if (!holder) return;
+        const current = readIcon(holder.node.icon, holder.isRow ? "" : "⚙️");
+        iconDraft = { color: current.color };
+        $("#iconQuery").value = "";
+        $("#iconUrl").value = isIconUrl(current.glyph) ? current.glyph : "";
+        renderIconColors();
+        $("#iconDialog").showModal();
+        $("#iconQuery").focus();
+        searchIcons();
+    }
+
+    /** 应用一个字形（URL / Emoji），沿用当前选中的底色。 */
+    function applyIcon(glyph) {
+        const holder = iconTargetNode();
+        if (!holder) return;
+        const value = String(glyph || "").trim();
+        if (!value) return;
+        holder.node.icon = iconDraft.color ? { color: iconDraft.color, glyph: value } : value;
+        saveState();
+        render();
+        $("#iconDialog").close();
+    }
+
+    /** 只换底色：已有图标立即套用；还没图标时先记住，选图标时一起应用。 */
+    function setIconColor(color) {
+        iconDraft.color = color || "";
+        const holder = iconTargetNode();
+        const glyph = holder ? rawGlyph(holder.node) : "";
+        if (holder && glyph) {
+            holder.node.icon = iconDraft.color ? { color: iconDraft.color, glyph } : glyph;
+            saveState();
+            render();
+        }
+        renderIconColors();
+    }
+
+    function renderIconColors() {
+        const box = $("#iconColors");
+        const dialog = $("#iconDialog");
+        box.innerHTML = "";
+        dialog.classList.toggle("has-tile", Boolean(iconDraft.color));
+        if (iconDraft.color) dialog.style.setProperty("--tile-color", iconDraft.color);
+        else dialog.style.removeProperty("--tile-color");
+
+        const none = el("button", "icon-color icon-color--none", "✕");
+        none.type = "button";
+        none.title = "无底色";
+        none.classList.toggle("is-active", !iconDraft.color);
+        none.addEventListener("click", () => setIconColor(""));
+        box.append(none);
+
+        ICON_TILE_COLORS.forEach((color) => {
+            const swatch = el("button", "icon-color");
+            swatch.type = "button";
+            swatch.title = color;
+            swatch.style.background = color;
+            swatch.classList.toggle("is-active", iconDraft.color.toLowerCase() === color.toLowerCase());
+            swatch.addEventListener("click", () => setIconColor(color));
+            box.append(swatch);
+        });
+
+        const custom = document.createElement("input");
+        custom.type = "color";
+        custom.className = "icon-color icon-color--custom";
+        custom.title = "自定义底色";
+        custom.value = iconDraft.color || "#6750a4";
+        custom.addEventListener("change", () => setIconColor(custom.value));
+        box.append(custom);
+    }
+
+    /** 搜索结果为空或加载失败时，提供「查看全部图标」入口。 */
+    function allIconsButton() {
+        const btn = el("button", "icon-result icon-result--all", "查看全部图标");
+        btn.type = "button";
+        btn.addEventListener("click", loadAllIcons);
+        return btn;
+    }
+
+    let allIconNames = null;
+    async function loadAllIcons() {
+        const results = $("#iconResults");
+        const seq = ++iconSearchSeq;
+        results.innerHTML = '<div class="dialog-hint">正在加载全部图标…</div>';
+        try {
+            if (!allIconNames) {
+                const response = await fetch(`${ICON_CDN}/collection?prefix=material-symbols`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                const names = new Set();
+                Object.values(data.categories || {}).forEach((list) => (list || []).forEach((name) => names.add(name)));
+                (data.uncategorized || []).forEach((name) => names.add(name));
+                allIconNames = Array.from(names);
+            }
+            if (seq !== iconSearchSeq) return;
+            results.innerHTML = "";
+            const shown = allIconNames.slice(0, 360);
+            results.append(el("div", "dialog-hint", `Material Symbols 共 ${allIconNames.length} 个图标，先显示 ${shown.length} 个，也可继续搜索。`));
+            shown.forEach((name) => {
+                const src = `${ICON_CDN}/material-symbols/${name}.svg`;
+                const btn = el("button", "icon-result");
+                btn.type = "button";
+                btn.title = name;
+                btn.innerHTML = `<img class="icon-img" src="${src}" alt="" loading="lazy" onerror="this.onerror=null;this.outerHTML='⚙️'">`;
+                btn.addEventListener("click", () => applyIcon(src));
+                results.append(btn);
+            });
+        } catch (error) {
+            if (seq !== iconSearchSeq) return;
+            results.innerHTML = "";
+            results.append(el("div", "dialog-hint", `加载失败：${error.message}`), allIconsButton());
+        }
+    }
+
+    let iconSearchSeq = 0;
+    async function searchIcons() {
+        const keyword = $("#iconQuery").value.trim() || "settings";
+        const results = $("#iconResults");
+        results.innerHTML = '<div class="dialog-hint">正在从 CDN 加载图标…</div>';
+        const seq = ++iconSearchSeq;
+        try {
+            const url = `${ICON_CDN}/search?query=${encodeURIComponent(keyword)}&limit=48&prefixes=${ICON_PREFIXES}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            const icons = Array.isArray(data.icons) ? data.icons : [];
+            if (seq !== iconSearchSeq) return;
+            results.innerHTML = "";
+            if (!icons.length) {
+                results.append(
+                    el("div", "dialog-hint", `没有找到「${keyword}」，可以查看全部图标或换个关键词。`),
+                    allIconsButton(),
+                );
+                return;
+            }
+            icons.forEach((full) => {
+                const [prefix, name] = String(full).split(":");
+                if (!prefix || !name) return;
+                const src = `${ICON_CDN}/${prefix}/${name}.svg`;
+                const btn = el("button", "icon-result");
+                btn.type = "button";
+                btn.title = full;
+                btn.innerHTML = `<img class="icon-img" src="${src}" alt="" loading="lazy" onerror="this.onerror=null;this.outerHTML='⚙️'">`;
+                btn.addEventListener("click", () => applyIcon(src));
+                results.append(btn);
+            });
+        } catch (error) {
+            if (seq !== iconSearchSeq) return;
+            results.innerHTML = `<div class="dialog-hint">图标 CDN 加载失败（${esc(error.message)}）。请检查网络，或改用 Emoji / 直接粘贴图标链接。</div>`;
+        }
+    }
+
+    /* ── 外观与排版 ───────────────────────────────────────────────── */
+    const UI_RANGES = [
+        ["uiFontSize", "fontSize", "outFontSize", (value) => `${value}px`],
+        ["uiLineHeight", "lineHeight", "outLineHeight", (value) => Number(value).toFixed(2)],
+        ["uiNavWidth", "navWidth", "outNavWidth", (value) => `${value}px`],
+        ["uiContentWidth", "contentWidth", "outContentWidth", (value) => `${value}px`],
+        ["uiCardRadius", "cardRadius", "outCardRadius", (value) => `${value}px`],
+        ["uiCardGap", "cardGap", "outCardGap", (value) => `${value}px`],
+    ];
+
+    function hexToRgb(hex) {
+        const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex));
+        if (!match) return { r: 103, g: 80, b: 164 };
+        return { r: parseInt(match[1], 16), g: parseInt(match[2], 16), b: parseInt(match[3], 16) };
+    }
+    function rgbToHex({ r, g, b }) {
+        const part = (value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
+        return `#${part(r)}${part(g)}${part(b)}`;
+    }
+    function mix(hexA, hexB, ratio) {
+        const a = hexToRgb(hexA);
+        const b = hexToRgb(hexB);
+        return rgbToHex({
+            r: a.r + (b.r - a.r) * ratio,
+            g: a.g + (b.g - a.g) * ratio,
+            b: a.b + (b.b - a.b) * ratio,
+        });
+    }
+    function rgba(hex, alpha) {
+        const { r, g, b } = hexToRgb(hex);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function applyAccent() {
+        const root = document.documentElement;
+        const dark = root.dataset.theme === "dark";
+        const backdrop = dark ? "#141218" : "#ffffff";
+        const primary = dark ? mix(ui.accent, "#ffffff", 0.38) : ui.accent;
+        root.style.setProperty("--md-primary", primary);
+        root.style.setProperty("--md-primary-container", mix(ui.accent, backdrop, dark ? 0.62 : 0.82));
+        root.style.setProperty("--md-on-primary-container", dark ? mix(ui.accent, "#ffffff", 0.86) : mix(ui.accent, "#000000", 0.68));
+        root.style.setProperty("--md-secondary-container", mix(ui.accent, backdrop, dark ? 0.7 : 0.87));
+        root.style.setProperty("--md-on-secondary-container", dark ? "#e6e0e9" : mix(ui.accent, "#000000", 0.72));
+        root.style.setProperty("--md-hover", rgba(primary, 0.08));
+        root.style.setProperty("--md-pressed", rgba(primary, 0.12));
+    }
+
+    function applyUi() {
+        const root = document.documentElement;
+        root.dataset.font = ui.font;
+        root.dataset.density = ui.density;
+        root.dataset.desc = ui.showDesc ? "on" : "off";
+        root.dataset.index = ui.showIndex ? "on" : "off";
+        document.body.style.fontSize = `${ui.fontSize}px`;
+        document.body.style.lineHeight = String(ui.lineHeight);
+        root.style.setProperty("--nav-width", `${ui.navWidth}px`);
+        root.style.setProperty("--content-width", `${ui.contentWidth}px`);
+        root.style.setProperty("--card-radius", `${ui.cardRadius}px`);
+        root.style.setProperty("--card-gap", `${ui.cardGap}px`);
+        applyAccent();
+        const title = document.querySelector(".topbar__title");
+        if (title) title.textContent = ui.appTitle || "设置排版编辑器";
+    }
+
+    function syncAppearanceForm() {
+        $("#uiTitle").value = ui.appTitle;
+        $("#uiFont").value = ui.font;
+        $("#uiDensity").value = ui.density;
+        $("#uiShowDesc").checked = ui.showDesc;
+        $("#uiShowIndex").checked = ui.showIndex;
+        UI_RANGES.forEach(([inputId, key, outId, format]) => {
+            $("#" + inputId).value = ui[key];
+            $("#" + outId).textContent = format(ui[key]);
+        });
+        renderSwatches();
+    }
+
+    function renderSwatches() {
+        const box = $("#uiSwatches");
+        box.innerHTML = "";
+        ACCENT_SWATCHES.forEach((color) => {
+            const btn = el("button", `ui-swatch${color.toLowerCase() === String(ui.accent).toLowerCase() ? " is-active" : ""}`);
+            btn.type = "button";
+            btn.style.background = color;
+            btn.title = color;
+            btn.addEventListener("click", () => {
+                ui.accent = color;
+                saveUi();
+                applyUi();
+                renderSwatches();
+            });
+            box.append(btn);
+        });
+        const picker = document.createElement("input");
+        picker.type = "color";
+        picker.className = "ui-color";
+        picker.value = ui.accent;
+        picker.title = "自定义颜色";
+        picker.addEventListener("change", () => {
+            ui.accent = picker.value;
+            saveUi();
+            applyUi();
+            renderSwatches();
+        });
+        box.append(picker);
+    }
+
+    /* ── 导入 / 导出 / 重置 ───────────────────────────────────────── */
+    function exportJson() {
+        const payload = { ...state, appearance: ui };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "settings-layout.json";
+        document.body.append(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        toast("已导出 settings-layout.json");
+    }
+
+    function importJson(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const raw = JSON.parse(String(reader.result));
+                const data = normalize(raw);
+                pushHistory();
+                state = data;
+                if (raw && raw.appearance && typeof raw.appearance === "object") {
+                    ui = { ...DEFAULT_UI, ...raw.appearance };
+                    saveUi();
+                    applyUi();
+                }
+                selectedId = firstPaneId();
+                saveState();
+                render();
+                toast("导入成功");
+            } catch (error) {
+                toast(`导入失败：${error.message}`);
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    /* ── 对话框 / 提示条 ─────────────────────────────────────────── */
+    let confirmResolve = null;
+    function askConfirm({ title, text, okText = "确定" }) {
+        const dialog = $("#confirmDialog");
+        $("#confirmTitle").textContent = title;
+        $("#confirmText").textContent = text;
+        $("#confirmOk").textContent = okText;
+        dialog.showModal();
+        return new Promise((resolve) => { confirmResolve = resolve; });
+    }
+    function closeConfirm(result) {
+        const dialog = $("#confirmDialog");
+        if (dialog.open) dialog.close();
+        if (confirmResolve) {
+            confirmResolve(result);
+            confirmResolve = null;
+        }
+    }
+
+    let snackTimer = 0;
+    function toast(message) {
+        const bar = $("#snackbar");
+        bar.textContent = message;
+        bar.classList.add("is-open");
+        clearTimeout(snackTimer);
+        snackTimer = setTimeout(() => bar.classList.remove("is-open"), 2600);
+    }
+
+    /* ── 主题 ─────────────────────────────────────────────────────── */
+    function applyTheme(theme) {
+        document.documentElement.dataset.theme = theme;
+        try { localStorage.setItem(THEME_KEY, theme); } catch (error) { /* 忽略 */ }
+        $("#btnTheme").title = theme === "dark" ? "切换到浅色" : "切换到深色";
+        applyAccent();
+    }
+
+    /* ── 图标选择器 / 外观对话框的事件 ───────────────────────────── */
+    function bindAppearance() {
+        $("#btnAppearance").addEventListener("click", () => {
+            syncAppearanceForm();
+            $("#appearanceDialog").showModal();
+        });
+        $("#uiDone").addEventListener("click", () => $("#appearanceDialog").close());
+        $("#uiReset").addEventListener("click", () => {
+            ui = { ...DEFAULT_UI };
+            saveUi();
+            applyUi();
+            syncAppearanceForm();
+        });
+        $("#uiTitle").addEventListener("input", (event) => {
+            ui.appTitle = event.target.value;
+            saveUi();
+            applyUi();
+        });
+        $("#uiFont").addEventListener("change", (event) => {
+            ui.font = event.target.value;
+            saveUi();
+            applyUi();
+        });
+        $("#uiDensity").addEventListener("change", (event) => {
+            ui.density = event.target.value;
+            saveUi();
+            applyUi();
+        });
+        $("#uiShowDesc").addEventListener("change", (event) => {
+            ui.showDesc = event.target.checked;
+            saveUi();
+            applyUi();
+        });
+        $("#uiShowIndex").addEventListener("change", (event) => {
+            ui.showIndex = event.target.checked;
+            saveUi();
+            applyUi();
+        });
+        UI_RANGES.forEach(([inputId, key, outId, format]) => {
+            $("#" + inputId).addEventListener("input", (event) => {
+                ui[key] = Number(event.target.value);
+                $("#" + outId).textContent = format(ui[key]);
+                saveUi();
+                applyUi();
+            });
+        });
+    }
+
+    function bindIconPicker() {
+        $("#iconSearchBtn").addEventListener("click", searchIcons);
+        $("#iconQuery").addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                searchIcons();
+            }
+        });
+        $("#iconUrlApply").addEventListener("click", () => {
+            const value = $("#iconUrl").value.trim();
+            if (!value) {
+                toast("请先输入图标链接或 Emoji");
+                return;
+            }
+            applyIcon(value);
+        });
+        $("#iconClose").addEventListener("click", () => $("#iconDialog").close());
+    }
+
+    /* ── 渲染入口 ─────────────────────────────────────────────────── */
+    function render() {
+        renderNav();
+        renderEditor();
+        syncTopbar();
+    }
+
+    /* ── 事件绑定 ─────────────────────────────────────────────────── */
+    function bindEvents() {
+        $("#searchInput").addEventListener("input", (event) => {
+            query = event.target.value.trim().toLowerCase();
+            renderNav();
+        });
+
+        $("#btnAddGroup").addEventListener("click", addGroup);
+        $("#btnUndo").addEventListener("click", undo);
+        $("#btnRedo").addEventListener("click", redo);
+
+        $("#btnExport").addEventListener("click", exportJson);
+        $("#btnImport").addEventListener("click", () => $("#importFile").click());
+        $("#importFile").addEventListener("change", (event) => {
+            const file = event.target.files && event.target.files[0];
+            if (file) importJson(file);
+            event.target.value = "";
+        });
+
+        $("#btnReset").addEventListener("click", async () => {
+            const ok = await askConfirm({
+                title: "恢复初始示例？",
+                text: "当前的排版、描述与删除操作都会被替换成初始示例，此操作可以用撤销恢复。",
+                okText: "恢复",
+            });
+            if (!ok) return;
+            pushHistory();
+            state = seed();
+            selectedId = firstPaneId();
+            saveState();
+            render();
+            toast("已恢复初始示例");
+        });
+
+        $("#btnTheme").addEventListener("click", () => {
+            applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+        });
+
+        $("#confirmOk").addEventListener("click", () => closeConfirm(true));
+        $("#confirmCancel").addEventListener("click", () => closeConfirm(false));
+        $("#confirmDialog").addEventListener("close", () => closeConfirm(false));
+
+        document.addEventListener("keydown", (event) => {
+            const mod = event.metaKey || event.ctrlKey;
+            if (!mod) return;
+            const key = event.key.toLowerCase();
+            if (key === "z" && !event.shiftKey) {
+                event.preventDefault();
+                undo();
+            } else if ((key === "z" && event.shiftKey) || key === "y") {
+                event.preventDefault();
+                redo();
+            }
+        });
+
+        // 面板切换时收起搜索过滤，避免“选中项被搜索隐藏”的困惑
+        document.addEventListener("click", (event) => {
+            if (event.target.closest(".pane")) {
+                $("#searchInput").blur();
+            }
+        });
+
+        // 移动端：汉堡按钮打开抽屉，点击遮罩或选择设置项后收起
+        $("#btnMenu").addEventListener("click", () => document.body.classList.toggle("nav-open"));
+        $("#navScrim").addEventListener("click", () => document.body.classList.remove("nav-open"));
+    }
+
+    /* ── 启动 ─────────────────────────────────────────────────────── */
+    $("#searchIcon").innerHTML = svg(ICON.search);
+    $("#btnUndo").innerHTML = svg(ICON.undo);
+    $("#btnRedo").innerHTML = svg(ICON.redo);
+    $("#btnTheme").innerHTML = svg(ICON.theme);
+    $("#btnReset").innerHTML = svg(ICON.reset);
+    $("#btnMenu").innerHTML = svg(ICON.menu);
+    $("#btnAppearance").innerHTML = svg(ICON.tune);
+    $("#btnImport").insertAdjacentHTML("afterbegin", svg(ICON.upload));
+    $("#btnExport").insertAdjacentHTML("afterbegin", svg(ICON.download));
+    applyTheme(localStorage.getItem(THEME_KEY) || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+    applyUi();
+    bindEvents();
+    bindAppearance();
+    bindIconPicker();
+    render();
+})();
+</script>
+</body>
+</html>

@@ -120,6 +120,10 @@ mods/{id}/
 - **能力声明合并**：`app.window` 覆盖同名插件级 `window` 字段。
 - **图标**：`apps[].icon` 与 `manifest.icon` 同一套解析与白名单；
   取图标走 `plugin-manager.getIconForName(名称或 appId)`，单应用回落到 `getIcon(id)`。
+- **图标渲染方式**：`iconRender`（插件级，`apps[].iconRender` 可逐应用覆盖）取
+  `"artwork"`（默认，启动台量出实心画面并归一化到可见 70px）或 `"native"`
+  （画布原样铺进排版盒；图形自带透明留白、或图形本身不是方块时由作者自己负责）。
+  读取走 `plugin-manager.getIconRenderForName(名称或 appId)`。
 - **顶栏菜单**：`apps[].menus` 优先于插件级 `menus`；两者都只**整组替换自己声明的顶层标题**，
   未声明的标题（应用 / 编辑 / 显示 / 前往 / 窗口 / 帮助）保留宿主默认集，
   所以改一个菜单不必重抄七项（`finderbar.js:getMenusForApp`）。
@@ -139,8 +143,8 @@ mods/{id}/
 
 1. **应用图标一律 WebP（PNG 兼容），不准使用 SVG**。自绘 SVG 与 macOS 拟物图标混在一起会立刻露馅，
    且 Dock / 启动台 / 商店用的是同一张位图，缩放语义也不同。
-   限制的只是**应用图标**：顶栏菜单栏的单色 glyph（如 `mods/siri/icon.svg`，
-   由 `finderbar.js:registerSiriIcon()` 单独注册，与 `manifest.icon` 无关）不受此约束。
+   限制的只是**应用图标**：顶栏菜单栏的单色 glyph（如聚焦的 `assets/icons/Spotlight.svg`，
+   由插件在 `finderbar.js` 里单独注册，与 `manifest.icon` 无关）不受此约束。
 2. **新应用的图标先到 `assets/icons/` 里找**（含 `assets/icons/dock/`、`assets/icons/folder/` 子目录）。
 3. **找到就复制进插件目录**（`mods/{id}/X.webp`），`manifest.icon` / `apps[].icon` 只写裸文件名。
    复制而不是跨目录引用：插件要能整目录打包成 ZIP 安装，图标留在 `assets/` 里就成了包外依赖。

@@ -5,7 +5,7 @@
 ## 结构与清单
 - [ ] 目录 `mods/<id>/` 与 manifest 的 `id` 完全一致，小写蛇形、无 `..`
 - [ ] 四个文件齐备（manifest.json / index.html / style.css / script.js），图标为 WebP 或缺省不声明
-- [ ] `permissions` 字段存在（哪怕 `[]`），且每条都在 22 条权限名内、每条都真的用到
+- [ ] `permissions` 字段存在（哪怕 `[]`），且每条都在 24 条权限名内、每条都真的用到
 - [ ] 根级没写 `author`（无人读取，商店作者写到 `store.author`）；`formats` 单应用插件写根级、多应用套件写 `apps[].formats`
 
 ## 界面

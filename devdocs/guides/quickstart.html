@@ -6,7 +6,7 @@
 <title>五分钟写第一个插件 · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="quickstart" data-base="../" data-version="0.4.3">
+<body data-page="quickstart" data-base="../" data-version="0.4.4">
 <main>
 <h1>五分钟写第一个插件</h1>
 <p class="lede">目标：做一个能在程序坞里点开、带一个窗口的小插件。全程只要四个文件，不用任何构建工具。模板照抄 <code>mods/about/</code>（最小完整骨架）；想看带计算逻辑的例子看 <code>mods/calculator/</code>。</p>
@@ -38,7 +38,7 @@
 <ul>
 <li><code>id</code> 必须和目录名一致，小写蛇形命名（只允许 <code>[A-Za-z0-9][A-Za-z0-9._-]*</code>，不能含 <code>..</code>）。</li>
 <li><code>entry</code> 二选一：<code>window</code>（窗口应用，绝大多数）或 <code>fullscreen</code>（启动台那种全屏）。</li>
-<li><code>permissions</code> <b>必须写，哪怕用不上也要写 <code>[]</code></b>——static-check 第 7 节会核对这个字段。取值只能来自 22 条权限名（见 <a href="../api/deskly.html">Deskly</a> 页权限表）。</li>
+<li><code>permissions</code> <b>必须写，哪怕用不上也要写 <code>[]</code></b>——static-check 第 7 节会核对这个字段。取值只能来自 24 条权限名（见 <a href="../api/deskly.html">Deskly</a> 页权限表）。</li>
 <li>全字段表见<a href="plugin-format.html">插件包格式</a>。</li>
 </ul>
 

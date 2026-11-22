@@ -6,7 +6,7 @@
 <title>window.Deskly（能力入口） · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="deskly" data-base="../" data-version="0.4.3">
+<body data-page="deskly" data-base="../" data-version="0.4.4">
 <main>
 <h1>window.Deskly（能力入口）</h1>
 <p class="lede">插件申请系统能力的统一入口。它是一层薄壳：每个方法都委托给内核里已有的 owner 模块（文件→OSFS、应用→plugin-manager、事件→document），不重新造一份。本页所有方法签名以 <code>src/javascripts/os-api.js</code> 为准。</p>
@@ -24,12 +24,13 @@ const file = r.value;</code></pre>
 <p><b>免权限的方法</b>（目录、事件与自省，不构成能力，随便调）：
 <code>apps.list</code>、<code>apps.info</code>、<code>bus.*</code>、<code>fs.home</code>、<code>fs.temp</code>、<code>windows.state</code>、<code>meta.*</code>。</p>
 
-<h2>权限账本（22 条权限名，以 api-grants.js 的 <code>PERMISSION_NAMES</code> 为准）</h2>
+<h2>权限账本（24 条权限名，以 api-grants.js 的 <code>PERMISSION_NAMES</code> 为准）</h2>
 <p>两层机制：<b>安装时</b>用户确认一次清单（grantAll 记账）；<b>运行时</b>敏感权限第一次调用再弹一次「拒绝 / 仅此一次 / 始终允许」（弹窗实现见<a href="dialog.html">系统弹窗 dialog</a>）。
 账本存在 IndexedDB（库 <code>webstartos-grants</code>），跨会话生效；覆盖安装不会清账。</p>
 <table>
 <tr><th>权限名</th><th>说明</th><th>敏感（首调弹确认）</th></tr>
 <tr><td><code>apps:launch</code></td><td>启动其它应用</td><td>否</td></tr>
+<tr><td><code>apps:uninstall</code></td><td>卸载本应用创建/安装的应用（确认框由内核弹）</td><td>否</td></tr>
 <tr><td><code>default-apps:read</code></td><td>查询扩展名/协议当前由谁打开</td><td>否</td></tr>
 <tr><td><code>default-apps:write</code></td><td>改绑扩展名/协议（含 http:/https: 接管）</td><td><span class="pill sens">敏感</span></td></tr>
 <tr><td><code>widgets</code></td><td>桌面小组件（接口未落地，见文末）</td><td>否</td></tr>
@@ -47,12 +48,14 @@ const file = r.value;</code></pre>
 <tr><td><code>quicklook:register</code></td><td>为自己支持的文件格式提供快速查看预览</td><td>否</td></tr>
 <tr><td><code>menus:register</code></td><td>在桌面与访达的文件右键菜单中增加条目</td><td>否</td></tr>
 <tr><td><code>shortcuts:write</code></td><td>在桌面创建或移除应用的快捷方式</td><td>否</td></tr>
+<tr><td><code>ai:invoke</code></td><td>使用系统配置的 AI 服务发送对话与附件</td><td><span class="pill sens">敏感</span></td></tr>
 </table>
 <p>敏感的判据是「会不会影响别人 / 会不会丢数据」。读文件、启动应用这类「装了就该能用」的，安装时一次授权后静默通行——
 否则开机每个内置插件都会各弹一轮，用户只会一路点拒绝。</p>
 
 <h2>Deskly.apps（启动与默认应用）</h2>
 <pre><code>await Deskly.apps.launch("office.word");      // 需 apps:launch；appId、插件 id、显示名都行
+await Deskly.apps.uninstall("my-plugin");      // 需 apps:uninstall；内核弹一次确认框后卸载
 const all = Deskly.apps.list();                // 免权限：全部可启动应用摘要 [{appId, pluginId, name, displayName, entry}]
 const rec = Deskly.apps.info("文稿");          // 免权限：单个应用完整记录，查不到返回 null
 
@@ -96,14 +99,35 @@ const name = await Deskly.ui.dialog.prompt({ title: "新建文件夹", message: 
 await Deskly.ui.dialog.alert({ title: "已完成", message: "文件已导出。" });</code></pre>
 <p>取消值、焦点规则、进度控制器与迁移写法见<a href="dialog.html">系统弹窗 dialog</a>。</p>
 
+<h2>Deskly.ai（系统配置的统一 AI 服务）</h2>
+<p>服务商、密钥、模型与高级参数由「Apple 智能与 Siri」设置统一管理，插件不再各自保存密钥。
+除 <code>providers()</code> / <code>status()</code> 外都需要 <code>ai:invoke</code>；返回信封里的 <code>code</code> 可直接判断
+<code>NO_KEY</code>（未填密钥）、<code>UNSUPPORTED</code>（当前服务不支持该能力）、<code>AUTH</code> / <code>RATE_LIMIT</code> / <code>NETWORK</code>。</p>
+<pre><code>Deskly.ai.providers();                       // 免权限：服务商预设与能力表
+const st = Deskly.ai.status();                // 免权限：当前服务商 / 模型 / 是否已配置 / 能力
+await Deskly.ai.validate("deepseek");         // 需 ai:invoke：GET /models 验证密钥与地址
+
+const ac = new AbortController();
+Deskly.ai.stream({ messages: [{ role: "user", content: "你好" }], thinking: true }, {
+    onEvent: (event) =&gt; applyAnthropicEvent(event),   // 事件形状同 Anthropic Messages SSE
+    onDone: () =&gt; {},
+    onError: (err) =&gt; console.warn(err.code, err.message),
+    signal: ac.signal,                                 // 或调用返回的 { abort }
+});
+await Deskly.ai.chat({ messages: [...], temperature: 0.7 });   // 非流式：{ text, usage }
+const up = await Deskly.ai.upload(file);      // 附件：DeepSeek 走 Files API，其余按图片/文本内联
+await Deskly.ai.speech.synthesize("你好", "stella");   // 语音合成（仅 DeepSeek）
+await Deskly.ai.speech.transcribe(blob);               // 语音识别（仅 DeepSeek）</code></pre>
+<p>能力边界以 <code>status().capabilities</code> 为准：思考、图片与文档按服务商开放；联网搜索、链接阅读与语音只有 DeepSeek 提供。</p>
+
 <h2>Deskly.meta（自省，全部免权限）</h2>
 <table>
 <tr><th>成员</th><th>说明</th></tr>
-<tr><td><code>meta.version</code></td><td>当前系统版本号（<b>属性，不是函数</b>，如 <code>"0.4.3"</code>）</td></tr>
+<tr><td><code>meta.version</code></td><td>当前系统版本号（<b>属性，不是函数</b>，如 <code>"0.4.4"</code>）</td></tr>
 <tr><td><code>meta.language()</code> / <code>meta.languages()</code></td><td>当前语言代号 / 支持语言表 [{code, label}]</td></tr>
 <tr><td><code>meta.onLanguageChange(fn)</code></td><td>订阅语言切换，返回退订函数（plugin-unload 里调用）</td></tr>
 <tr><td><code>meta.appName(nameOrId)</code></td><td>把 appId / 插件 id / 中文原名翻成当前语言显示名</td></tr>
-<tr><td><code>meta.permissions()</code></td><td>22 条权限名全表 + 中文描述 + 是否敏感</td></tr>
+<tr><td><code>meta.permissions()</code></td><td>24 条权限名全表 + 中文描述 + 是否敏感</td></tr>
 <tr><td><code>meta.grants()</code> / <code>meta.grantedIds()</code></td><td>自己的授权账本（<b>只查自己</b>，跨插件查询一律不给）</td></tr>
 <tr><td><code>meta.can(permission)</code></td><td>某权限现在能不能直接调（只查账，不弹窗、不改状态）</td></tr>
 <tr><td><code>meta.caller()</code></td><td>调试用：当前识别出的调用者插件 id（null = 认不出）</td></tr>

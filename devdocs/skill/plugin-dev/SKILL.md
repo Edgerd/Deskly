@@ -41,10 +41,10 @@ mods/<id>/
 `apps[]`（多应用套件）、`menus`（顶栏菜单整组替换）、`version`/`type`/`description`（商店展示）、`store`（商店详情自声明）、
 `formats`（文件类型接管：**单应用插件写根级**，多应用套件写 `apps[].formats`——内核两处都会读）。
 **写了没人读的**：根级 `author`（要写 `store.author`）。
-权限名只能来自 22 条：`apps:launch`、`default-apps:read`、`default-apps:write`、`widgets`、`dynamic-icons`、
+权限名只能来自 24 条：`apps:launch`、`apps:uninstall`、`default-apps:read`、`default-apps:write`、`widgets`、`dynamic-icons`、
 `window-style:self`、`window-style:others`、`theme:apply`、`files:read`、`files:write`、
 `system-patch:dock/finderbar/desktop/wallpaper/menu`、`window:read-others`、`window:manage-others`、
-`window:chrome`、`window:level`、`quicklook:register`、`menus:register`、`shortcuts:write`。按需声明，不堆权限。
+`window:chrome`、`window:level`、`quicklook:register`、`menus:register`、`shortcuts:write`、`ai:invoke`。按需声明，不堆权限。
 
 ## 3. index.html（片段，不是完整网页）
 

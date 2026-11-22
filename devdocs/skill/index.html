@@ -6,7 +6,7 @@
 <title>插件开发技能包（喂给 AI） · Deskly 开发者文档</title>
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body data-page="skill" data-base="../" data-version="0.4.3">
+<body data-page="skill" data-base="../" data-version="0.4.4">
 <main>
 <h1>插件开发技能包（喂给 AI）</h1>
 <p class="lede">这是一个面向 AI 编码助手的技能包（skill）：把目录整体喂给 AI，它就能按本仓库规范从零做出一个 Deskly 插件。人类读者把这页当导览即可。</p>
@@ -36,7 +36,7 @@
 <li>冷加载两条铁律（入口重跑、全局资源必须在 plugin-unload 释放）；</li>
 <li>主题（<code>html[data-theme]</code> 浅色/深色/自动）与四语 i18n（zh-CN / en / ja-JP / cat）；</li>
 <li>macOS Sequoia 复刻样式规范：模糊令牌、<code>cubic-bezier(0.16, 1, 0.3, 1)</code> 缓动、禁 emoji、尊重减少动态效果；</li>
-<li>宿主 API 清单（Deskly / __settings / __log / __dialog / __notify / __popover / paths.js）与 22 条权限名；</li>
+<li>宿主 API 清单（Deskly / __settings / __log / __dialog / __notify / __popover / paths.js）与 24 条权限名；</li>
 <li>安装与打包流程（static-check → package-plugin → ZIP 三级安装链）。</li>
 </ul>
 

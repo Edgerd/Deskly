@@ -86,6 +86,9 @@ globalThis.window = Object.assign(eventTarget, {
     matchMedia: () => ({ matches: false, addEventListener() { }, addListener() { } }),
     getComputedStyle: computedStyle,
 });
+// 墙纸引擎用双 rAF 做交叉淡入；浏览器必有的全局在 Node 里补一个定时器替身。
+globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 globalThis.CustomEvent = class CustomEvent {
     constructor(type, opts = {}) { this.type = type; this.detail = opts.detail; this.bubbles = !!opts.bubbles; }
 };
@@ -196,13 +199,12 @@ const LEGACY_SLOTS = {
     "wallpaper.config": "wallpaper-config",
     "cursor.size": "cursor-size",
     "cursor.shadow": "cursor-shadow",
-    "siri.orb.size": "siri-orb-size",
 };
 
 /** owner 读法是 `!== "off"` 的键，默认值必须是 true，否则「没动过设置的用户」会被翻转。 */
 const DEFAULT_ON = ["dock.zoom", "dock.show.indicators", "dock.show.recent", "cursor.shadow", "appearance.transparency", "notify.enabled", "notify.sound", "debug.captureConsole", "debug.captureErrors", "debug.persist", "spotlight.apps", "spotlight.settings", "spotlight.files", "spotlight.commands", "spotlight.keepHistory", "keyboard.menuShortcuts"];
 /** owner 读法是 `=== "on"` 的键，默认值必须是 false。 */
-const DEFAULT_OFF = ["dock.autohide", "general.nativeContextMenu", "appearance.wallpaper.tint", "appearance.reduceMotion", "lock.requirePassword", "wallpaper.autoBing", "sound.muted", "display.nightShift", "display.nightShiftAuto"];
+const DEFAULT_OFF = ["dock.autohide", "general.nativeContextMenu", "appearance.wallpaper.tint", "appearance.reduceMotion", "lock.requirePassword", "wallpaper.autoBing", "sound.muted"];
 
 /** 挑一个与默认值不同的合法样本值（挑不出就返回默认值，由调用方跳过变更类断言）。 */
 function sampleValue(def) {
@@ -322,7 +324,7 @@ DEFAULT_OFF.forEach((key) => {
 
 // ── 旧事件兼容：detail 必须是 owner 现读法能直接用的字符串形态 ────────────
 const seenEvents = {};
-["dock-size-change", "dock-autohide-change", "dock-position-change", "dock-minimize-effect-change", "dock-zoom-amount-change", "siri-orb-size-change", "trash-icon-change"].forEach((name) => {
+["dock-size-change", "dock-autohide-change", "dock-position-change", "dock-minimize-effect-change", "dock-zoom-amount-change", "trash-icon-change"].forEach((name) => {
     window.addEventListener(name, (e) => { seenEvents[name] = e.detail; });
 });
 settings.set("dock.size", 96, { source: "fulltest" });
@@ -330,14 +332,12 @@ settings.set("dock.autohide", true, { source: "fulltest" });
 settings.set("dock.position", "left", { source: "fulltest" });
 settings.set("dock.minimize.effect", "scale", { source: "fulltest" });
 settings.set("dock.zoom.amount", 2.4, { source: "fulltest" });
-settings.set("siri.orb.size", 222, { source: "fulltest" });
 settings.set("trash.icon", "dark_full", { source: "fulltest" });
 check("dock-size-change detail 为字符串", seenEvents["dock-size-change"] === "96", `实得 ${JSON.stringify(seenEvents["dock-size-change"])} (${typeof seenEvents["dock-size-change"]})`);
 check("dock-autohide-change detail 为 on/off", seenEvents["dock-autohide-change"] === "on", `实得 ${JSON.stringify(seenEvents["dock-autohide-change"])}`);
 check("dock-position-change detail 为位置串", seenEvents["dock-position-change"] === "left");
 check("dock-minimize-effect-change detail 为效果串", seenEvents["dock-minimize-effect-change"] === "scale", `实得 ${JSON.stringify(seenEvents["dock-minimize-effect-change"])}`);
 check("dock-zoom-amount-change detail 可被 parseFloat", parseFloat(seenEvents["dock-zoom-amount-change"]) === 2.4, `实得 ${JSON.stringify(seenEvents["dock-zoom-amount-change"])}`);
-check("siri-orb-size-change detail 是数字（siri 侧按数字读）", seenEvents["siri-orb-size-change"] === "222" || seenEvents["siri-orb-size-change"] === 222, `实得 ${JSON.stringify(seenEvents["siri-orb-size-change"])}`);
 check("trash-icon-change detail 是变体键", seenEvents["trash-icon-change"] === "dark_full", `实得 ${JSON.stringify(seenEvents["trash-icon-change"])}`);
 
 // ── 定义里的 apply 都能真的生效（调用不抛错，且 DOM/存储有变化） ──────────
@@ -394,7 +394,6 @@ const LEGACY_SEED = {
     "trash-icon": "dark_full",
     "native-context-menu": "on",
     "webstartos_language": "en",
-    "siri-orb-size": "220",
     "wallpaper-config": '{"type":"network","url":"https://example.com/a.jpg"}',
     "webstartos_dock_order": '["访达","启动台","系统设置"]',
     "webstartos_controlcenter": '{"wifi":false,"bluetooth":true,"airdrop":false,"airplane":false,"focus":false,"focusMode":"personal","stage":true,"mirroring":false,"displayBrightness":0.4,"volume":0.2,"volumeMuted":true}',
@@ -420,12 +419,7 @@ const LEGACY_READS = {
     "trash.icon": "dark_full",
     "general.nativeContextMenu": true,
     "general.language": "en",
-    "siri.orb.size": 220,
     "dock.order": ["访达", "启动台", "系统设置"],
-    "controlcenter.wifi": false,
-    "controlcenter.bluetooth": true,
-    "controlcenter.focus": false,
-    "controlcenter.focusMode": "personal",
     "controlcenter.stage": true,
     "sound.master": 0.2,
     "sound.muted": true,
@@ -446,8 +440,8 @@ storageMap.clear();
 ["dock.autohide", "general.nativeContextMenu", "appearance.wallpaper.tint", "lock.requirePassword", "sound.muted"].forEach((key) => {
     if (settings.has(key)) check(`${key} 空存储时仍为 false（对应 owner 的 ==="on" 默认关闭读法）`, settings.get(key) === false, `实得 ${JSON.stringify(settings.get(key))}`);
 });
-check("空存储时控制中心卡片字段回到默认", settings.get("controlcenter.wifi") === true && settings.get("display.brightness") === 0.85,
-    `wifi=${settings.get("controlcenter.wifi")} brightness=${settings.get("display.brightness")}`);
+check("空存储时亮度回到默认", settings.get("display.brightness") === 0.85,
+    `brightness=${settings.get("display.brightness")}`);
 storageMap.clear();
 
 // ── 表面系统：模糊等级 + 强制黑白可读文字 ─────────────────────────────────

@@ -108,6 +108,7 @@
       "favorites": "个人收藏喵~",
       "icloud": "iCloud 云盘喵~",
       "locations": "位置喵~",
+      "sources": "来源喵~",
       "tags": "标签喵~"
     },
     "auth": {
@@ -171,7 +172,27 @@
     "desktop": "桌面喵~",
     "shared": "共享的喵~",
     "pictures": "图片喵~",
-    "bookmarks": "收藏夹喵~",
+    "bookmarks": "书签喵~",
+    "thisMac": "本机喵~",
+    "removeFavorite": "从边栏移除喵~",
+    "rootLabel": "Deskly",
+    "columnUpMore": "回溯上级喵~",
+    "rotateLeft": "向左旋转喵~",
+    "rotateRight": "向右旋转喵~",
+    "statusCount": "{n} 个项目喵~",
+    "statusItems": "个项目喵~",
+    "statusResults": "个结果喵~",
+    "statusSelected": "已选中喵~",
+    "searchScopeFolder": "当前文件夹喵~",
+    "searchScopeDisk": "整个 Deskly 喵~",
+    "searchScopeTitle": "点击切换搜索范围喵~",
+    "rename": "重新命名喵~",
+    "renameFailed": "重命名没成功（重名或权限不够）喵~。",
+    "virtualRename": "这里的条目是虚拟节点喵，不能重命名喵~。",
+    "moveFailed": "移动/复制没成功喵：目标重名或位置无效喵~。",
+    "undoneTrash": "已移入废纸篓喵~",
+    "undoneMove": "已移动喵~",
+    "undo": "撤销喵~",
     "colName": "名称喵~",
     "colDate": "修改日期喵~",
     "colSize": "大小喵~",
@@ -216,7 +237,7 @@
     "mail": "邮件喵~",
     "maps": "地图喵~",
     "photos": "照片喵~",
-    "notes": "记事本喵~",
+    "notes": "文本编辑喵~",
     "settings": "系统设置喵~",
     "trash": "废纸篓喵~",
     "stackEmpty": "下載資料夾空空的喵，或還沒給權限",
@@ -253,7 +274,22 @@
     "positionLeft": "左邊喵",
     "positionRight": "右邊喵",
     "restoreDefaults": "排回出廠順序喵",
-    "runningCannotRemove": "開著的應用不能抱走喵"
+    "runningCannotRemove": "開著的應用不能抱走喵",
+    "notifAdded": "已經把「{title}」抱進程序坞啦喵~",
+    "notifDuplicate": "「{title}」早就在程序坞裡啦喵~",
+    "notifFull": "程序坞塞滿啦喵，最多只放得下 {n} 條動態喵~",
+    "notifUnsupported": "這種動態不能抱進程序坞喵~",
+    "notifInvalid": "這條動態讀不出來，再試一次喵~",
+    "notifStorage": "存不起來，動態沒能抱進程序坞喵~",
+    "notifMissing": "這條動態已經不見啦喵~",
+    "notifRemove": "從程序坞抱走喵~",
+    "notifOpenCenter": "去通知中心看一眼喵~",
+    "appUnsupported": "這件東西不能抱進程序坞喵~",
+    "appDuplicate": "「{name}」早就在程序坞裡啦喵~",
+    "appStorage": "存不起來，應用沒能抱進程序坞喵~"
+  },
+  "quicklook": {
+    "zipMeta": "共 {n} 个条目（只读预览）喵~"
   },
   "common": {
     "ok": "好喵~",
@@ -333,6 +369,9 @@
     "back": "回去喵",
     "openDisplay": "打开显示器设置喵",
     "openSound": "打开声音设置喵",
+    "openFocus": "打开专注模式设置喵",
+    "focusOff": "把专注模式关掉喵",
+    "focusLoading": "专注模式模块还在路上喵",
     "cameraInUse": "相机被人用着喵",
     "micInUse": "麦克风被人用着喵",
     "locationInUse": "定位在用喵",
@@ -343,7 +382,8 @@
       "airplane": "飞行模式要直接关无线硬件喵，浏览器没这个权限喵。",
       "mirroring": "投屏要系统把画面送出去喵，浏览器做不到喵。",
       "display": "分辨率、刷新率和屏幕摆放归系统管喵；亮度和夜览在系统设置里喵。",
-      "volume": "用哪个喇叭是系统定的喵，这里只能调音量和静音喵。"
+      "volume": "用哪个喇叭是系统定的喵，这里只能调音量和静音喵。",
+      "focus": "点一下就激活喵；白名单和定时在系统设置里一个个模式慢慢配喵。"
     }
   },
   "settings": {
@@ -474,7 +514,27 @@
     "moreInfoTitle": "更多情報喵",
     "processor": "處理器喵",
     "serial": "序號喵",
-    "systemVersion": "系統版本喵"
+    "systemVersion": "系統版本喵",
+    "report": {
+      "title": "系統報告喵",
+      "close": "好了喵",
+      "system": "系統喵",
+      "version": "系統版本喵",
+      "author": "作者喵",
+      "browser": "瀏覽器喵",
+      "theme": "外觀喵",
+      "language": "語言喵",
+      "apps": "應用與插件喵",
+      "appsCount": "裝了幾個應用喵",
+      "appList": "應用名單喵",
+      "pluginsCount": "插件幾隻喵",
+      "storage": "用了多少存儲喵",
+      "storageTitle": "存儲喵",
+      "unsupported": "用不上喵",
+      "permissions": "權限名單喵",
+      "permissionsLoading": "正在翻喵",
+      "permissionsFailed": "翻不出來喵"
+    }
   },
   "appstore": {
     "errNotFound": "喵已經不在名單裡了，可能早被拆掉喵。",
@@ -525,7 +585,7 @@
     "saving": "保存中喵～",
     "saveFailed": "保存失败喵…",
     "discardConfirm": "「{title}」还没保存喵，确定关闭吗，主人？",
-    "noteRemoved": "已从记事本移除喵～",
+    "noteRemoved": "已从文本编辑移除喵～",
     "fileKept": "磁盘上的文件还要主人手动删掉喵：",
     "openedWithGuess": "按推断的编码打开喵～",
     "openFailed": "文件打不开喵…",
@@ -567,11 +627,8 @@
       "deleteBody": "真的要把「{name}」相簿刪掉嗎喵？裡面的照片不會被刪掉喔。",
       "deleteTitle": "刪掉相簿喵",
       "exists": "已經有同名字的相簿了喵。",
-      "family": "家人喵",
       "renameAction": "改名字喵",
-      "renameTitle": "給相簿改名字喵",
-      "travel": "出遊喵",
-      "work": "上班喵"
+      "renameTitle": "給相簿改名字喵"
     },
     "albumNamePlaceholder": "相簿名字喵",
     "clearSearch": "清掉搜尋喵",
@@ -620,6 +677,10 @@
       "videos": {
         "hint": "匯入的影片會出現在這裡喵。",
         "title": "沒有影片喵"
+      },
+      "memories": {
+        "hint": "照片多一點之後，這裡會按日子和月份自動生出回憶喵。",
+        "title": "還沒有回憶喵"
       }
     },
     "errFullscreen": "這個瀏覽器不給全螢幕喵。",
@@ -739,11 +800,49 @@
       "unmute": "出聲音喵",
       "volume": "音量喵"
     },
+    "errStorageWrite": "寫不進本機存儲喵",
+    "editor": {
+      "undo": "退一步喵",
+      "reset": "變回原樣喵",
+      "close": "關掉喵",
+      "crop": "裁喵",
+      "cropFree": "隨便喵",
+      "preset": "濾鏡喵",
+      "pNone": "原樣喵",
+      "pVivid": "鮮亮喵",
+      "pWarm": "暖暖喵",
+      "pCool": "涼涼喵",
+      "pMono": "黑白喵",
+      "pDrama": "戲劇喵",
+      "adjust": "調調喵",
+      "brightness": "亮喵",
+      "contrast": "對比喵",
+      "saturation": "濃淡喵",
+      "temperature": "冷暖喵",
+      "auto": "自動變好看喵",
+      "saveCopy": "存一份副本喵",
+      "saveOriginal": "蓋在原稿上喵",
+      "confirmTitle": "要蓋掉原稿喵？",
+      "confirmBody": "編輯好的圖會蓋掉原稿喵，蓋了就回不來了喵。",
+      "armed": "再點一下就真的蓋了喵",
+      "saving": "正在存喵…",
+      "saveFailed": "沒存成喵",
+      "loading": "正在載喵…",
+      "loadFailed": "圖載不出喵"
+    },
+    "memories": {
+      "byMonth": "{month}",
+      "count": "{n} 張照片喵",
+      "favorites": "我的收藏喵",
+      "recentDays": "最近的日子喵",
+      "thisMonth": "這個月喵"
+    },
     "view": {
       "album": "相簿喵",
       "all": "所有喵",
       "favorites": "我的收藏喵",
       "images": "只看圖片喵",
+      "memories": "回憶喵",
       "recent": "最近的喵",
       "trash": "被刪掉的喵",
       "videos": "只看影片喵"
@@ -797,7 +896,8 @@
     "fsRight": "Dreta de la pantalla",
     "splitPick": "Tria la finestra de l'altre costat",
     "splitNone": "No hi ha cap altra finestra disponible",
-    "splitToDesktop": "Mou la finestra a l'escriptori"
+    "splitToDesktop": "Mou la finestra a l'escriptori",
+    "splitReplace": "Substitueix la finestra en mosaic"
   },
   "office": {
     "blankExcel": "没取名的表格喵",
@@ -1175,13 +1275,13 @@
   "apps": {
     "about": "关于这台机器喵",
     "app-store": "App Store 喵",
+    "developers": "Developer 喵",
     "calculator": "计算器喵",
     "finder": "访达喵",
     "launchpad": "启动台喵",
-    "notepad": "记事本喵",
+    "notepad": "文本编辑喵",
     "photos": "照片喵",
     "safari": "Safari 浏览器喵",
-    "siri": "Siri 喵",
     "system-settings": "系统设置喵",
     "vs_code": "VS Code 喵",
     "office": {
@@ -1213,7 +1313,14 @@
     "bluetoothOff": "（关闭）",
     "showBattery": "电池",
     "showVolume": "声音",
-    "showBluetooth": "蓝牙"
+    "showBluetooth": "蓝牙",
+    "wifi": "Wi-Fi 喵",
+    "wifiOff": "（关了喵）",
+    "stage": "台前调度喵",
+    "showWifi": "Wi-Fi 喵",
+    "showStage": "台前调度喵",
+    "removedTitle": "已经从菜单栏拿掉喵",
+    "removedUndo": "「{name}」已经拿掉喵，点一下就能撤销喵"
   },
   "keyboard": {
     "tier": {
@@ -1227,12 +1334,70 @@
   "overview": {
     "title": "Vista general de finestres",
     "badgeFullscreen": "Pantalla completa",
-    "badgeSplit": "Pantalla dividida"
+    "badgeSplit": "Pantalla dividida",
+    "spaceDesktop": "Escriptori",
+    "spaceFullscreen": "Pantalla completa — {n}",
+    "spaceSplit": "Pantalla dividida — {n}",
+    "closeWindow": "Tanca la finestra"
   },
   "stage": {
     "shelf": "Apps recents"
   },
   "spotlight": {
-    "manualHint": "手册喵"
+    "manualHint": "手册喵",
+    "copyHint": "回车就复制喵",
+    "runHint": "回车就执行喵",
+    "convertSub": "单位换算喵",
+    "currencySub": "货币换算喵",
+    "rateDate": "汇率快照喵",
+    "timerLabel": "设个计时器：{min} 分钟喵",
+    "timerSub": "计时器喵",
+    "timerBody": "{min} 分钟计时喵",
+    "timerStarted": "计时开始喵",
+    "timerDone": "时间到喵"
+  },
+  "focus": {
+    "mode": {
+      "doNotDisturb": "别吵喵",
+      "work": "上班喵",
+      "personal": "陪主人",
+      "sleep": "睡觉觉"
+    }
+  },
+  "notifycenter": {
+    "title": "通知中心喵",
+    "listTitle": "通知",
+    "today": "今天喵",
+    "earlier": "更早以前喵",
+    "clearAll": "全部收走喵",
+    "clear": "清掉喵",
+    "empty": "没有通知喵",
+    "muted": "被专注模式静音了喵",
+    "editWidgets": "摆弄小组件喵…",
+    "justNow": "刚刚喵",
+    "minutesAgo": "{n} 分钟前喵",
+    "unknownApp": "系统喵",
+    "undroppable": "這種通知不能拖去程序坞喵~"
+  },
+  "widgets": {
+    "calendar": "日历喵",
+    "clock": "时钟喵",
+    "weather": "天气喵",
+    "sizeSmall": "小喵",
+    "sizeMedium": "中喵",
+    "sizeLarge": "大喵",
+    "centerTitle": "摆弄小组件喵",
+    "close": "好啦喵",
+    "gallery": "能用的小组件喵",
+    "addToCenter": "放进通知中心喵",
+    "addToDesktop": "摆上桌面喵",
+    "remove": "拿走喵",
+    "sectionCenter": "通知中心喵",
+    "sectionDesktop": "桌面喵",
+    "editMode": "摆弄桌面小组件喵",
+    "emptyGuide": "加几个小组件喵，通知中心就有东西看了喵",
+    "emptyContainer": "这里还没有小组件喵",
+    "weatherEmpty": "暂无天气数据喵",
+    "weatherNote": "实时天气要联网的数据源喵，现在只留了个版式喵"
   }
 }

@@ -5,11 +5,12 @@
  * 测三组数：
  * 1. 排版矩形：应用图标 <img> 与文件夹磁贴 .folder-tile 的 getBoundingClientRect；
  * 2. 未变换尺寸：offsetWidth/offsetHeight（排除 hover 的 scale(1.07)）；
- * 3. 可见画面：磁贴涂装方块（按 --lp-folder-artwork 内缩）对图标 PNG 的不透明包围盒
- *    （用 canvas 读 alpha，等于肉眼看到的图标大小）。
+ * 3. 可见画面：磁贴涂装方块（按 --lp-folder-artwork 内缩）对图标 PNG 的实心包围盒
+ *    （用 canvas 读 alpha，阈值 64，忽略淡阴影；等于肉眼看到的图标大小）。
  *
- * 为什么单独测第 3 组：真机曾量到「磁贴 85 / 图标画面 70」，差的 15% 是图标 PNG 自带的
- * 透明外边距（15 枚实测 84.0%–84.8%），不是排版尺寸错。修后两组都应吻合。
+ * 为什么单独测第 3 组：真机曾量到「磁贴 70 / 图标画面 60 或 84」，差异来自图标画布自带的
+ * 透明留白或烘焙阴影。现在 script.js 会逐图把实心画面归一化到排版盒的 70/84，
+ * 磁贴涂装使用同一比例，两组都应吻合。
  *
  * 为什么不进 CI：Node 没有布局引擎，仓库内又禁用 Chrome 自动化；
  * dev/app-rules-check.mjs 只断言盒模型契约，真实矩形必须真机跑本脚本。
@@ -83,7 +84,7 @@
             let minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1;
             for (let y = 0; y < canvas.height; y += 1) {
                 for (let x = 0; x < canvas.width; x += 1) {
-                    if (data[(y * canvas.width + x) * 4 + 3] > 8) {
+                    if (data[(y * canvas.width + x) * 4 + 3] > 64) {
                         if (x < minX) minX = x;
                         if (x > maxX) maxX = x;
                         if (y < minY) minY = y;

@@ -155,7 +155,7 @@ globalThis.localStorage.setItem = realSetItem;
 // ── 10. 日志系统 ──────────────────────────────────────────────────────────
 log.clear();
 log.info("dock", "来自裸名的 info");
-log.error("plugin/siri", "来自显式分类的 error");
+log.error("plugin/deskly-ai", "来自显式分类的 error");
 console.warn("[notepad] 既有 console 调用被自动归档");
 console.error("[vfs] 配额不足", new Error("boom"));
 check("裸内核模块名归类到 kernel/", log.stats().bySource["kernel/dock"] === 1);
@@ -176,7 +176,7 @@ child.warn("子日志器绑定来源");
 check("log.for 绑定来源", log.stats().bySource["plugin/safari"] === 1 && child.source === "plugin/safari");
 check("query 支持按来源 + 级别过滤", log.query({ level: "warn", source: "plugin/safari" }).length === 1);
 const exported = log.exportText({ level: "error" });
-check("导出文本含级别与来源标记", /\[ERROR\] plugin\/siri/.test(log.exportText({ level: "error", source: "siri" })) && exported.includes("Deskly 运行日志"));
+check("导出文本含级别与来源标记", /\[ERROR\] plugin\/deskly-ai/.test(log.exportText({ level: "error", source: "deskly-ai" })) && exported.includes("Deskly 运行日志"));
 let live = 0;
 const unsub = log.subscribe(() => { live += 1; });
 log.info("dock", "订阅推送");

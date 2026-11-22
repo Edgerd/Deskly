@@ -181,7 +181,7 @@ validateLog(systemJson, "docs/changelog.json", { expectId: "deskly" });
 // 这些名字一出现，说明条目该住在插件自己的 changelog.json 里
 // （「聚焦」与常用词同形，不作为判定词）
 const PLUGIN_TERMS = [
-    "办公套件", "文稿", "表格", "演示", "手册", "照片", "计算器", "记事本",
+    "办公套件", "文稿", "表格", "演示", "手册", "照片", "计算器", "记事本", "文本编辑",
     "访达", "Safari", "启动台", "Siri", "VS Code", "关于本机",
     "系统设置", "App Store", "应用商店",
 ];
@@ -310,7 +310,7 @@ try {
     info.push(`插件日志可读摘要 ${readable} 份`);
 
     // 两处入口都必须真的读系统日志（防止将来把板块接回 Markdown）
-    ["mods/system-settings/panes/whats-new.js", "mods/app-store/script.js"].forEach((relPath) => {
+    ["mods/system-settings/sections/whats-new.js", "mods/app-store/script.js"].forEach((relPath) => {
         const src = readFileSync(join(REPO, relPath), "utf8");
         if (!src.includes("getSystemChangelog")) problems.push(`${relPath}：没有读取系统更新日志，「新功能」板块会空`);
     });

@@ -108,6 +108,7 @@
       "favorites": "お気に入り",
       "icloud": "iCloud ドライブ",
       "locations": "場所",
+      "sources": "ソース",
       "tags": "タグ"
     },
     "auth": {
@@ -172,6 +173,26 @@
     "shared": "共有",
     "pictures": "写真",
     "bookmarks": "ブックマーク",
+    "thisMac": "この Mac",
+    "removeFavorite": "サイドバーから削除",
+    "rootLabel": "Deskly",
+    "columnUpMore": "上へ戻る",
+    "rotateLeft": "左に回転",
+    "rotateRight": "右に回転",
+    "statusCount": "{n} 個の項目",
+    "statusItems": "個の項目",
+    "statusResults": "件の結果",
+    "statusSelected": "選択中",
+    "searchScopeFolder": "現在のフォルダー",
+    "searchScopeDisk": "Deskly 全体",
+    "searchScopeTitle": "クリックで検索範囲を切り替え",
+    "rename": "名称変更",
+    "renameFailed": "名称変更に失敗しました（名前の重複、または権限不足）。",
+    "virtualRename": "これらの項目は仮想ノードのため、名称を変更できません。",
+    "moveFailed": "移動/コピーに失敗しました：名前が重複しているか、場所が無効です。",
+    "undoneTrash": "ゴミ箱へ移動しました",
+    "undoneMove": "移動しました",
+    "undo": "取り消す",
     "colName": "名前",
     "colDate": "変更日時",
     "colSize": "サイズ",
@@ -216,7 +237,7 @@
     "mail": "メール",
     "maps": "マップ",
     "photos": "写真",
-    "notes": "メモ",
+    "notes": "テキストエディット",
     "settings": "システム設定",
     "trash": "ゴミ箱",
     "stackEmpty": "「ダウンロード」は空または未許可です",
@@ -253,7 +274,22 @@
     "positionLeft": "左",
     "positionRight": "右",
     "restoreDefaults": "並び順を初期化",
-    "runningCannotRemove": "実行中のアプリはDockから取り除けません"
+    "runningCannotRemove": "実行中のアプリはDockから取り除けません",
+    "notifAdded": "「{title}」をDockに追加しました",
+    "notifDuplicate": "「{title}」はすでにDockにあります",
+    "notifFull": "Dockがいっぱいです（最大 {n} 件の通知）",
+    "notifUnsupported": "この種類の通知はDockに固定できません",
+    "notifInvalid": "この通知を読み取れませんでした。もう一度お試しください。",
+    "notifStorage": "保存できなかったため、通知を固定できませんでした",
+    "notifMissing": "この通知はもう存在しません",
+    "notifRemove": "Dockから削除",
+    "notifOpenCenter": "通知センターで表示",
+    "appUnsupported": "この項目はDockに固定できません",
+    "appDuplicate": "「{name}」はすでにDockにあります",
+    "appStorage": "保存できなかったため、アプリを固定できませんでした"
+  },
+  "quicklook": {
+    "zipMeta": "全 {n} 項目（読み取り専用プレビュー）"
   },
   "common": {
     "ok": "OK",
@@ -333,6 +369,9 @@
     "back": "戻る",
     "openDisplay": "ディスプレイ設定を開く",
     "openSound": "サウンド設定を開く",
+    "openFocus": "集中モード設定を開く",
+    "focusOff": "集中モードをオフ",
+    "focusLoading": "集中モードモジュールを読み込み中…",
     "cameraInUse": "カメラが使用中です",
     "micInUse": "マイクが使用中です",
     "locationInUse": "位置情報サービスが使用中です",
@@ -343,7 +382,8 @@
       "airplane": "機内モードは無線ハードウェアを直接制御するため、ブラウザでは操作できません。",
       "mirroring": "画面ミラーリングはシステムの映像出力が必要で、ブラウザ拡張では実現できません。",
       "display": "解像度・リフレッシュレート・画面の配置はシステム側の設定です。明るさと Night Shift はシステム設定で変更できます。",
-      "volume": "出力先はシステムが決めます。ここで調整できるのは音量とミュートだけです。"
+      "volume": "出力先はシステムが決めます。ここで調整できるのは音量とミュートだけです。",
+      "focus": "モードをクリックで起動。許可リストとスケジュールはシステム設定でモードごとに設定します。"
     }
   },
   "settings": {
@@ -474,7 +514,27 @@
     "moreInfoTitle": "詳細情報",
     "processor": "プロセッサ",
     "serial": "シリアル番号",
-    "systemVersion": "システムバージョン"
+    "systemVersion": "システムバージョン",
+    "report": {
+      "title": "システムレポート",
+      "close": "完了",
+      "system": "システム",
+      "version": "システムバージョン",
+      "author": "作者",
+      "browser": "ブラウザ",
+      "theme": "外観",
+      "language": "言語",
+      "apps": "アプリとプラグイン",
+      "appsCount": "インストール済みアプリ",
+      "appList": "アプリ一覧",
+      "pluginsCount": "プラグイン数",
+      "storage": "ストレージ使用量",
+      "storageTitle": "ストレージ",
+      "unsupported": "非対応",
+      "permissions": "権限一覧",
+      "permissionsLoading": "読み込み中",
+      "permissionsFailed": "読み込み失敗"
+    }
   },
   "appstore": {
     "errNotFound": "プラグインが登録されていません。既に削除された可能性があります。",
@@ -525,7 +585,7 @@
     "saving": "保存中…",
     "saveFailed": "保存に失敗しました",
     "discardConfirm": "「{title}」は未保存です。閉じますか？",
-    "noteRemoved": "メモから削除しました",
+    "noteRemoved": "テキストエディットから削除しました",
     "fileKept": "ディスク上のファイルは手動で削除する必要があります:",
     "openedWithGuess": "推定エンコーディングで開きました",
     "openFailed": "ファイルを開けませんでした",
@@ -567,11 +627,8 @@
       "deleteBody": "アルバム「{name}」を削除しますか？アルバム内の項目は削除されません。",
       "deleteTitle": "アルバムを削除",
       "exists": "同じ名前のアルバムがすでにあります。",
-      "family": "家族",
       "renameAction": "名前を変更",
-      "renameTitle": "アルバム名を変更",
-      "travel": "旅行",
-      "work": "仕事"
+      "renameTitle": "アルバム名を変更"
     },
     "albumNamePlaceholder": "アルバム名",
     "clearSearch": "検索をクリア",
@@ -620,6 +677,10 @@
       "videos": {
         "hint": "読み込んだビデオがここに表示されます。",
         "title": "ビデオがありません"
+      },
+      "memories": {
+        "hint": "写真が増えると、日や月ごとに思い出が自動で作られます。",
+        "title": "思い出はまだありません"
       }
     },
     "errFullscreen": "このブラウザはフルスクリーンに対応していません。",
@@ -739,11 +800,49 @@
       "unmute": "ミュート解除",
       "volume": "音量"
     },
+    "errStorageWrite": "ローカルストレージへの書き込みに失敗しました",
+    "editor": {
+      "undo": "取り消す",
+      "reset": "元に戻す",
+      "close": "閉じる",
+      "crop": "切り抜き",
+      "cropFree": "自由",
+      "preset": "フィルタ",
+      "pNone": "なし",
+      "pVivid": "ビビッド",
+      "pWarm": "ウォーム",
+      "pCool": "クール",
+      "pMono": "モノクロ",
+      "pDrama": "ドラマ",
+      "adjust": "調整",
+      "brightness": "明るさ",
+      "contrast": "コントラスト",
+      "saturation": "彩度",
+      "temperature": "色温度",
+      "auto": "自動補正",
+      "saveCopy": "コピーとして保存",
+      "saveOriginal": "元データに保存",
+      "confirmTitle": "元データを上書き",
+      "confirmBody": "編集した画像で元データを上書きします。元に戻せません。",
+      "armed": "もう一度クリックで確定",
+      "saving": "保存中…",
+      "saveFailed": "保存に失敗しました",
+      "loading": "読み込み中…",
+      "loadFailed": "画像を読み込めませんでした"
+    },
+    "memories": {
+      "byMonth": "{month}",
+      "count": "{n} 枚の写真",
+      "favorites": "お気に入り",
+      "recentDays": "最近の日々",
+      "thisMonth": "今月"
+    },
     "view": {
       "album": "アルバム",
       "all": "すべての写真",
       "favorites": "お気に入り",
       "images": "写真のみ",
+      "memories": "思い出",
       "recent": "最近の項目",
       "trash": "最近削除した項目",
       "videos": "動画のみ"
@@ -797,7 +896,8 @@
     "fsRight": "画面右側",
     "splitPick": "反対側のウインドウを選択",
     "splitNone": "ほかに並べられるウインドウがありません",
-    "splitToDesktop": "ウインドウをデスクトップに移動"
+    "splitToDesktop": "ウインドウをデスクトップに移動",
+    "splitReplace": "タイル状ウインドウを入れ替え"
   },
   "office": {
     "blankExcel": "名称未設定のブック",
@@ -1175,13 +1275,13 @@
   "apps": {
     "about": "このマシンについて",
     "app-store": "App Store",
+    "developers": "Developer",
     "calculator": "計算機",
     "finder": "Finder",
     "launchpad": "Launchpad",
-    "notepad": "メモ帳",
+    "notepad": "テキストエディット",
     "photos": "写真",
     "safari": "Safari",
-    "siri": "Siri",
     "system-settings": "システム設定",
     "vs_code": "VS Code",
     "office": {
@@ -1213,7 +1313,14 @@
     "bluetoothOff": "（オフ）",
     "showBattery": "バッテリ",
     "showVolume": "サウンド",
-    "showBluetooth": "Bluetooth"
+    "showBluetooth": "Bluetooth",
+    "wifi": "Wi-Fi",
+    "wifiOff": "（オフ）",
+    "stage": "ステージマネージャ",
+    "showWifi": "Wi-Fi",
+    "showStage": "ステージマネージャ",
+    "removedTitle": "メニューバーから削除しました",
+    "removedUndo": "「{name}」を削除しました。クリックで取り消せます"
   },
   "keyboard": {
     "tier": {
@@ -1227,12 +1334,70 @@
   "overview": {
     "title": "ウインドウ一覧",
     "badgeFullscreen": "フルスクリーン",
-    "badgeSplit": "分割表示"
+    "badgeSplit": "分割表示",
+    "spaceDesktop": "デスクトップ",
+    "spaceFullscreen": "フルスクリーン — {n}",
+    "spaceSplit": "分割表示 — {n}",
+    "closeWindow": "ウインドウを閉じる"
   },
   "stage": {
     "shelf": "最近使ったApp"
   },
   "spotlight": {
-    "manualHint": "マニュアル"
+    "manualHint": "マニュアル",
+    "copyHint": "Returnでコピー",
+    "runHint": "Returnで実行",
+    "convertSub": "単位変換",
+    "currencySub": "通貨変換",
+    "rateDate": "為替スナップショット",
+    "timerLabel": "タイマーを設定：{min} 分",
+    "timerSub": "タイマー",
+    "timerBody": "{min} 分のタイマー",
+    "timerStarted": "タイマー開始",
+    "timerDone": "タイマー終了"
+  },
+  "focus": {
+    "mode": {
+      "doNotDisturb": "おやすみ",
+      "work": "仕事",
+      "personal": "パーソナル",
+      "sleep": "睡眠"
+    }
+  },
+  "notifycenter": {
+    "title": "通知センター",
+    "listTitle": "通知",
+    "today": "今日",
+    "earlier": "それ以前",
+    "clearAll": "すべて消去",
+    "clear": "消去",
+    "empty": "通知はありません",
+    "muted": "集中モードで消音されました",
+    "editWidgets": "ウィジェットを編集…",
+    "justNow": "たった今",
+    "minutesAgo": "{n} 分前",
+    "unknownApp": "システム",
+    "undroppable": "この種類の通知はDockへドラッグできません"
+  },
+  "widgets": {
+    "calendar": "カレンダー",
+    "clock": "時計",
+    "weather": "天気",
+    "sizeSmall": "小",
+    "sizeMedium": "中",
+    "sizeLarge": "大",
+    "centerTitle": "ウィジェットを編集",
+    "close": "完了",
+    "gallery": "利用できるウィジェット",
+    "addToCenter": "通知センターに追加",
+    "addToDesktop": "デスクトップに追加",
+    "remove": "削除",
+    "sectionCenter": "通知センター",
+    "sectionDesktop": "デスクトップ",
+    "editMode": "デスクトップのウィジェットを編集",
+    "emptyGuide": "ウィジェットを追加して通知センターで情報を表示",
+    "emptyContainer": "このコンテナにはウィジェットがありません",
+    "weatherEmpty": "天気データはありません",
+    "weatherNote": "リアルタイムの天気にはデータ源が必要です。現在はレイアウトのみ"
   }
 }

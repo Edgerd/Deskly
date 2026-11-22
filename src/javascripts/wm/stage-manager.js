@@ -241,13 +241,20 @@ export function activateSet(key) {
 }
 
 /**
- * 点按墙纸 = 全部窗口进停靠（显示桌面），再点任一缩略图恢复。
- * 是否生效看 desktop.stage.clickWallpaper（始终 / 仅在台前调度中）。
+ * 点按墙纸 = 全部窗口进停靠（显示桌面）；再次点按恢复最近一次的舞台组（F-11 与
+ * F-09 的衔接口径：toggle 语义）。是否生效看 desktop.stage.clickWallpaper（始终 / 仅在台前调度中）。
  */
+let preShelveKey = null;
 function wallpaperClick() {
     if (!enabled || suspended) return;
     const c = conf().clickWallpaper;
     if (c !== "always" && c !== "stageOnly") return;
+    // 已全部收起：再点一次墙纸 = 恢复收起前的舞台组（该组还在则升台，否则不动作）
+    if (stageKey === null) {
+        if (preShelveKey && sets.has(preShelveKey)) activateSet(preShelveKey);
+        return;
+    }
+    preShelveKey = stageKey;
     sets.forEach((set) => set.windows.forEach((el) => el.classList.add("wm-shelved")));
     stageKey = null;
     updateShelfSelection();

@@ -27,6 +27,20 @@ import {
 import { getTrafficLights } from "../ui/trafficLights.js";
 import { emitWindowEvent } from "./events.js";
 import { followMove } from "./relations.js";
+import { settings } from "../settings.js";
+
+/**
+ * F-13：「拖到屏幕边缘时平铺窗口」全局开关。
+ * 默认开；关掉后未显式声明 snap 的窗口退回 "edges"（只钳边、不出平铺预览），
+ * 窗口自己的 NW-6 声明（data-window snap=...）优先级高于全局开关。
+ */
+settings.defineMany([
+    {
+        key: "desktop.tileOnDrag", type: "boolean", default: true,
+        control: "switch", pane: "dock", group: "窗口", order: 50,
+        label: "拖到屏幕边缘时平铺窗口", event: "tile-on-drag-change", owner: "system",
+    },
+]);
 
 /** facade 注入的窗口操作（setZoom / tile），求值期绑定。 */
 let ops = { setZoom: null, tile: null };
@@ -66,11 +80,13 @@ const EDGE_CURSOR = {
 /** 该窗口声明的拖动配置（缺省即现状）。 */
 function dragConf(el) {
     const conf = el._wmConfig || {};
+    // F-13：全局开关关闭时，未显式声明 snap 的窗口退回 "edges"；显式声明不受影响。
+    const defaultSnap = settings.get("desktop.tileOnDrag", true) ? "tile" : "edges";
     return {
         axis: conf.dragAxis === "x" || conf.dragAxis === "y" ? conf.dragAxis : "both",
         bounds: conf.dragBounds && typeof conf.dragBounds === "object" ? conf.dragBounds : null,
         fixed: el._wmFixed === true,
-        snap: el._wmSnap || "tile",
+        snap: el._wmSnap || defaultSnap,
     };
 }
 

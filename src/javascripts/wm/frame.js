@@ -21,6 +21,22 @@ export const CORNER_BAND = 16;
 export const SNAP_TRIGGER = 14;
 /** 拖动后窗口至少留在屏幕内的可见宽度（px），保证还能被点回来。 */
 export const KEEP_VISIBLE = 120;
+/**
+ * 「拖到屏幕中央」热区半径（px）：指针落在可视区几何中心这个圆内即命中 center 分区。
+ * F-13 的中央热区；常量放这里与 SNAP_TRIGGER 同区，探针可调。
+ */
+export const CENTER_TRIGGER_R = 64;
+/**
+ * 程序坞图标长按弹出「应用窗口缩略条」的计时（F-08）。
+ * 与绿键菜单的 HOVER_MENU_DELAY 同放本模块的常量区：手势语义不同（长按 vs 悬停），
+ * 数值分开，但全仓只此一份定义。
+ */
+export const DOCK_WINDOWS_PRESS_MS = 400;
+/**
+ * 绿键悬停弹「窗口排列」菜单的时长（从 window-manager.js 上移到共享常量区）。
+ * 程序坞长按条目 DOCK_WINDOWS_PRESS_MS 不复用它——两个手势的耐心不一样。
+ */
+export const HOVER_MENU_DELAY = 900;
 /** 无标题栏窗口的标题栏安全带高（px）：sheet 子窗贴边与拖动兜底共用这一个估计值。 */
 export const TITLEBAR_SAFE_H = 38;
 
@@ -56,22 +72,41 @@ function dockReservesSpace() {
 }
 
 /**
+ * 当前界面缩放倍数（设置里的「辅助功能 → 缩放」写的是 <html style="zoom">）。
+ *
+ * 坐标系差异是拖动错位的根因：CSS zoom 会放大渲染，`getBoundingClientRect()`
+ * 与指针事件给的 clientX/Y 都是**放大后**的视口坐标，而内联 left/top/width/height
+ * 是**放大前**的布局坐标。两边混用就会出现「窗口越拖越偏、缩放后填不满屏幕」。
+ * 这里统一把坐标系定成「视口坐标」：读 rect 直接可用，写内联值在 applyFrame 里除以倍数。
+ * @returns {number} 1 表示 100%（或读不到 zoom）
+ */
+export function uiZoom() {
+  if (typeof document === "undefined" || !document.documentElement) return 1;
+  if (typeof getComputedStyle !== "function") return 1;
+  let raw = "";
+  try { raw = getComputedStyle(document.documentElement).zoom; } catch { return 1; }
+  const z = parseFloat(raw);
+  return Number.isFinite(z) && z > 0 ? z : 1;
+}
+
+/**
  * 可视桌面区：扣掉顶部菜单栏与程序坞（程序坞可能在左/右/下三侧）。
  * @returns {{top:number,left:number,right:number,bottom:number,width:number,height:number}}
  *          right/bottom 是「让出的宽度」，不是坐标；右边界 = left + width。
  */
 export function visibleFrame() {
+  const z = uiZoom();
   const bar = document.getElementById("finderbar");
-  const top = bar ? bar.offsetHeight : 0;
+  const top = bar ? bar.offsetHeight * z : 0;
   const container = document.getElementsByClassName("dockcontainer")[0];
   let left = 0;
   let right = 0;
   let bottom = 0;
   if (container && dockReservesSpace()) {
-    const inset = container.offsetWidth;
+    const inset = container.offsetWidth * z;
     if (container.classList.contains("pos-left")) left = inset;
     else if (container.classList.contains("pos-right")) right = inset;
-    else bottom = container.offsetHeight;
+    else bottom = container.offsetHeight * z;
   }
   return {
     top,
@@ -102,6 +137,7 @@ export function frameOf(el) {
  */
 export function applyFrame(el, f, opts = {}) {
   const { animate = false } = opts;
+  const z = uiZoom();
   if (animate) {
     el.classList.add("wm-animating");
     clearTimeout(el._wmAnimTimer);
@@ -110,10 +146,10 @@ export function applyFrame(el, f, opts = {}) {
       el._wmAnimTimer = null;
     }, WM_ANIM_MS);
   }
-  el.style.left = `${Math.round(f.x)}px`;
-  el.style.top = `${Math.round(f.y)}px`;
-  el.style.width = `${Math.round(f.w)}px`;
-  el.style.height = `${Math.round(f.h)}px`;
+  el.style.left = `${Math.round(f.x / z)}px`;
+  el.style.top = `${Math.round(f.y / z)}px`;
+  el.style.width = `${Math.round(f.w / z)}px`;
+  el.style.height = `${Math.round(f.h / z)}px`;
 }
 
 /**
@@ -143,13 +179,15 @@ function len(raw, base, fallback) {
  */
 export function limitsOf(el) {
   const cs = window.getComputedStyle(el);
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const z = uiZoom();
+  const vw = window.innerWidth / z;
+  const vh = window.innerHeight / z;
+  // 计算样式里的 px 与 % 都是布局坐标，统一换算回视口坐标，才能和 frameOf 比较
   return {
-    minW: len(cs.minWidth, vw, 0),
-    minH: len(cs.minHeight, vh, 0),
-    maxW: len(cs.maxWidth, vw, Infinity),
-    maxH: len(cs.maxHeight, vh, Infinity),
+    minW: len(cs.minWidth, vw, 0) * z,
+    minH: len(cs.minHeight, vh, 0) * z,
+    maxW: len(cs.maxWidth, vw, Infinity) * z,
+    maxH: len(cs.maxHeight, vh, Infinity) * z,
   };
 }
 
@@ -384,9 +422,25 @@ export function snapZoneAt(cx, cy) {
   else if (nearLeft) region = "left";
   else if (nearRight) region = "right";
   else if (nearTop) region = "zoom";
+  else if (nearBottom) region = "bottom";
+  else if (inCenterZone(cx, cy, r)) region = "center";
   if (!region) return null;
   const frame = region === "zoom" ? (() => ({ x: r.left, y: r.top, w: r.width, h: r.height }))() : tileFrame(region);
   return frame ? { region, frame } : null;
+}
+
+/**
+ * 「拖到屏幕中央」热区判定（F-13）：指针落在可视区几何中心 CENTER_TRIGGER_R
+ * 半径圆内即命中。角/边热区优先级更高（先于本判定短路返回）。
+ * @param {number} cx 指针视口横坐标
+ * @param {number} cy 指针视口纵坐标
+ * @param {{left:number,top:number,width:number,height:number}} r visibleFrame()
+ * @returns {boolean}
+ */
+export function inCenterZone(cx, cy, r) {
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  return Math.hypot(cx - x, cy - y) <= CENTER_TRIGGER_R;
 }
 
 export { EDGES as RESIZE_EDGES };

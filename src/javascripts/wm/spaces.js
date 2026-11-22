@@ -251,6 +251,66 @@ export function exitSplit(el, opts = {}) {
     }
 }
 
+/**
+ * 替换拼贴窗口（F-12，macOS 分屏态绿键菜单语义）：
+ * 弹「另一侧选哪扇窗」式清单，选中的窗口接管本侧的拼贴位，本窗口回桌面用户框，
+ * 对侧与分屏占比原样保留。
+ * @param {HTMLElement} el 分屏中的一侧
+ * @returns {boolean} 是否弹出了替换清单
+ */
+export function replaceSplitSide(el) {
+    if (!split || pendingSplit) return false;
+    const side = split.left === el ? "left" : split.right === el ? "right" : null;
+    if (!side) return false;
+    const rec = records.get(el);
+    if (!rec || rec.fullscreen) return false; // 独占全屏的一侧不参与替换
+    const candidates = stack.filter((w) => pickable(w, el));
+    const items = [
+        { type: "header", label: i18n.t("window.splitReplace", "替换拼贴窗口") },
+        ...candidates.map((w) => ({
+            label: (records.get(w) && records.get(w).name) || w.id,
+            action: () => applySplitReplacement(el, side, w),
+        })),
+    ];
+    if (!candidates.length) {
+        items.push({ label: i18n.t("window.splitNone", "没有其他可拼贴的窗口"), disabled: true });
+    }
+    createContextMenu(Math.round(window.innerWidth / 2), Math.round(window.innerHeight / 3), items);
+    return true;
+}
+
+/** 替换的落地动作：本侧回桌面（进当前空间的隐藏态），新窗口接管拼贴位。 */
+function applySplitReplacement(el, side, w) {
+    if (!split || split[side] !== el) return;
+    const counterpart = side === "left" ? split.right : split.left;
+    const ratio = split.ratio;
+    // 收掉替换清单（程序化路径也要收，别留无人认领的浮层）
+    const strayMenu = document.querySelector("div.menu.contextmenu");
+    if (strayMenu) strayMenu.remove();
+    const rec = records.get(el);
+    const wrec = records.get(w);
+    if (!wrec || wrec.role !== "normal") return;
+    if (!wrec.normal) wrec.normal = frameOf(w);
+    if (wrec.zoomed) wrec.zoomed = false;
+    if (wrec.tiled) wrec.tiled = null;
+    // 本侧回桌面用户框（随后被 syncSpaces 收进「桌面空间」的隐藏态）
+    if (rec) {
+        rec.split = null;
+        applyFrame(el, rec.normal || frameOf(el), { animate: true });
+        syncState(el, rec);
+    }
+    split = {
+        left: side === "left" ? w : counterpart,
+        right: side === "right" ? w : counterpart,
+        ratio,
+    };
+    records.get(split.left).split = "left";
+    records.get(split.right).split = "right";
+    layoutSplit(true);
+    focusWindow(w);
+    syncSpaces(w);
+}
+
 /** 一侧被关闭：另一侧升为独占全屏（由 window:close 事件驱动）。 */
 document.addEventListener("window:close", (e) => {
     const el = e.detail && e.detail.state && e.detail.state.el;

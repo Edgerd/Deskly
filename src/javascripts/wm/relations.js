@@ -132,23 +132,27 @@ export function positionSheet(el) {
 
 /**
  * 跟随移动：母窗位移 (dx, dy) 时全部子孙窗同步位移（递归）。
- * 只动位置、不动尺寸；越界时用与拖动同一套 clampDrag 钳回。
- * @param {HTMLElement} parent
+ * 只动位置、不动尺寸；拖拽口径越界时用与拖动同一套 clampDrag 钳回，
+ * 桌面整屏位移（wm/reveal 的移开/恢复）传 { clamp: false } 原样跟走。
+ * @param {HTMLElement} parent 母窗
  * @param {number} dx
  * @param {number} dy
+ * @param {{clamp?: boolean}} [opts]
  */
-export function followMove(parent, dx, dy) {
+export function followMove(parent, dx, dy, opts = {}) {
     if (!dx && !dy) return;
+    const clamp = opts.clamp !== false;
     childrenOf(parent).forEach((child) => {
         if (!child.isConnected) return;
         const f = frameOf(child);
-        const next = clampDrag(f.x + dx, f.y + dy, { w: f.w, h: f.h });
+        const raw = { x: f.x + dx, y: f.y + dy };
+        const next = clamp ? clampDrag(raw.x, raw.y, { w: f.w, h: f.h }) : raw;
         applyFrame(child, { x: next.x, y: next.y, w: f.w, h: f.h });
         const rec = records.get(child);
         if (rec && rec.normal && !rec.zoomed && !rec.tiled && !rec.fullscreen) {
             rec.normal = { ...rec.normal, x: next.x, y: next.y };
         }
-        followMove(child, dx, dy);
+        followMove(child, dx, dy, opts);
     });
 }
 

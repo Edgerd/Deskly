@@ -34,9 +34,10 @@ import {
   getTrafficLights, mountTrafficLights, setTrafficLightsEnabled, ACTION_EVENT,
 } from "./ui/trafficLights.js";
 import {
-  visibleFrame, frameOf, applyFrame, clampDrag,
-  tileFrame, zoomFrame, displayFrame,
+  visibleFrame, frameOf, applyFrame, clampDrag, uiZoom,
+  tileFrame, zoomFrame, displayFrame, HOVER_MENU_DELAY,
 } from "./wm/frame.js";
+import { settings } from "./settings.js";
 import {
   records, stack, commitStack, isWindowElement, isMinimized, resolveWindow,
   focusWindow, getTopWindow, getVisibleWindows, updateActiveAppMenu, syncState, detachStates, stateOf,
@@ -49,7 +50,10 @@ import {
   bindOps,
 } from "./wm/lifecycle.js";
 import { setWindowDetailProvider, emitWindowEvent } from "./wm/events.js";
-import { enterSplit, exitSplit, inSplit, splitState, cycleSpaces, relayoutSplit } from "./wm/spaces.js";
+import { enterSplit, exitSplit, inSplit, splitState, cycleSpaces, relayoutSplit, replaceSplitSide } from "./wm/spaces.js";
+import { windowTileMenuItems } from "./wm/menu-provider.js";
+// F-11：墙纸点按移开/恢复的监听在模块求值期自挂（document 级），引入即生效
+import * as reveal from "./wm/reveal.js";
 import * as overview from "./wm/overview.js";
 import { ZOOM_HOVER_EVENT } from "./ui/trafficLights.js";
 
@@ -70,19 +74,11 @@ export {
 export { attach, detach, parentOf, childrenOf } from "./wm/relations.js";
 export { WINDOW_EVENTS, emitWindowEvent } from "./wm/events.js";
 export { applyDragConstraints, inDragZone } from "./wm/interactions.js";
-export { enterSplit, exitSplit, inSplit, splitState } from "./wm/spaces.js";
+export { enterSplit, exitSplit, inSplit, splitState, replaceSplitSide } from "./wm/spaces.js";
 export { isOverviewOpen, toggle as toggleOverview } from "./wm/overview.js";
 
 /** 层叠居中时每个后续同尺寸窗口错开的位移（macOS 的 cascade 节奏）。 */
 const CASCADE_STEP = 24;
-
-/**
- * 绿键悬停多久弹出窗口排列菜单。
- * macOS 自己约 0.5s，这里取 900ms：本项目的红绿灯离正文与拖动区都比分家系统近，
- * 用户只是把指针扫过标题栏去抓边框，也会顺手把菜单弹出来（实测很烦）。
- * 悬停菜单是「锦上添花」，右键那一份不受这个时长影响。
- */
-const HOVER_MENU_DELAY = 900;
 
 // ── 应用侧声明：data-window="size:900x640 min:620x440 resizable centered" ──
 
@@ -469,8 +465,10 @@ export function center(el, opts = {}) {
   const { animate = false } = opts;
   const set = () => {
     const r = visibleFrame();
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
+    // offset* 是布局坐标，visibleFrame 是视口坐标：乘以界面缩放才能同尺度居中
+    const z = uiZoom();
+    const w = el.offsetWidth * z;
+    const h = el.offsetHeight * z;
     let x = r.left + (r.width - w) / 2;
     let y = r.top + (r.height - h) / 2;
     if (opts.cascade !== false) {
@@ -499,6 +497,30 @@ function overlapsExactly(other, x, y, w, h, step) {
   const f = frameOf(other);
   return Math.abs(f.w - w) < 2 && Math.abs(f.h - h) < 2
     && Math.abs(f.x - x) < step && Math.abs(f.y - y) < step;
+}
+
+/**
+ * F-16：⌥ 点黄键 = 最小化该应用的全部窗口（macOS Option+最小化）。
+ * 归属判定与 Dock 的 syncRunningApps 同口径：窗口 id 去掉 #N 实例后缀相等，
+ * 或 data-app-id 相等。子窗/模态不直接处理（母窗最小化时由 lifecycle 级联）。
+ * @param {HTMLElement} el 触发最小化的窗口
+ */
+function minimizeAppWindows(el) {
+  if (!isWindowElement(el)) return;
+  const base = String(el.id || "").replace(/#\d+$/, "");
+  const appId = el.dataset && el.dataset.appId;
+  stack.forEach((win) => {
+    if (!isWindowElement(win) || !win.isConnected) return;
+    const rec = records.get(win);
+    if (!rec) return;
+    const st = stateOf(win);
+    if (st.role && st.role !== "normal") return; // 子窗随母窗级联
+    if (rec.fullscreen) return;                  // 全屏空间成员不属于桌面层
+    const same = (appId && win.dataset.appId === appId)
+      || String(win.id || "").replace(/#\d+$/, "") === base;
+    if (!same) return;
+    if (!isMinimized(win)) setMinimized(win, true);
+  });
 }
 
 /** 缩放态下的旧名：填充可视区。 */
@@ -662,6 +684,12 @@ function windowMenuItems(rec) {
         icon: MENU_ICON.center,
         action: () => exitSplit(el),
       },
+      {
+        // F-12：macOS 分屏态绿键菜单的「替换拼贴窗口」——另一扇窗接管本侧拼贴位
+        label: i18n.t("window.splitReplace", "替换拼贴窗口"),
+        icon: MENU_ICON.arrangeLR,
+        action: () => replaceSplitSide(el),
+      },
     ];
   }
   const splitOn = !!splitState();
@@ -791,7 +819,9 @@ function bindTitleBarControls(rec) {
         close(el);
       } else if (detail.action === "minimize") {
         if (runAction(rec, "minimize", detail) === false) return;
-        setMinimized(el, !isMinimized(el));
+        // F-16：⌥ 点黄键 = 最小化该应用的全部窗口（macOS 同款）
+        if (detail.altKey) minimizeAppWindows(el);
+        else setMinimized(el, !isMinimized(el));
       } else if (detail.action === "zoom") {
         if (runAction(rec, "zoom", detail) === false) return;
         // 长按已弹菜单：这一次 click 只是手指抬起，不执行默认的全屏
@@ -866,7 +896,11 @@ function bindTitleBarControls(rec) {
         .then((m) => m.refreshWindow(el))
         .catch(() => {});
     });
-    yellow.addEventListener("click", () => setMinimized(el, !isMinimized(el)));
+    yellow.addEventListener("click", (e) => {
+      // F-16：⌥ 点黄键 = 最小化该应用的全部窗口（macOS 同款）
+      if (e.altKey) minimizeAppWindows(el);
+      else setMinimized(el, !isMinimized(el));
+    });
   }
   if (green && !rec._zoomBound) {
     rec._zoomBound = true;
@@ -896,6 +930,7 @@ export function relayoutOnResize() {
     const rec = records.get(el);
     if (!rec || !el.isConnected) return;
     if (el._wmFixed) return;   // NW-2：固定定位窗豁免强制回拉
+    if (el._wmRevealHidden) return; // F-11：墙纸移开态的窗口停在视口外，不往回拉
     const f = frameOf(el);
     if (rec.fullscreen) applyFrame(el, displayFrame());
     else if (rec.zoomed) applyFrame(el, zoomFrame(el));
@@ -907,6 +942,16 @@ export function relayoutOnResize() {
     }
   });
 }
+
+/**
+ * 界面缩放（辅助功能 → 缩放）改变的是「布局 px → 视口 px」的换算倍数。
+ * 已经打开的窗口停在旧倍数算出来的内联值上，会整体偏位、缩放态也填不满屏幕；
+ * 这里按新倍数把所有窗口重算一遍（普通窗口回到可视区、缩放/平铺态重新铺满）。
+ */
+settings.subscribe((detail) => {
+  if (detail.key !== "accessibility.zoom") return;
+  requestAnimationFrame(() => relayoutOnResize());
+});
 
 let initialized = false;
 export function init() {
@@ -963,6 +1008,12 @@ export function init() {
       return;
     }
     if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === "ArrowUp") {
+      e.preventDefault();
+      overview.toggle();
+      return;
+    }
+    // F-10：F3 = 调度中心（macOS 的 Mission Control 键；⌃↑ 仍是主入口）
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "F3") {
       e.preventDefault();
       overview.toggle();
       return;
@@ -1034,6 +1085,12 @@ setWindowDetailProvider((el) => ({
   state: stateOf(el),
 }));
 
+// F-10：Dock 图标「调度中心」的开关入口（dock.js openApp 特判用，与 __launchpad 同款）
+window.__wmOverview = {
+  toggle: () => overview.toggle(),
+  isOpen: () => overview.isOverviewOpen(),
+};
+
 // 内核侧只读引用（与 window.__dock 同一风格）：finderbar 的 FS-12/13 菜单文案
 // 需要同步读顶层窗口状态，动态 import 是异步的，菜单渲染等不起。
 window.__wmApi = Object.freeze({
@@ -1048,6 +1105,11 @@ window.__wmApi = Object.freeze({
     const w = document.getElementById(id);
     if (w) focusWindow(w);
   },
+  // F-13：顶栏「窗口」菜单的平铺分区数据源（TILE_REGIONS 全量九分区，
+  // 条目形状与 finderbar 菜单一致：{ label, cmd, region }）
+  windowTileMenuItems,
+  // F-11：墙纸移开态查询（苹果菜单「显示全部」/ 后续桌面菜单可用）
+  revealIsHidden: reveal.isHidden,
 });
 
 // ── 系统动作注册（聚焦搜索可检索的窗口调度命令） ──
@@ -1088,6 +1150,31 @@ registerSystemAction({
   aliases: ["tile", "平铺", "分屏", "snap", "⌃⌥←", "⌃⌥→"],
   available: () => !!getTopWindow(),
   run: () => { const top = getTopWindow(); if (top) tile(top, "left"); },
+});
+// F-15：⌘N 的菜单/聚焦检索后端 —— 对当前活动应用另开一个实例。
+// ⌘N 本身是浏览器保留键（keyboard.js 里按 reserved 层处理），顶栏「文件 >
+// 新建窗口」与聚焦搜索把这条动作当真新建入口；多开资格由 plugin-manager
+// 的 NW-7 判定（manifest/app 声明 multiWindow:true），不支持多开的应用
+// 会被 openApp 的去重拦回（复用现有窗口），不会出现假新窗。
+registerSystemAction({
+  id: "window.newWindow",
+  label: "新建窗口",
+  sub: "窗口",
+  group: "window",
+  aliases: ["new window", "新建窗口", "新窗口", "⌘N"],
+  available: () => !!getTopWindow(),
+  run: () => {
+    const top = getTopWindow();
+    if (!top) return;
+    const rec = records.get(top);
+    // 与 Dock/启动台同一解析口径：显示名 / 插件 id / appId 都交给 openApp
+    const app = (rec && rec.name)
+      || (top.dataset && (top.dataset.appId || top.dataset.pluginId))
+      || String(top.id || "").replace(/#\d+$/, "");
+    import("./plugin-manager.js")
+      .then((pm) => pm.openApp(app, { newWindow: true }))
+      .catch(() => {});
+  },
 });
 
 init();

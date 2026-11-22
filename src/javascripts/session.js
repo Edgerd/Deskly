@@ -215,6 +215,11 @@ export function hideOthers() {
 }
 
 export function showAll() {
+    // F-11：墙纸点按「移开」态的窗口由 wm/reveal.js 的状态机恢复（同一套恢复逻辑，
+    // 不在这里复制第二份）；动态 import 避免 session ↔ finderbar 的静态求值环。
+    import("./wm/reveal.js")
+        .then((m) => { if (m.isHidden()) m.restoreAllWindows(); })
+        .catch(() => {});
     appWindows().forEach((win) => setVisible(win, true));
     syncDockIndicators();
 }
